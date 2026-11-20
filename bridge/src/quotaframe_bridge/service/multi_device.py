@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TypeVar
@@ -22,7 +22,6 @@ from quotaframe_bridge.service.device_manager import ReconnectBackoff
 from quotaframe_bridge.service.state import UsageStateStore
 from quotaframe_bridge.service.time_sync import TimeSyncScheduler
 from quotaframe_bridge.sources.base import ProgressiveUsageSource, UsageSource
-from quotaframe_bridge.sources.codexbar import CodexBarResolutionError
 from quotaframe_bridge.transports.base import (
     TransportCleanupError,
     TransportReset,
@@ -46,10 +45,20 @@ async def _cancel(task: asyncio.Task[None] | None) -> None:
 
 @dataclass(frozen=True, slots=True)
 class UsageSnapshot:
-    """One immutable publication generation for both providers."""
+    """One immutable publication generation.
 
-    codex: ProviderUsage
-    claude: ProviderUsage
+    A provider is None when the active source does not manage it at all, which
+    keeps an unused provider off the wire instead of publishing a permanent
+    "unavailable" it can never clear.
+    """
+
+    deepseek: ProviderUsage | None = None
+    minimax: ProviderUsage | None = None
+
+    def publications(self) -> tuple[ProviderUsage, ...]:
+        return tuple(
+            usage for usage in (self.deepseek, self.minimax) if usage is not None
+        )
 
 
 class DeviceSession:
@@ -285,7 +294,7 @@ class DeviceSession:
             snapshot = self._pending or snapshot
             revision = self._offered_revision
             level = logging.INFO if self._delivered_revision == 0 else logging.DEBUG
-            for usage in (snapshot.codex, snapshot.claude):
+            for usage in snapshot.publications():
                 sequence = self._sequence.next()
                 sent_at = int(self._wall_now().timestamp())
                 if sent_at + MAX_INVERSE_CLOCK_SKEW_SECONDS < usage.sampled_at:
@@ -360,13 +369,15 @@ class MultiDeviceBridgeService:
         self.clock = clock
         self.monotonic = monotonic
         self.store = UsageStateStore() if store is None else store
+        declared = getattr(source, "providers", None)
+        if declared is not None:
+            self.store.restrict_to(declared)
         self._first_collection = True
         self._collect_now = asyncio.Event()
         self._supervisors: dict[DeviceSession, asyncio.Task[None]] = {}
         self._running = False
         self.collection_count = 0
         self.consecutive_failures = 0
-        self.resolution_error: str | None = None
 
     def toggle_screensavers(self) -> None:
         """Apply one tray click independently to each eligible device."""
@@ -388,14 +399,11 @@ class MultiDeviceBridgeService:
         """Collect once, retaining last-valid values separately from publish state."""
 
         attempted_at = self.clock()
-        # Collection is the one step in the loop with no visible progress and no
-        # obvious upper bound: on macOS the upstream CodexBar CLI performs live
-        # web fetches and can take tens of seconds, which without these lines is
-        # indistinguishable from a hang. Only the first one is announced at INFO,
-        # because a steady-state loop logging every minute is noise in a rotating
-        # log that runs for days.
+        # Collection is the one step in the loop with no visible progress: it is
+        # two HTTP requests, so only the first collection is announced at INFO —
+        # a steady-state loop logging every minute is noise in a rotating log.
         level = logging.INFO if self._first_collection else logging.DEBUG
-        LOGGER.log(level, "reading usage from CodexBar")
+        LOGGER.log(level, "reading usage from %s", getattr(self.source, "label", "the usage source"))
         started_at = self.monotonic()
 
         def publish_provider(usage: ProviderUsage) -> None:
@@ -403,7 +411,6 @@ class MultiDeviceBridgeService:
                 {usage.provider: usage}, attempted_at=attempted_at, partial=True,
             )
             self.consecutive_failures = 0
-            self.resolution_error = None
             self._offer_current()
 
         try:
@@ -418,12 +425,6 @@ class MultiDeviceBridgeService:
                 attempted_at=attempted_at,
             )
             self.consecutive_failures = 0
-            self.resolution_error = None
-        except CodexBarResolutionError as exc:
-            LOGGER.warning("usage source unavailable: %s", exc.category)
-            self.consecutive_failures += 1
-            self.resolution_error = exc.category
-            self.store.mark_all_unavailable(attempted_at=attempted_at)
         except Exception as exc:
             LOGGER.warning(
                 "usage collection unavailable: %s",
@@ -489,10 +490,7 @@ class MultiDeviceBridgeService:
         self.sessions = self.sessions + (session,)
         providers = self.store.providers
         if providers:
-            session.offer(UsageSnapshot(
-                codex=providers[Provider.CODEX],
-                claude=providers[Provider.CLAUDE],
-            ))
+            session.offer(self._snapshot(providers))
         if self._running:
             self._start_supervisor(session)
 
@@ -595,14 +593,20 @@ class MultiDeviceBridgeService:
             await asyncio.sleep(self.publish_interval)
             self._offer_current()
 
+    @staticmethod
+    def _snapshot(providers: Mapping[Provider, ProviderUsage]) -> UsageSnapshot:
+        """Build a publication from the providers the active source manages."""
+
+        return UsageSnapshot(
+            deepseek=providers.get(Provider.DEEPSEEK),
+            minimax=providers.get(Provider.MINIMAX),
+        )
+
     def _offer_current(self) -> tuple[tuple[DeviceSession, int], ...]:
         providers = self.store.providers
         if not providers:
             return ()
-        snapshot = UsageSnapshot(
-            codex=providers[Provider.CODEX],
-            claude=providers[Provider.CLAUDE],
-        )
+        snapshot = self._snapshot(providers)
         return tuple(
             (session, session.offer(snapshot)) for session in self.sessions
         )

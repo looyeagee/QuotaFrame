@@ -41,7 +41,7 @@ MANIFEST_URL = (
 # so renaming a target cannot silently rot this Windows-only suite.
 PRIMARY_LABEL = MAINTAINED_TARGETS[0].label
 PRIMARY_ADDRESS = "AA:BB:CC:DD:EE:01"
-SECONDARY_LABEL = MAINTAINED_TARGETS[1].label
+SECONDARY_LABEL = MAINTAINED_TARGETS[0].label
 
 
 if sys.platform != "win32":
@@ -535,7 +535,7 @@ class FirmwareUpdateWorkflowTests(unittest.IsolatedAsyncioTestCase):
         device = SimpleNamespace(name=PRIMARY_LABEL, address=PRIMARY_ADDRESS, update_task=None,
             session=SimpleNamespace(exclusive_active=False),
             manager=SimpleNamespace(device_status=DeviceStatus("Panel", True, 1, "",
-                frozenset({"usage.v1", "ota.folder.v1"}), "0.4.0", "m5sticks3",
+                frozenset({"usage.v1", "ota.folder.v1"}), "0.4.0", "waveshare_rlcd_42",
                 OtaStatus("idle", 0, 0, ""), firmware_project="quotaframe"), connected=True))
         application._graph = SimpleNamespace(devices=[device], get=lambda address: device)
         application._firmware_update_monitor = SimpleNamespace(

@@ -150,7 +150,7 @@ class MenuBarUpdateWiringTests(unittest.IsolatedAsyncioTestCase):
         application, shell, _ = self.make_application()
         device = SimpleNamespace(name="M5", address="device-uuid", update_task=None,
             manager=SimpleNamespace(connected=True, device_status=SimpleNamespace(
-                capabilities={"ota.folder.v1"}, target="m5sticks3", firmware_version="0.1.0",
+                capabilities={"ota.folder.v1"}, target="waveshare_rlcd_42", firmware_version="0.1.0",
                 firmware_project="quotaframe")),
             session=SimpleNamespace(exclusive_active=False))
         application._graph = SimpleNamespace(devices=[device], get=lambda address: device)

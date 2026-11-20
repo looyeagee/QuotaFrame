@@ -1,22 +1,19 @@
 #include "board.hpp"
+#include "panel_logic.hpp"
 #include "driver/gpio.h"
-#include "driver/sdmmc_host.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
-#include "esp_vfs_fat.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <sys/stat.h>
 namespace usage_panel::rlcd {
 namespace {
 constexpr char kTag[] = "rlcd42";
 constexpr gpio_num_t kSda = GPIO_NUM_13, kScl = GPIO_NUM_14;
 constexpr gpio_num_t kKey = GPIO_NUM_18, kBoot = GPIO_NUM_0;
-constexpr gpio_num_t kSdClk = GPIO_NUM_38, kSdCmd = GPIO_NUM_21, kSdD0 = GPIO_NUM_39;
 constexpr uint8_t kShtc3Address = 0x70;
 constexpr uint32_t kDebounceMs = 30, kHoldMs = 800;
 // The battery is sensed on GPIO4 (ADC1 channel 3) through a 1:3 divider.
@@ -24,9 +21,6 @@ constexpr adc_channel_t kBatteryChannel = ADC_CHANNEL_3;
 constexpr float kBatteryDivider = 3.f;
 // Linear voltage estimate; readings below kNoBatteryVolts report an unknown battery level.
 constexpr float kEmptyVolts = 3.0f, kFullVolts = 4.12f, kNoBatteryVolts = 2.5f;
-constexpr char kTrendFile[] = "/sdcard/trend.bin", kTrendBackup[] = "/sdcard/trend.bak",
-               kTrendTemp[] = "/sdcard/trend.tmp";
-
 uint8_t crc8(const uint8_t *data) {
     uint8_t c = 0xff;
     for (int i = 0; i < 2; ++i) {
@@ -77,19 +71,7 @@ bool Board::begin() {
             cali_ = nullptr;
     }
 
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot.width = 1;
-    slot.clk = kSdClk;
-    slot.cmd = kSdCmd;
-    slot.d0 = kSdD0;
-    slot.flags = SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
-    esp_vfs_fat_sdmmc_mount_config_t mount{};
-    mount.max_files = 3;
-    mount.allocation_unit_size = 16384;
-    sdmmc_card_t *card = nullptr;
-    sd_ = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot, &mount, &card) == ESP_OK;
-    ESP_LOGI(kTag, "RTC=%d ADC=%d SD=%d", rtc_ready_, cali_ != nullptr, sd_);
+    ESP_LOGI(kTag, "RTC=%d ADC=%d", rtc_ready_, cali_ != nullptr);
     return true;
 }
 
@@ -127,7 +109,6 @@ void Board::read_battery(View &v) {
 }
 
 void Board::poll(View &v) {
-    v.sd = sd_;
     LocalCalendarTime t;
     v.clock.valid = rtc_ready_ && rtc_.read(t);
     if (v.clock.valid)
@@ -203,74 +184,4 @@ bool Board::save(const Settings &s) {
     return ok;
 }
 
-void Board::sample_trend(View &v) {
-    if (!sd_)
-        return;
-    if (!trend_loaded_) {
-        trend_loaded_ = true;
-        for (const char *path : {kTrendFile, kTrendBackup}) {
-            FILE *f = fopen(path, "rb");
-            if (!f)
-                continue;
-            bool valid = true;
-            TrendPoint p;
-            v.trend_count = 0;
-            while (true) {
-                const size_t bytes = fread(&p, 1, sizeof(p), f);
-                if (!bytes)
-                    break;
-                if (bytes != sizeof(p) || v.trend_count == kTrendPoints ||
-                    p.epoch < kMinTrendEpoch || (p.codex > 100 && p.codex != 255) ||
-                    (p.claude > 100 && p.claude != 255)) {
-                    valid = false;
-                    break;
-                }
-                v.trend[v.trend_count++] = p;
-            }
-            valid = valid && !ferror(f);
-            fclose(f);
-            if (valid && v.trend_count)
-                break;
-            v.trend_count = 0;
-        }
-    }
-    const uint32_t epoch = std::max(v.model.estimated_epoch(Provider::Codex, v.now_ms),
-                                    v.model.estimated_epoch(Provider::Claude, v.now_ms));
-    if (epoch < kMinTrendEpoch || !v.link.encrypted ||
-        (v.trend_count &&
-         epoch / kTrendIntervalSeconds <= v.trend[v.trend_count - 1].epoch / kTrendIntervalSeconds))
-        return;
-    auto value = [&](Provider p) -> uint8_t {
-        const auto &s = v.model.snapshot(p);
-        return s.latest_short_present && s.short_window.present ? s.short_window.used_percent : 255;
-    };
-    // The sample is committed to the view only after the file is replaced, so a failed write
-    // leaves the bucket open and the next poll retries it.
-    auto trend = v.trend;
-    int count = v.trend_count;
-    if (count == kTrendPoints) {
-        std::move(trend.begin() + 1, trend.end(), trend.begin());
-        --count;
-    }
-    trend[count++] = {epoch, value(Provider::Codex), value(Provider::Claude), {}};
-    FILE *f = fopen(kTrendTemp, "wb");
-    if (!f)
-        return;
-    bool ok = fwrite(trend.data(), sizeof(TrendPoint), count, f) == static_cast<size_t>(count);
-    ok = fclose(f) == 0 && ok;
-    if (!ok)
-        return;
-    // After a failed install only the backup remains; it is kept until a new file is installed.
-    struct stat st;
-    if (stat(kTrendFile, &st) == 0) {
-        remove(kTrendBackup);
-        rename(kTrendFile, kTrendBackup);
-    }
-    if (rename(kTrendTemp, kTrendFile) != 0) {
-        ESP_LOGW(kTag, "Trend persistence failed; backup retained");
-        return;
-    }
-    v.trend = trend;
-    v.trend_count = count;
-}
 } // namespace usage_panel::rlcd

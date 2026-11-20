@@ -96,26 +96,47 @@ int setting_options(int row) {
     return row >= 0 && row < kSettingRows ? options[row] : 0;
 }
 
-Page Navigator::next(Page page, bool portrait) {
+Provider provider_for(int slot) { return slot ? Provider::Minimax : Provider::Deepseek; }
+
+bool service_visible(const View &v, int slot) {
+    return v.model.snapshot(provider_for(slot)).has_valid_data;
+}
+
+int ring_index(Page page) {
+    switch (page) {
+    case Page::Home:
+        return 0;
+    case Page::Deepseek:
+        return 1;
+    case Page::Minimax:
+        return 2;
+    case Page::Clock:
+        return 3;
+    default:
+        return -1;
+    }
+}
+
+int ring_pages() { return 4; }
+
+Page Navigator::next(Page page, bool portrait, bool) {
     if (portrait)
         return page == Page::Home ? Page::Clock : Page::Home;
     switch (page) {
     case Page::Home:
-        return Page::Codex;
-    case Page::Codex:
-        return Page::Claude;
-    case Page::Claude:
-        return Page::Trend;
-    case Page::Trend:
+        return Page::Deepseek;
+    case Page::Deepseek:
+        return Page::Minimax;
+    case Page::Minimax:
         return Page::Clock;
     default:
         return Page::Home;
     }
 }
 
-Page Navigator::previous(Page page, bool portrait) {
+Page Navigator::previous(Page page, bool portrait, bool) {
     Page p = page;
-    for (int i = 0; i < kRingPages; ++i) {
+    for (int i = 0; i < 4; ++i) {
         if (next(p, portrait) == page)
             return p;
         p = next(p, portrait);
@@ -125,7 +146,7 @@ Page Navigator::previous(Page page, bool portrait) {
 
 bool Navigator::normalize(View &v) {
     const bool portrait = v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
-    if (portrait && (v.page == Page::Codex || v.page == Page::Claude || v.page == Page::Trend)) {
+    if (portrait && (v.page == Page::Deepseek || v.page == Page::Minimax)) {
         v.page = Page::Home;
         return true;
     }
@@ -141,7 +162,7 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
     const bool portrait = v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
     if (v.alert >= 0 && v.page != Page::Settings) {
         if (in == Input::Key) {
-            dismissed_[v.alert] = true;
+            dismissed_ = true;
             v.alert = -1;
         }
         return r;
@@ -180,25 +201,20 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
 }
 
 bool Navigator::update_alert(View &v) {
-    int best = -1;
-    for (int i = 0; i < 2; ++i) {
-        if (v.warning[i] < 2) {
-            dismissed_[i] = false;
-            announced_[i] = false;
-        }
-        const auto &s = v.model.snapshot(i ? Provider::Claude : Provider::Codex);
-        if (v.warning[i] == 2 && !dismissed_[i] && v.link.encrypted &&
-            (best < 0 || s.short_window.used_percent >
-                             v.model.snapshot(best ? Provider::Claude : Provider::Codex)
-                                 .short_window.used_percent))
-            best = i;
+    // Only MiniMax publishes a quota window, so only its warning can raise an alert.
+    constexpr int kSlot = 1;
+    const uint8_t warning = v.warning[kSlot];
+    if (warning < 2) {
+        dismissed_ = false;
+        announced_ = false;
     }
-    if (v.settings.alert == static_cast<uint8_t>(AlertMode::Off))
-        best = -1;
-    const bool raised = best >= 0 && !announced_[best];
-    if (best >= 0)
-        announced_[best] = true;
-    v.alert = best;
+    const bool candidate =
+        warning == 2 && !dismissed_ && v.link.encrypted &&
+        v.settings.alert != static_cast<uint8_t>(AlertMode::Off);
+    const bool raised = candidate && !announced_;
+    if (candidate)
+        announced_ = true;
+    v.alert = candidate ? kSlot : -1;
     return raised;
 }
 

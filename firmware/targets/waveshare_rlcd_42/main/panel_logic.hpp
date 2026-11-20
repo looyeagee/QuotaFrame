@@ -6,7 +6,8 @@
 namespace usage_panel::rlcd {
 /**
  * Window lengths used for pace markers. usage.v1 publishes only reset times, so the
- * lengths are fixed: Codex and Claude both use a 5-hour short window and a 7-day week.
+ * lengths are fixed: MiniMax resets its five-hour window four times a day and its
+ * weekly window every seven days.
  */
 constexpr uint32_t kShortWindowSeconds = 5 * 3600;
 constexpr uint32_t kWeekWindowSeconds = 7 * 86400;
@@ -54,6 +55,18 @@ constexpr uint8_t warning_level(uint8_t previous, uint8_t used) {
     return 0;
 }
 
+/** Provider rendered in one slot: DeepSeek holds the balance, MiniMax the windows. */
+Provider provider_for(int slot);
+
+/** Whether a slot has received data, so a page or row can show values instead of a message. */
+bool service_visible(const View &v, int slot);
+
+/** Header ring index of a page, or -1 when the page is outside the ring. */
+int ring_index(Page page);
+
+/** Number of pages in the header ring. */
+int ring_pages();
+
 /** Whether the short window of a provider has a value that may be displayed. */
 bool short_present(const ProviderSnapshot &s, bool encrypted);
 /** Whether the week window of a provider has a value that may be displayed. */
@@ -70,18 +83,21 @@ struct NavResult {
 /** Page ring, alert dismissal and auto cycling for the KEY / BOOT button pair. */
 class Navigator {
   public:
-    /** Next ring page; portrait orientation has a Home / Clock ring. */
-    static Page next(Page page, bool portrait);
+    /**
+     * Next ring page; portrait orientation has a Home / Clock ring.
+     * `second_service` false skips the secondary service page.
+     */
+    static Page next(Page page, bool portrait, bool second_service = true);
     /** Previous ring page; returns Home when `page` is outside the current ring. */
-    static Page previous(Page page, bool portrait);
+    static Page previous(Page page, bool portrait, bool second_service = true);
 
     /** Applies one button input to `view`. `now_ms` restarts the auto-cycle timer. */
     NavResult input(Input input, View &view, uint64_t now_ms);
 
     /**
-     * Updates the alert shown in `view.alert` from the warning levels.
-     * A dismissed alert stays hidden until its provider drops below level 2.
-     * @return true on the first presentation for a provider at level 2; reconnects do not re-arm it.
+     * Updates `view.alert` from the MiniMax warning level, the only service with a
+     * quota. A dismissed alert stays hidden until that level drops below 2.
+     * @return true on the first presentation at level 2; reconnects do not re-arm it.
      */
     bool update_alert(View &view);
 
@@ -93,8 +109,8 @@ class Navigator {
 
   private:
     Page return_page_ = Page::Home;
-    std::array<bool, 2> dismissed_{};
-    std::array<bool, 2> announced_{};
+    bool dismissed_ = false;
+    bool announced_ = false;
     uint64_t last_step_ms_ = 0;
 };
 

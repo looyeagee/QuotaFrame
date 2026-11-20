@@ -21,7 +21,7 @@ MANIFEST_URL = (
 
 
 def firmware_image(
-    target: str = "waveshare_amoled_216",
+    target: str = "waveshare_rlcd_42",
     version: str = "0.3.0",
 ) -> FirmwareImage:
     return FirmwareImage(
@@ -83,18 +83,20 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
         manifest = FirmwareManifest(
             (
                 firmware_image(),
-                firmware_image("m5sticks3"),
+                firmware_image("waveshare_rlcd_42"),
             )
         )
         monitor, _source = self.monitor([manifest])
         await monitor.check()
 
-        first = monitor.presentation("WS", "waveshare_amoled_216", "0.2.0")
-        repeated = monitor.presentation("WS", "waveshare_amoled_216", "0.2.0")
+        first = monitor.presentation("WS", "waveshare_rlcd_42", "0.2.0")
+        repeated = monitor.presentation("WS", "waveshare_rlcd_42", "0.2.0")
         same_target = monitor.presentation(
-            "WS-备用", "waveshare_amoled_216", "0.2.0"
+            "WS-备用", "waveshare_rlcd_42", "0.2.0"
         )
-        other_target = monitor.presentation("M5", "m5sticks3", "0.2.0")
+        # Only one maintained target remains, so a second board of the same model
+        # shares its notification state; the label differs, the version does not.
+        other_target = monitor.presentation("M5", "waveshare_rlcd_42", "0.3.0")
 
         self.assertEqual(
             first,
@@ -109,7 +111,7 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(repeated.notification)
         self.assertIsNone(same_target.notification)
-        self.assertEqual(other_target.notification[0], tr("firmware_available", label='M5'))
+        self.assertIsNone(other_target.notification)
 
     async def test_git_describe_device_is_offered_a_newer_release(self) -> None:
         manifest = FirmwareManifest((firmware_image(),))
@@ -117,7 +119,7 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
         await monitor.check()
 
         presentation = monitor.presentation(
-            "WS", "waveshare_amoled_216", "v0.2.0-26-g921badd"
+            "WS", "waveshare_rlcd_42", "v0.2.0-26-g921badd"
         )
 
         self.assertTrue(presentation.enabled)
@@ -130,7 +132,7 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             monitor.presentation(
-                "WS", "waveshare_amoled_216", "v0.3.0-26-g921badd"
+                "WS", "waveshare_rlcd_42", "v0.3.0-26-g921badd"
             ),
             FirmwareUpdatePresentation(False, tr("up_to_date")),
         )
@@ -143,7 +145,7 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
         for current in ("0.3.0", "0.4.0"):
             with self.subTest(current=current):
                 self.assertEqual(
-                    monitor.presentation("WS", "waveshare_amoled_216", current),
+                    monitor.presentation("WS", "waveshare_rlcd_42", current),
                     FirmwareUpdatePresentation(False, tr("up_to_date")),
                 )
 
@@ -153,7 +155,7 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
         await monitor.check()
 
         presentation = monitor.presentation(
-            "WS", "waveshare_amoled_216", "0.3.0-rc.1"
+            "WS", "waveshare_rlcd_42", "0.3.0-rc.1"
         )
 
         self.assertTrue(presentation.enabled)
@@ -168,10 +170,10 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
             "quotaframe_bridge.service.firmware_update", level="WARNING"
         ) as captured:
             first = monitor.presentation(
-                "WS", "waveshare_amoled_216", "private invalid version"
+                "WS", "waveshare_rlcd_42", "private invalid version"
             )
             second = monitor.presentation(
-                "WS", "waveshare_amoled_216", "private invalid version"
+                "WS", "waveshare_rlcd_42", "private invalid version"
             )
 
         self.assertEqual(first, FirmwareUpdatePresentation(False, tr("unavailable")))
@@ -190,7 +192,7 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await monitor.check())
 
         self.assertEqual(
-            monitor.presentation("WS", "waveshare_amoled_216", "0.2.0"),
+            monitor.presentation("WS", "waveshare_rlcd_42", "0.2.0"),
             FirmwareUpdatePresentation(True, tr("check_and_update")),
         )
         self.assertNotIn("private response body", "\n".join(captured.output))
@@ -207,14 +209,14 @@ class FirmwareUpdateMonitorTests(unittest.IsolatedAsyncioTestCase):
 
         monitor = FirmwareUpdateMonitor(BlockingSource(), lambda: MANIFEST_URL)  # type: ignore[arg-type]
         self.assertEqual(
-            monitor.presentation("WS", "waveshare_amoled_216", "0.2.0"),
+            monitor.presentation("WS", "waveshare_rlcd_42", "0.2.0"),
             FirmwareUpdatePresentation(False, tr("checking")),
         )
 
         task = asyncio.create_task(monitor.check())
         await entered.wait()
         self.assertEqual(
-            monitor.presentation("WS", "waveshare_amoled_216", "0.2.0"),
+            monitor.presentation("WS", "waveshare_rlcd_42", "0.2.0"),
             FirmwareUpdatePresentation(False, tr("checking")),
         )
         release.set()

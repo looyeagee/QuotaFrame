@@ -19,7 +19,7 @@ from quotaframe_bridge.cli.main import (
 )
 from quotaframe_bridge.service.adoption import Discovery
 from quotaframe_bridge.pairing.base import PairingGuidanceError
-from quotaframe_bridge.sources.selection import UnsupportedPlatformError
+from quotaframe_bridge.pairing.base import UnsupportedPlatformError
 from quotaframe_bridge.service.ownership import OwnedDevice, OwnershipStore
 
 
@@ -213,7 +213,7 @@ class CliPairingRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     "quotaframe_bridge.cli.main.discover_device",
                     new=AsyncMock(
                         return_value=Discovery(
-                            target="m5sticks3", name="M5StickS3",
+                            target="waveshare_rlcd_42", name="M5StickS3",
                             address="AA:BB:CC:DD:EE:01",
                         )
                     ),
@@ -362,8 +362,8 @@ class CliPairingRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     session.transport.factory()
 
         owned = (
-            OwnedDevice("m5sticks3", "AA:BB:CC:DD:EE:01", name="M5StickS3"),
-            OwnedDevice("waveshare_amoled_216", "AA:BB:CC:DD:EE:02", name="Waveshare AMOLED 2.16"),
+            OwnedDevice("waveshare_rlcd_42", "AA:BB:CC:DD:EE:01", name="M5StickS3"),
+            OwnedDevice("waveshare_rlcd_42", "AA:BB:CC:DD:EE:02", name="Waveshare AMOLED 2.16"),
         )
         args = build_parser().parse_args(["--mock", "--cycles", "1"])
 
@@ -565,16 +565,16 @@ class OwnershipCommandTests(unittest.TestCase):
         self.assertIn("--dry-run", error.getvalue())
 
     def test_listing_shows_target_and_address_for_each_panel(self) -> None:
-        OwnershipStore(self.path).add("m5sticks3", "AA:BB:CC:DD:EE:01", name="M5StickS3")
+        OwnershipStore(self.path).add("waveshare_rlcd_42", "AA:BB:CC:DD:EE:01", name="M5StickS3")
 
         code, output = self.run_main(["--list-devices"])
 
         self.assertEqual(code, 0)
-        self.assertIn("m5sticks3", output)
+        self.assertIn("waveshare_rlcd_42", output)
         self.assertIn("AA:BB:CC:DD:EE:01", output)
 
     def test_forgetting_a_known_panel_removes_it(self) -> None:
-        OwnershipStore(self.path).add("m5sticks3", "AA:BB:CC:DD:EE:01", name="M5StickS3")
+        OwnershipStore(self.path).add("waveshare_rlcd_42", "AA:BB:CC:DD:EE:01", name="M5StickS3")
 
         code, output = self.run_main(["--forget-device", "aa:bb:cc:dd:ee:01"])
 
@@ -584,7 +584,7 @@ class OwnershipCommandTests(unittest.TestCase):
 
     def test_forgetting_holds_instance_lock_around_the_file_mutation(self) -> None:
         store = OwnershipStore(self.path)
-        store.add("m5sticks3", "AA:BB:CC:DD:EE:01", name="M5StickS3")
+        store.add("waveshare_rlcd_42", "AA:BB:CC:DD:EE:01", name="M5StickS3")
         events: list[str] = []
         original_remove = store.remove
 

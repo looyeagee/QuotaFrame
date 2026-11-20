@@ -24,11 +24,11 @@ from quotaframe_bridge.protocol.messages import (
 
 def sample_usage(state: SourceState = SourceState.OK) -> ProviderUsage:
     if state is SourceState.UNAVAILABLE:
-        return ProviderUsage(Provider.CODEX, state, 1_785_398_400)
+        return ProviderUsage(Provider.DEEPSEEK, state, 1_785_398_400)
     short = UsageWindow(36, 1_785_409_200)
     week = UsageWindow(61, 1_785_798_000) if state is SourceState.OK else None
     return ProviderUsage(
-        Provider.CODEX,
+        Provider.DEEPSEEK,
         state,
         1_785_398_400,
         short=short,

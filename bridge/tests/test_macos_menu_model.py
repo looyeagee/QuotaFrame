@@ -17,10 +17,10 @@ from quotaframe_bridge.ui.macos.menu_model import (
 
 class MenuModelTests(unittest.TestCase):
     def test_first_two_rows_are_disabled_information(self) -> None:
-        menu = build_menu(("M5 已连接 · WS 未发现", "Codex 42% · Claude 17%"))
+        menu = build_menu(("M5 已连接 · WS 未发现", "DeepSeek 42% · MiniMax 17%"))
 
         self.assertEqual(menu[0].label, "M5 已连接 · WS 未发现")
-        self.assertEqual(menu[1].label, "Codex 42% · Claude 17%")
+        self.assertEqual(menu[1].label, "DeepSeek 42% · MiniMax 17%")
         self.assertFalse(menu[0].enabled)
         self.assertFalse(menu[1].enabled)
 

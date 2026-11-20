@@ -24,7 +24,7 @@ from quotaframe_bridge.protocol.ota_messages import (
 class OtaMessageTests(unittest.TestCase):
     def test_manifest_has_exact_canonical_shape_without_line_delimiter(self) -> None:
         digest = "ab" * 32
-        encoded = encode_ota_manifest("m5sticks3", 1234, digest, "0.5.0")
+        encoded = encode_ota_manifest("waveshare_rlcd_42", 1234, digest, "0.5.0")
         payload = json.loads(encoded)
 
         self.assertEqual(
@@ -32,7 +32,7 @@ class OtaMessageTests(unittest.TestCase):
             {
                 "schema": "1",
                 "firmware_project": "quotaframe",
-                "target": "m5sticks3",
+                "target": "waveshare_rlcd_42",
                 "sha256": digest,
                 "size": 1234,
                 "version": "0.5.0",
@@ -76,7 +76,7 @@ class OtaMessageTests(unittest.TestCase):
 
     def test_rejects_invalid_manifest_chunk_path_and_decimal(self) -> None:
         with self.assertRaises(OtaMessageError):
-            encode_ota_manifest("m5sticks3", 4, "AB" * 32, "0.5.0")
+            encode_ota_manifest("waveshare_rlcd_42", 4, "AB" * 32, "0.5.0")
         with self.assertRaises(OtaMessageError):
             encode_folder_push_chunk(b"x" * 2881)
         with self.assertRaises(OtaMessageError):

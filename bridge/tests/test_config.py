@@ -7,8 +7,9 @@ from pathlib import Path
 from quotaframe_bridge.config import (
     config_path,
     load_config,
-    read_codexbar_cli,
+    read_deepseek_settings,
     read_log_level,
+    read_minimax_settings,
 )
 
 WINDOWS = "win32"
@@ -67,25 +68,18 @@ class ConfigTests(unittest.TestCase):
             Path("/Users/panel/Library/Application Support/quotaframe/config.toml"),
         )
 
-    def test_reads_both_keys(self) -> None:
+    def test_reads_log_level(self) -> None:
         for platform in (WINDOWS, MACOS):
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as root:
-                cli = Path(root) / "tools" / "codexbar-cli"
-                self._write(
-                    root,
-                    platform,
-                    f'codexbar_cli = "{cli.as_posix()}"\nlog_level = "DEBUG"\n',
+                self._write(root, platform, 'log_level = "DEBUG"\n')
+                self.assertEqual(
+                    read_log_level(self._environ(root, platform), platform=platform),
+                    "DEBUG",
                 )
-                environ = self._environ(root, platform)
-
-                self.assertEqual(read_log_level(environ, platform=platform), "DEBUG")
-                candidate = read_codexbar_cli(environ, platform=platform)
-                assert candidate is not None
-                self.assertEqual(candidate.name, "codexbar-cli")
 
     def test_log_level_defaults_to_info_when_absent(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            self._write(root, WINDOWS, 'codexbar_cli = "x.exe"\n')
+            self._write(root, WINDOWS, 'language = "zh"\n')
             self.assertEqual(
                 read_log_level(self._environ(root, WINDOWS), platform=WINDOWS),
                 "INFO",
@@ -99,11 +93,50 @@ class ConfigTests(unittest.TestCase):
                 "INFO",
             )
 
-    def test_blank_codexbar_cli_is_ignored(self) -> None:
+    def test_deepseek_settings_come_from_the_file_or_the_environment(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            self._write(root, WINDOWS, 'codexbar_cli = "   "\n')
+            self._write(
+                root,
+                MACOS,
+                '[deepseek]\napi_key = "sk-file"\ncurrency = "usd"\n',
+            )
+            environ = self._environ(root, MACOS)
+
+            from_file = read_deepseek_settings(environ, platform=MACOS)
+            assert from_file is not None
+            self.assertEqual(from_file.api_key, "sk-file")
+            self.assertEqual(from_file.currency, "USD")
+
+            environ = dict(environ, DEEPSEEK_API_KEY="sk-env")
+            from_env = read_deepseek_settings(environ, platform=MACOS)
+            assert from_env is not None
+            self.assertEqual(from_env.api_key, "sk-env")
+
+    def test_deepseek_settings_absent_without_a_key(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            self._write(root, MACOS, 'log_level = "INFO"\n')
             self.assertIsNone(
-                read_codexbar_cli(self._environ(root, WINDOWS), platform=WINDOWS)
+                read_deepseek_settings(self._environ(root, MACOS), platform=MACOS)
+            )
+
+    def test_minimax_cookie_or_token_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            self._write(root, MACOS, '[minimax]\ntoken = "jwt"\n')
+            environ = self._environ(root, MACOS)
+            settings = read_minimax_settings(environ, platform=MACOS)
+            assert settings is not None
+            self.assertEqual(settings.cookie, "_token=jwt")
+
+            self._write(root, MACOS, '[minimax]\ncookie = "_token=abc; acw_tc=1"\n')
+            settings = read_minimax_settings(environ, platform=MACOS)
+            assert settings is not None
+            self.assertEqual(settings.cookie, "_token=abc; acw_tc=1")
+
+    def test_minimax_settings_absent_without_a_cookie(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            self._write(root, MACOS, 'log_level = "INFO"\n')
+            self.assertIsNone(
+                read_minimax_settings(self._environ(root, MACOS), platform=MACOS)
             )
 
 

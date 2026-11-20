@@ -65,8 +65,6 @@ git push origin v0.6.0
 quotaframe-bridge-windows-v<version>.exe
 quotaframe-bridge-windows-v<version>-setup.exe
 quotaframe-bridge-macos-arm64-v<version>.dmg
-m5sticks3-ota-v<version>.bin
-m5sticks3-full-v<version>.bin
 waveshare-esp32-s3-touch-amoled-216-ota-v<version>.bin
 waveshare-esp32-s3-touch-amoled-216-full-v<version>.bin
 waveshare-esp32-s3-epaper-397-ota-v<version>.bin
@@ -75,15 +73,12 @@ espressif-esp-mosaico-ota-v<version>.bin
 espressif-esp-mosaico-full-v<version>.bin
 waveshare-esp32-s3-rlcd-42-ota-v<version>.bin
 waveshare-esp32-s3-rlcd-42-full-v<version>.bin
-mindreset-read-pico-ota-v<version>.bin
-mindreset-read-pico-full-v<version>.bin
 manifest.json
 SHA256SUMS.txt
 LICENSE
 THIRD_PARTY_LICENSES.md
 ```
 
-固件文件名使用品牌前缀和官方完整型号，统一为小写，尺寸中的小数点省略，例如 `ESP32-S3-ePaper-3.97` 对应 `waveshare-esp32-s3-epaper-397`。M5StickS3 使用 `m5sticks3`。每个型号分别生成 `-ota-v<version>.bin` 和 `-full-v<version>.bin`。
 
 Bridge 安装包、`manifest.json`、`SHA256SUMS.txt` 与两份许可证固定存在，其余是每个 registry target 的一份 `-ota-` 和一份 `-full-`。新增 maintained target 后不需要修改 Release workflow 或 assembler 的设备列表，只需要为 registry 填写 `release_stem`、`image_chip_id`、`ota_partition_bytes`、镜像名和工程路径。
 
@@ -105,11 +100,9 @@ Bridge 自身更新的菜单行为和安装方式见 [Bridge 说明](../../bridg
 
 ```text
 release-inputs/
-├─ firmware-m5sticks3/
 │  ├─ m5_usage_panel.bin
 │  ├─ m5_usage_panel_full.bin
 │  └─ project_description.json
-└─ firmware-waveshare_amoled_216/
    ├─ ws_usage_panel.bin
    ├─ ws_usage_panel_full.bin
    └─ project_description.json

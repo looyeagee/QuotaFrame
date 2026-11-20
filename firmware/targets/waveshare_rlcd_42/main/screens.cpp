@@ -5,7 +5,7 @@
 #include <cstdio>
 namespace usage_panel::rlcd {
 namespace {
-constexpr const char *kNames[2] = {"CODEX", "CLAUDE"};
+constexpr const char *kNames[2] = {"DEEPSEEK", "MINIMAX"};
 constexpr const char *kDays[7] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
 // Content sits 8 px inside the 2 px bezel frame drawn 4 px from the panel edge.
 constexpr int kLeft = 14, kBezel = 4;
@@ -21,7 +21,55 @@ constexpr int kOverThreshold = 5;
 // Footer rule on pages with a footer line; the footer text follows 10 px below it.
 constexpr int kFooterRule = 252, kPortraitFooterRule = 340;
 
-Provider provider_of(int i) { return i ? Provider::Claude : Provider::Codex; }
+Provider provider_of(int i) { return provider_for(i); }
+
+/** Whether the cached balance may be drawn: retained values survive a disconnect. */
+bool balance_present(const ProviderSnapshot &s, bool encrypted) {
+    return s.has_valid_data && s.has_balance && (s.latest_balance_present || !encrypted);
+}
+
+/**
+ * Formats a balance in whole cents as "12.34".
+ *
+ * From 1000 units the decimals are dropped: at five glyphs the segment field is
+ * already 244 px wide, and the panel's content area is 372 px.
+ */
+void format_balance(uint32_t cents, char *out, size_t size) {
+    if (cents >= 100000)
+        snprintf(out, size, "%lu", static_cast<unsigned long>((cents + 50) / 100));
+    else
+        snprintf(out, size, "%lu.%02lu", static_cast<unsigned long>(cents / 100),
+                 static_cast<unsigned long>(cents % 100));
+}
+
+/**
+ * Segment height that keeps `digits` glyphs inside `max_width` at the 5:9 cell
+ * ratio, never taller than `max_height`.
+ */
+int balance_height(const char *digits, int max_width, int max_height) {
+    for (int h : {68, 60, 52, 44, 36, 32, 28}) {
+        if (h > max_height)
+            continue;
+        const int w = h * 5 / 9;
+        if (Canvas::segments_width(digits, w, std::max(3, h / 8)) <= max_width)
+            return h;
+    }
+    return 32;
+}
+
+/** Draws the balance amount and returns its total width, or 0 when there is nothing to draw. */
+int draw_balance(Canvas &c, int x, int bottom, const ProviderSnapshot &s, int max_width,
+                 int max_height = 68) {
+    char amount[24];
+    format_balance(s.balance_cents, amount, sizeof(amount));
+    const int h = balance_height(amount, max_width, max_height);
+    const int w = h * 5 / 9, t = std::max(3, h / 8);
+    const int width = c.segments(x, bottom - h, amount, w, h, t);
+    const int cur_w = Canvas::text_width(s.currency, 2);
+    if (width + 6 + cur_w <= max_width)
+        c.text(x + width + 6, bottom - 14, s.currency, 2);
+    return width;
+}
 
 int round_px(float v) { return static_cast<int>(std::lround(v)); }
 
@@ -33,6 +81,12 @@ int compact_percent(const View &v, int i) {
     if (week_present(s, v.link.encrypted))
         return s.week_window.used_percent;
     return -1;
+}
+
+/** Balance in cents for the balance service, or -1 when it has none to show. */
+long long compact_balance(const View &v, int i) {
+    const auto &s = v.model.snapshot(provider_of(i));
+    return balance_present(s, v.link.encrypted) ? static_cast<long long>(s.balance_cents) : -1;
 }
 
 /** Empty-row message when neither window has a value. */
@@ -135,8 +189,9 @@ void Screens::header(const View &v, const char *title, int page) {
         edge -= kChipPad;
     }
     if (page >= 0) {
-        edge -= 10 + kRingPages * 12 - 4;
-        for (int i = 0; i < kRingPages; ++i) {
+        const int pages = ring_pages();
+        edge -= 10 + pages * 12 - 4;
+        for (int i = 0; i < pages; ++i) {
             if (i == page)
                 c_.fill(edge + 12 * i, 17, 8, 8);
             else
@@ -226,25 +281,41 @@ int Screens::big_percent(int x, int top, int percent, int h, Ink ink) {
     return w + percent_gap(h) + percent_width(h);
 }
 
-void Screens::home_row(const View &v, int i, int top) {
-    const auto &s = v.model.snapshot(provider_of(i));
+void Screens::balance_row(const View &v, int top) {
+    const auto &s = v.model.snapshot(provider_of(0));
+    const int right = c_.width() - kLeft;
+    char b[32], amount[24];
+    c_.text(kLeft, top, kNames[0], 2);
+    if (!balance_present(s, v.link.encrypted)) {
+        c_.text(kLeft, top + 44, empty_message(v), 2);
+        return;
+    }
+    // Keep the amount and its currency code clear of the right edge; the row has no
+    // separate caption because a long amount would collide with it.
+    draw_balance(c_, kLeft, top + 90, s, right - kLeft);
+    if (age_label(v, 0, b, sizeof(b)))
+        c_.text(kLeft, top + 94, b, 2);
+}
+
+void Screens::windows_row(const View &v, int top) {
+    const auto &s = v.model.snapshot(provider_of(1));
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
     const int x0 = 148, x1 = c_.width() - kLeft;
-    c_.text(kLeft, top, kNames[i], 2);
+    c_.text(kLeft, top, kNames[1], 2);
     if (!sp && !wp) {
         c_.text(x0, top + 44, empty_message(v), 2);
         return;
     }
-    const Paces pace = paces(v, i, sp, wp);
+    const Paces pace = paces(v, 1, sp, wp);
     char b[32];
-    // The figure spans top + 22 to top + 86, level with the top of the SHORT bar and the
+    // The figure spans top + 22 to top + 86, level with the top of the 5H bar and the
     // bottom of the WEEK bar.
     big_percent(kLeft, top + 22, sp ? s.short_window.used_percent : -1, 64);
-    if (age_label(v, i, b, sizeof(b)))
+    if (age_label(v, 1, b, sizeof(b)))
         c_.text(kLeft, top + 94, b, 2);
 
-    c_.text(x0, top, "SHORT", 2);
-    reset_countdown(v, i, false, b, sizeof(b));
+    c_.text(x0, top, "5H", 2);
+    reset_countdown(v, 1, false, b, sizeof(b));
     c_.text_right(x1, top, b, 2);
     bar(x0, top + 22, x1 - x0, 18, sp ? s.short_window.used_percent : -1, marker(pace.short_pace));
 
@@ -253,66 +324,81 @@ void Screens::home_row(const View &v, int i, int top) {
     else
         snprintf(b, sizeof(b), "WEEK --");
     c_.text(x0, top + 50, b, 2);
-    reset_countdown(v, i, true, b, sizeof(b));
+    reset_countdown(v, 1, true, b, sizeof(b));
     c_.text_right(x1, top + 50, b, 2);
     bar(x0, top + 72, x1 - x0, 14, wp ? s.week_window.used_percent : -1, marker(pace.week_pace));
 }
 
 void Screens::home(const View &v) {
     // Rows of 108 px with 10 px between the header rule, each row, the separator and the bezel.
-    header(v, nullptr, 0);
-    home_row(v, 0, kContentTop);
+    header(v, nullptr, ring_index(Page::Home));
+    balance_row(v, kContentTop);
     c_.dotted(kLeft, 164, c_.width() - 2 * kLeft);
-    home_row(v, 1, 176);
+    windows_row(v, 176);
 }
 
 void Screens::home_portrait(const View &v) {
     header(v, nullptr);
     const int right = c_.width() - kLeft, w = right - kLeft;
-    for (int i = 0; i < 2; ++i) {
-        const int t = i ? 224 : 44;
-        const auto &s = v.model.snapshot(provider_of(i));
-        const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
-        char b[32];
-        c_.text(kLeft, t, kNames[i], 2);
-        if (!sp && !wp) {
-            c_.text(kLeft, t + 60, empty_message(v), 2);
-            continue;
-        }
-        if (age_label(v, i, b, sizeof(b)))
-            c_.text_right(right, t, b, 2);
-        const Paces pace = paces(v, i, sp, wp);
-        // The SHORT label and countdown end level with the bottom of the figure.
-        big_percent(kLeft, t + 22, sp ? s.short_window.used_percent : -1, 64);
-        c_.text_right(right, t + 50, "SHORT", 2);
-        reset_countdown(v, i, false, b, sizeof(b));
-        c_.text_right(right, t + 72, b, 2);
-        bar(kLeft, t + 96, w, 18, sp ? s.short_window.used_percent : -1, marker(pace.short_pace));
+    const auto &s = v.model.snapshot(provider_of(1));
+    const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
+    char b[32];
 
-        if (wp)
-            snprintf(b, sizeof(b), "WEEK %u%%", s.week_window.used_percent);
-        else
-            snprintf(b, sizeof(b), "WEEK --");
-        c_.text(kLeft, t + 124, b, 2);
-        reset_countdown(v, i, true, b, sizeof(b));
-        c_.text_right(right, t + 124, b, 2);
-        bar(kLeft, t + 146, w, 14, wp ? s.week_window.used_percent : -1, marker(pace.week_pace));
+    balance_row(v, 44);
+    c_.dotted(kLeft, 176, w);
+
+    const int t = 224;
+    c_.text(kLeft, t, kNames[1], 2);
+    if (!sp && !wp) {
+        c_.text(kLeft, t + 60, empty_message(v), 2);
+        return;
     }
-    c_.dotted(kLeft, 214, w);
+    if (age_label(v, 1, b, sizeof(b)))
+        c_.text_right(right, t, b, 2);
+    const Paces pace = paces(v, 1, sp, wp);
+    // The 5H label and countdown end level with the bottom of the figure.
+    big_percent(kLeft, t + 22, sp ? s.short_window.used_percent : -1, 64);
+    c_.text_right(right, t + 50, "5H", 2);
+    reset_countdown(v, 1, false, b, sizeof(b));
+    c_.text_right(right, t + 72, b, 2);
+    bar(kLeft, t + 96, w, 18, sp ? s.short_window.used_percent : -1, marker(pace.short_pace));
+
+    if (wp)
+        snprintf(b, sizeof(b), "WEEK %u%%", s.week_window.used_percent);
+    else
+        snprintf(b, sizeof(b), "WEEK --");
+    c_.text(kLeft, t + 124, b, 2);
+    reset_countdown(v, 1, true, b, sizeof(b));
+    c_.text_right(right, t + 124, b, 2);
+    bar(kLeft, t + 146, w, 14, wp ? s.week_window.used_percent : -1, marker(pace.week_pace));
 }
 
 void Screens::focus(const View &v, int i) {
     const auto &s = v.model.snapshot(provider_of(i));
-    const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
     const int right = c_.width() - kLeft, column = 240;
-    header(v, kNames[i], static_cast<int>(v.page));
-    const Paces pace = paces(v, i, sp, wp);
     char b[32];
-    // Short window: 80 px figure, reset countdown and pace in the right column, then its bar.
-    c_.text(kLeft, kContentTop, "SHORT", 2);
+    if (i == 0) {
+        header(v, kNames[0], ring_index(Page::Deepseek));
+        c_.text(kLeft, kContentTop, "BALANCE", 2);
+        if (!balance_present(s, v.link.encrypted)) {
+            c_.text(kLeft, 96, empty_message(v), 2);
+            return;
+        }
+        draw_balance(c_, kLeft, 168, s, right - kLeft);
+        if (age_label(v, 0, b, sizeof(b)))
+            c_.text(kLeft, 186, b, 2);
+        c_.text(kLeft, 212, "CREDIT LEFT ON THE ACCOUNT", 2);
+        return;
+    }
+
+    const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
+    header(v, kNames[1], ring_index(Page::Minimax));
+    const Paces pace = paces(v, 1, sp, wp);
+    // Five-hour window: 80 px figure, reset countdown and pace in the right column, then its bar.
+    c_.text(kLeft, kContentTop, "5H", 2);
     big_percent(kLeft, 66, sp ? s.short_window.used_percent : -1, 80);
     c_.text(column, kContentTop, "RESET", 2);
-    reset_countdown(v, i, false, b, sizeof(b));
+    reset_countdown(v, 1, false, b, sizeof(b));
     c_.text(column, 66, b, 3);
     if (pace.short_pace.valid && pace.short_pace.delta >= kOverThreshold) {
         snprintf(b, sizeof(b), "OVER +%d%%", pace.short_pace.delta);
@@ -326,7 +412,7 @@ void Screens::focus(const View &v, int i) {
         snprintf(b, sizeof(b), "ELAPSED %s", elapsed);
         c_.text(kLeft, 184, b, 2);
     }
-    if (age_label(v, i, b, sizeof(b)))
+    if (age_label(v, 1, b, sizeof(b)))
         c_.text_right(right, 184, b, 2);
 
     // Week window: the same row structure as Home with the elapsed time below its bar.
@@ -340,7 +426,7 @@ void Screens::focus(const View &v, int i) {
         snprintf(b, sizeof(b), "OVER +%d%%", pace.week_pace.delta);
         chip(kLeft + label + 12, 218, b);
     }
-    reset_countdown(v, i, true, b, sizeof(b));
+    reset_countdown(v, 1, true, b, sizeof(b));
     c_.text_right(right, 218, b, 2);
     bar(kLeft, 244, right - kLeft, 14, wp ? s.week_window.used_percent : -1,
         marker(pace.week_pace));
@@ -353,30 +439,32 @@ void Screens::focus(const View &v, int i) {
 }
 
 void Screens::alert(const View &v) {
-    const int i = v.alert;
-    const auto p = provider_of(i);
+    // Only MiniMax publishes a quota threshold; the balance service raises no alert.
+    constexpr int kProvider = 1;
+    const auto p = provider_of(kProvider);
     const auto &s = v.model.snapshot(p);
     const uint32_t epoch = v.model.estimated_epoch(p, v.now_ms);
     const int w = c_.width(), h = c_.height(), right = w - kLeft;
     const bool exhausted = s.short_window.used_percent >= 100;
     char b[32];
-    c_.text(kLeft, 14, kNames[i], 2, Ink::White);
-    const int other = compact_percent(v, 1 - i);
-    if (other >= 0)
-        snprintf(b, sizeof(b), "%s %d%%", kNames[1 - i], other);
+    c_.text(kLeft, 14, kNames[kProvider], 2, Ink::White);
+    const float balance = static_cast<float>(compact_balance(v, 0));
+    if (balance >= 0)
+        snprintf(b, sizeof(b), "%s %.2f %s", kNames[0], static_cast<double>(balance) / 100.0,
+                 v.model.snapshot(provider_of(0)).currency);
     else
-        snprintf(b, sizeof(b), "%s --", kNames[1 - i]);
+        snprintf(b, sizeof(b), "%s --", kNames[0]);
     c_.text_right(right, 14, b, 2, Ink::White);
     big_percent(kLeft, portrait_ ? 50 : 38, s.short_window.used_percent, 150, Ink::White);
     format_short_countdown(s.short_window, epoch, v.settings.seconds, b, sizeof(b));
     // The 2x RESET label shares its bottom edge with the 3x countdown.
     int reset = 230;
     if (portrait_) {
-        c_.text(kLeft, 224, "SHORT", 2, Ink::White);
+        c_.text(kLeft, 224, "5H", 2, Ink::White);
         c_.text(kLeft, 244, exhausted ? "EXHAUSTED" : "NEAR LIMIT", 3, Ink::White);
         reset = 290;
     } else {
-        c_.text(kLeft, 198, exhausted ? "SHORT EXHAUSTED" : "SHORT NEAR LIMIT", 3, Ink::White);
+        c_.text(kLeft, 198, exhausted ? "5H EXHAUSTED" : "5H NEAR LIMIT", 3, Ink::White);
     }
     c_.text(kLeft, reset + 7, "RESET", 2, Ink::White);
     c_.text(kLeft + 72, reset, b, 3, Ink::White);
@@ -388,65 +476,13 @@ void Screens::alert(const View &v) {
                   2, Ink::White);
 }
 
-void Screens::trend(const View &v) {
-    char b[32];
-    header(v, "24H", static_cast<int>(Page::Trend));
-    const uint32_t epoch = std::max(v.model.estimated_epoch(Provider::Codex, v.now_ms),
-                                    v.model.estimated_epoch(Provider::Claude, v.now_ms));
-    // Match the sampling buckets while allowing the time axis to advance offline.
-    const auto sample_age = [epoch](const TrendPoint &point) -> uint32_t {
-        if (epoch < kMinTrendEpoch || point.epoch > epoch)
-            return kTrendPoints;
-        return epoch / kTrendIntervalSeconds - point.epoch / kTrendIntervalSeconds;
-    };
-    // 48 slots across the content width, oldest on the left; each bar leaves a 2 px gap, so bars
-    // are 5 or 6 px wide.
-    constexpr int kHeight = 76;
-    const int x0 = kLeft, span = c_.width() - 2 * kLeft;
-    const auto slot_x = [span](int slot) { return kLeft + slot * span / kTrendPoints; };
-    for (int service = 0; service < 2; ++service) {
-        const int label = service ? 154 : 44, base = label + 22 + kHeight;
-        int peak = -1;
-        for (int k = 0; k < v.trend_count; ++k) {
-            const uint8_t value = service ? v.trend[k].claude : v.trend[k].codex;
-            if (value <= 100 && sample_age(v.trend[k]) < kTrendPoints)
-                peak = std::max<int>(peak, value);
-        }
-        c_.text(x0, label, kNames[service], 2);
-        if (peak >= 0)
-            snprintf(b, sizeof(b), "MAX %d%%", peak);
-        else
-            snprintf(b, sizeof(b), "MAX --");
-        c_.text_right(x0 + span, label, b, 2);
-        c_.fill(x0, base, span, 2);
-        if (peak < 0) {
-            const char *empty = !v.sd ? "NO TF CARD"
-                                : epoch < kMinTrendEpoch ? "WAITING FOR TIME"
-                                                         : "NO DATA YET";
-            c_.text((c_.width() - Canvas::text_width(empty, 2)) / 2, base - 45, empty, 2);
-            continue;
-        }
-        // Dotted guides at 100 % and 50 %; missing samples leave gaps.
-        c_.dotted(x0, base - kHeight, span);
-        c_.dotted(x0, base - kHeight / 2, span);
-        for (int k = 0; k < v.trend_count; ++k) {
-            const uint8_t value = service ? v.trend[k].claude : v.trend[k].codex;
-            const uint32_t age = sample_age(v.trend[k]);
-            if (value > 100 || age >= kTrendPoints)
-                continue;
-            const int slot = kTrendPoints - 1 - static_cast<int>(age);
-            const int height = std::max(2, round_px(kHeight * value / 100.f));
-            c_.fill(slot_x(slot), base - height, slot_x(slot + 1) - slot_x(slot) - 2, height);
-        }
-    }
-    c_.text(x0, 262, "-24H", 2);
-    c_.text((c_.width() - Canvas::text_width("-12H", 2)) / 2, 262, "-12H", 2);
-    c_.text_right(x0 + span, 262, "NOW", 2);
-}
-
 void Screens::clock(const View &v) {
     const int right = c_.width() - kLeft;
     battery(v, right - 32);
+    if (!v.link.encrypted && !v.link.has_passkey) {
+        const int tw = Canvas::text_width("OFFLINE", 2);
+        chip(right - 32 - 8 - tw - kChipPad, 14, "OFFLINE");
+    }
     char b[32];
     if (v.clock.valid)
         snprintf(b, sizeof(b), "%s %02u/%02u", kDays[v.clock.weekday % 7], v.clock.month,
@@ -489,23 +525,37 @@ void Screens::clock(const View &v) {
     x = column + c_.segments(column, value, b, 22, 40, 5);
     c_.text(x + 6, value, "%", 2);
 
-    const int lower = value + (portrait_ ? 52 : 48);
+    const int lower = value + (portrait_ ? 46 : 40);
     c_.dotted(kLeft, lower, c_.width() - 2 * kLeft);
-    for (int i = 0; i < 2; ++i) {
-        // The clock has no OFFLINE header, so retained values are cleared instead of shown.
-        const int percent = v.link.encrypted ? compact_percent(v, i) : -1;
-        // Landscape places the two services side by side; portrait stacks them in 60 px rows.
-        const int bx = portrait_ ? kLeft : kLeft + i * 193;
-        const int by = portrait_ ? lower + 10 + i * 60 : lower + 8;
-        const int bw = portrait_ ? right - kLeft : 179;
-        c_.text(bx, by, kNames[i], 2);
+    // Retained values stay visible offline; the OFFLINE chip marks them as the last sample.
+    const int percent = compact_percent(v, 1);
+    const int by = lower + (portrait_ ? 10 : 6);
+    if (portrait_) {
+        // Portrait has 400 px of height: stack the MiniMax bar above the balance.
+        c_.text(kLeft, by, kNames[1], 2);
         if (percent >= 0)
             snprintf(b, sizeof(b), "%d%%", percent);
         else
             snprintf(b, sizeof(b), "--");
-        c_.text_right(bx + bw, by, b, 2);
-        bar(bx, by + 20, bw, portrait_ ? 20 : 14, percent);
+        c_.text_right(right, by, b, 2);
+        bar(kLeft, by + 18, right - kLeft, 20, percent);
+        c_.text(kLeft, by + 48, kNames[0], 2);
+        draw_balance(c_, kLeft + 92, by + 52 + 44, v.model.snapshot(provider_of(0)), 180);
+        return;
     }
+    // Landscape splits the band: the MiniMax bar on the left, the balance on the right.
+    const int mid = 196;
+    c_.text(kLeft, by, kNames[1], 2);
+    if (percent >= 0)
+        snprintf(b, sizeof(b), "%d%%", percent);
+    else
+        snprintf(b, sizeof(b), "--");
+    c_.text_right(mid, by, b, 2);
+    bar(kLeft, by + 18, mid - kLeft, 16, percent);
+
+    // The band is only ~56 px tall, so the amount is capped to a 32 px figure below its label.
+    c_.text(mid + 16, by, kNames[0], 2);
+    draw_balance(c_, mid + 16, by + 52, v.model.snapshot(provider_of(0)), right - mid - 16, 32);
 }
 
 void Screens::settings(const View &v) {
@@ -644,12 +694,11 @@ void Screens::render(const View &v) {
         case Page::Home:
             portrait_ ? home_portrait(v) : home(v);
             break;
-        case Page::Codex:
-        case Page::Claude:
-            portrait_ ? home_portrait(v) : focus(v, v.page == Page::Claude);
+        case Page::Deepseek:
+            portrait_ ? home_portrait(v) : focus(v, 0);
             break;
-        case Page::Trend:
-            portrait_ ? home_portrait(v) : trend(v);
+        case Page::Minimax:
+            portrait_ ? home_portrait(v) : focus(v, 1);
             break;
         case Page::Clock:
             clock(v);

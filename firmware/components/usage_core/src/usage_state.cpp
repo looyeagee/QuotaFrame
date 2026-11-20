@@ -4,20 +4,32 @@
 
 namespace usage_panel {
 namespace {
-size_t index_of(Provider provider) { return provider == Provider::Codex ? 0 : 1; }
+size_t index_of(Provider provider) { return provider == Provider::Deepseek ? 0 : 1; }
+
+/** Copies a currency code, leaving the field empty when the source sent none. */
+void copy_currency(const char* source, char (&target)[4])
+{
+    size_t written = 0;
+    if (source) {
+        for (; source[written] != '\0' && written < 3; ++written) target[written] = source[written];
+    }
+    target[written] = '\0';
+}
 }
 
 bool UsageModel::apply(const UsageUpdate& update, uint64_t monotonic_ms)
 {
-    const unsigned present = unsigned(update.short_window.present) + unsigned(update.week_window.present);
+    const unsigned present = unsigned(update.short_window.present) +
+                             unsigned(update.week_window.present) +
+                             unsigned(update.has_balance);
     // Keep the model defensive even though the BLE parser validates the same
     // invariants. Tests and future producers can construct UsageUpdate directly.
     if ((update.short_window.present && update.short_window.used_percent > 100) ||
         (update.week_window.present && update.week_window.used_percent > 100) ||
         (uint64_t(update.sent_at) + kMaxInverseClockSkewSeconds <
              update.sampled_at) ||
-        (update.state == SourceState::Ok && present != 2) ||
-        (update.state == SourceState::Partial && present != 1) ||
+        (update.has_balance && update.currency[0] == '\0') ||
+        (update.state == SourceState::Ok && present == 0) ||
         (update.state == SourceState::Unavailable && present != 0)) {
         return false;
     }
@@ -30,10 +42,16 @@ bool UsageModel::apply(const UsageUpdate& update, uint64_t monotonic_ms)
     current.source_state = update.state;
     current.latest_short_present = update.short_window.present;
     current.latest_week_present = update.week_window.present;
+    current.latest_balance_present = update.has_balance;
     current.has_valid_data = true;
     current.sampled_at = update.sampled_at;
     if (update.short_window.present) current.short_window = update.short_window;
     if (update.week_window.present) current.week_window = update.week_window;
+    if (update.has_balance) {
+        current.has_balance = true;
+        current.balance_cents = update.balance_cents;
+        copy_currency(update.currency, current.currency);
+    }
     return true;
 }
 

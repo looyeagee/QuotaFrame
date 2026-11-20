@@ -62,10 +62,10 @@ UsageCommandParseResult parse_usage_command(
         return result;
     }
 
-    if (strcmp(provider_text, "codex") == 0) {
-        result.update.provider = Provider::Codex;
-    } else if (strcmp(provider_text, "claude") == 0) {
-        result.update.provider = Provider::Claude;
+    if (strcmp(provider_text, "deepseek") == 0) {
+        result.update.provider = Provider::Deepseek;
+    } else if (strcmp(provider_text, "minimax") == 0) {
+        result.update.provider = Provider::Minimax;
     } else {
         return result;
     }
@@ -97,6 +97,28 @@ UsageCommandParseResult parse_usage_command(
         result.update.week_window.reset_at = week_reset;
     }
 
+    // The balance is optional: DeepSeek publishes only a balance, MiniMax only windows.
+    uint32_t balance_cents = 0;
+    const auto balance_result =
+        get_decimal_u32(request, "balance_cents", balance_cents);
+    const char* currency_text = nullptr;
+    const bool has_currency =
+        esp_desktop_buddy_command_view_get_string(request, "currency", &currency_text) == ESP_OK &&
+        currency_text != nullptr && currency_text[0] != '\0';
+    if (balance_result == FieldResult::Invalid)
+        return result;
+    if (balance_result == FieldResult::Valid) {
+        if (!has_currency || strlen(currency_text) > 3)
+            return result;
+        result.update.has_balance = true;
+        result.update.balance_cents = balance_cents;
+        memcpy(result.update.currency, currency_text, strlen(currency_text));
+        result.update.currency[strlen(currency_text)] = '\0';
+    } else if (has_currency) {
+        // A currency without an amount describes nothing.
+        return result;
+    }
+
     if (strcmp(state_text, "ok") == 0) {
         result.update.state = SourceState::Ok;
     } else if (strcmp(state_text, "partial") == 0) {
@@ -107,13 +129,13 @@ UsageCommandParseResult parse_usage_command(
         return result;
     }
 
-    const unsigned present =
-        unsigned(short_result == FieldResult::Valid) +
-        unsigned(week_result == FieldResult::Valid);
-    result.valid =
-        (result.update.state == SourceState::Ok && present == 2) ||
-        (result.update.state == SourceState::Partial && present == 1) ||
-        (result.update.state == SourceState::Unavailable && present == 0);
+    const unsigned present = unsigned(short_result == FieldResult::Valid) +
+                             unsigned(week_result == FieldResult::Valid) +
+                             unsigned(result.update.has_balance);
+    result.valid = (result.update.state == SourceState::Ok && present > 0) ||
+                   (result.update.state == SourceState::Partial && present > 0 &&
+                    present < 3) ||
+                   (result.update.state == SourceState::Unavailable && present == 0);
     return result;
 }
 

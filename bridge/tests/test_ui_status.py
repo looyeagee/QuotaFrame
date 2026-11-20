@@ -5,6 +5,8 @@ from quotaframe_bridge.i18n import language, tr
 import unittest
 from unittest.mock import patch
 
+from decimal import Decimal
+
 from quotaframe_bridge.domain.models import (
     Provider,
     ProviderUsage,
@@ -32,6 +34,14 @@ def usage(provider: Provider, percent: int | None) -> ProviderUsage:
             state=SourceState.UNAVAILABLE,
             sampled_at=1,
         )
+    if provider is Provider.DEEPSEEK:
+        return ProviderUsage(
+            provider=provider,
+            state=SourceState.OK,
+            sampled_at=1,
+            balance=Decimal(str(percent)) if percent is not None else Decimal("0"),
+            currency="CNY",
+        )
     return ProviderUsage(
         provider=provider,
         state=SourceState.OK,
@@ -46,17 +56,16 @@ def status(
     *,
     failures: int = 0,
     resolution_error: str | None = None,
-    codex: int | None = 42,
-    claude: int | None = 17,
+    deepseek: int | None = 42,
+    minimax: int | None = 17,
 ) -> PanelStatus:
     return PanelStatus(
         devices=devices,
         providers={
-            Provider.CODEX: usage(Provider.CODEX, codex),
-            Provider.CLAUDE: usage(Provider.CLAUDE, claude),
+            Provider.DEEPSEEK: usage(Provider.DEEPSEEK, deepseek),
+            Provider.MINIMAX: usage(Provider.MINIMAX, minimax),
         },
         consecutive_failures=failures,
-        resolution_error=resolution_error,
     )
 
 
@@ -109,13 +118,6 @@ class TrayStateTests(unittest.TestCase):
         )
         self.assertIs(snapshot.state, TrayState.IDLE)
 
-    def test_resolution_error_is_idle_even_when_connected(self) -> None:
-        snapshot = status(
-            (DeviceStatus("M5", connected=True, ever_connected=True),),
-            resolution_error="not_found",
-        )
-        self.assertIs(snapshot.state, TrayState.IDLE)
-
     def test_repeated_collection_failures_do_not_warn(self) -> None:
         snapshot = status(
             (DeviceStatus("M5", connected=True, ever_connected=True),),
@@ -135,14 +137,14 @@ class TrayTextTests(unittest.TestCase):
     def test_week_only_usage_is_labelled_in_both_languages(self) -> None:
         snapshot = PanelStatus(
             devices=(),
-            providers={Provider.CODEX: ProviderUsage(
-                provider=Provider.CODEX, state=SourceState.PARTIAL,
+            providers={Provider.MINIMAX: ProviderUsage(
+                provider=Provider.MINIMAX, state=SourceState.PARTIAL,
                 sampled_at=1, week=UsageWindow(used_percent=73),
             )},
-            consecutive_failures=0, resolution_error=None,
+            consecutive_failures=0,
         )
-        for lang, expected in (("zh", "Codex 周 73% 已用"),
-                               ("en", "Codex week 73% used")):
+        for lang, expected in (("zh", "MiniMax 周 73% 已用"),
+                               ("en", "MiniMax week 73% used")):
             with patch("quotaframe_bridge.i18n.language", return_value=lang):
                 self.assertIn(expected, format_info_lines(snapshot)[1])
 
@@ -155,7 +157,7 @@ class TrayTextTests(unittest.TestCase):
         )
         self.assertEqual(
             format_tooltip(snapshot),
-            "QuotaFrame · " + tr("named_exception", device="WS " + tr("not_found"), separator=" · ", connected=1) + f" · Codex {tr('usage_short')} 42% {tr('usage_used')} · Claude {tr('usage_short')} 17% {tr('usage_used')}",
+            "QuotaFrame · " + tr("named_exception", device="WS " + tr("not_found"), separator=" · ", connected=1) + f" · DeepSeek ¥42.00 · MiniMax {tr('usage_short')} 17% {tr('usage_used')}",
         )
 
     def test_tooltip_distinguishes_dropped_from_never_seen(self) -> None:
@@ -176,9 +178,9 @@ class TrayTextTests(unittest.TestCase):
     def test_missing_usage_renders_as_dashes(self) -> None:
         snapshot = status(
             (DeviceStatus("M5", connected=True, ever_connected=True),),
-            codex=None,
+            deepseek=None,
         )
-        self.assertIn("Codex --", format_tooltip(snapshot))
+        self.assertIn("DeepSeek --", format_tooltip(snapshot))
 
     def test_empty_startup_usage_renders_as_dashes(self) -> None:
         """The first tray tick arrives before the initial collection finishes."""
@@ -187,12 +189,11 @@ class TrayTextTests(unittest.TestCase):
             devices=(DeviceStatus("M5", connected=False, ever_connected=False),),
             providers={},
             consecutive_failures=0,
-            resolution_error=None,
         )
 
         self.assertEqual(
             format_info_lines(snapshot),
-            ("M5 " + tr("not_found"), "Codex -- · Claude --"),
+            ("M5 " + tr("not_found"), "DeepSeek -- · MiniMax --"),
         )
 
     def test_info_lines_split_devices_from_providers(self) -> None:
@@ -204,7 +205,7 @@ class TrayTextTests(unittest.TestCase):
         )
         self.assertEqual(
             format_info_lines(snapshot),
-            (tr("named_exception", device="WS " + tr("not_found"), separator=' · ', connected='1'), f"Codex {tr('usage_short')} 42% {tr('usage_used')} · Claude {tr('usage_short')} 17% {tr('usage_used')}"),
+            (tr("named_exception", device="WS " + tr("not_found"), separator=' · ', connected='1'), f"DeepSeek ¥42.00 · MiniMax {tr('usage_short')} 17% {tr('usage_used')}"),
         )
 
 
@@ -310,7 +311,6 @@ class EmptyOwnershipTests(unittest.TestCase):
             devices=(),
             providers={},
             consecutive_failures=0,
-            resolution_error=None,
         )
 
         devices, _providers = format_info_lines(status)
@@ -324,7 +324,6 @@ class EmptyOwnershipTests(unittest.TestCase):
             devices=(),
             providers={},
             consecutive_failures=0,
-            resolution_error=None,
             adoption_running=True,
         )
 
@@ -337,7 +336,6 @@ class EmptyOwnershipTests(unittest.TestCase):
             devices=(),
             providers={},
             consecutive_failures=0,
-            resolution_error=None,
         )
 
         self.assertIs(status.state, TrayState.IDLE)

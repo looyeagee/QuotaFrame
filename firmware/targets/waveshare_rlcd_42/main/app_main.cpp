@@ -40,12 +40,10 @@ std::atomic<Page> location{Page::Home};
 
 const char *page_name(void *) {
     switch (location.load()) {
-    case Page::Codex:
-        return "codex";
-    case Page::Claude:
-        return "claude";
-    case Page::Trend:
-        return "trend";
+    case Page::Deepseek:
+        return "deepseek";
+    case Page::Minimax:
+        return "minimax";
     case Page::Clock:
         return "clock";
     case Page::Settings:
@@ -137,19 +135,23 @@ extern "C" void app_main() {
                 if (!ota.busy() && !view.link.has_passkey && view.page != Page::Settings) {
                     const bool portrait =
                         view.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
-                    view.page = event.previous_page ? Navigator::previous(view.page, portrait)
-                                                    : Navigator::next(view.page, portrait);
+                    view.page = event.previous_page
+                                    ? Navigator::previous(view.page, portrait,
+                                                          service_visible(view, 1))
+                                    : Navigator::next(view.page, portrait, service_visible(view, 1));
                 }
                 break;
             }
             redraw = true;
         }
 
-        for (int i = 0; i < 2; ++i) {
-            const auto &s = view.model.snapshot(i ? Provider::Claude : Provider::Codex);
-            view.warning[i] = short_present(s, view.link.encrypted)
-                                  ? warning_level(view.warning[i], s.short_window.used_percent)
+        {
+            // Only MiniMax publishes a quota window, so only it raises an alert.
+            const auto &s = view.model.snapshot(Provider::Minimax);
+            view.warning[1] = short_present(s, view.link.encrypted)
+                                  ? warning_level(view.warning[1], s.short_window.used_percent)
                                   : 0;
+            view.warning[0] = 0;
         }
         const int previous_alert = view.alert;
         if (nav.update_alert(view) &&
@@ -181,7 +183,6 @@ extern "C" void app_main() {
         if (view.now_ms >= next_poll) {
             next_poll = view.now_ms + 1000;
             board.poll(view);
-            board.sample_trend(view);
             redraw = true;
         }
         location = view.page;

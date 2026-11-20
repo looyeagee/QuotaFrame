@@ -16,7 +16,7 @@ class FakeTrayShellTests(unittest.TestCase):
         tray.set_tooltip("AI usage panel · M5 disconnected")
         tray.notify("AI usage panel", "M5 disconnected")
         tray.set_autostart_checked(True)
-        tray.set_info_lines(("M5 disconnected", "Codex 42% · Claude 17%"))
+        tray.set_info_lines(("M5 disconnected", "DeepSeek 42% · MiniMax 17%"))
         tray.set_firmware_action("M5", True, "可更新")
         tray.set_bridge_update_action(True, "下载 v0.2.0…")
         tray.stop()
@@ -27,7 +27,7 @@ class FakeTrayShellTests(unittest.TestCase):
         self.assertTrue(tray.autostart_checked)
         self.assertEqual(
             tray.info_lines,
-            [("M5 disconnected", "Codex 42% · Claude 17%")],
+            [("M5 disconnected", "DeepSeek 42% · MiniMax 17%")],
         )
         self.assertTrue(tray.stopped)
         self.assertEqual(tray.firmware_actions, [("M5", True, "可更新")])

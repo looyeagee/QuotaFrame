@@ -9,7 +9,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from quotaframe_bridge.paths import CONFIG_DIRECTORY, config_directory
+from decimal import Decimal, InvalidOperation
+
+from quotaframe_bridge.paths import (
+    CONFIG_DIRECTORY,
+    config_directory,
+    data_directory,
+)
 
 CONFIG_FILENAME = "config.toml"
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
@@ -22,7 +28,8 @@ __all__ = [
     "VALID_LOG_LEVELS",
     "config_path",
     "load_config",
-    "read_codexbar_cli",
+    "read_deepseek_settings",
+    "read_minimax_settings",
     "read_log_level",
     "read_language",
 ]
@@ -58,19 +65,6 @@ def load_config(
         return {}
 
 
-def read_codexbar_cli(
-    environ: Mapping[str, str] | None = None,
-    *,
-    platform: str = sys.platform,
-) -> Path | None:
-    """Return the configured CodexBar CLI path, or None when unset."""
-
-    value = load_config(environ, platform=platform).get("codexbar_cli")
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return Path(value).expanduser()
-
-
 def read_log_level(
     environ: Mapping[str, str] | None = None,
     *,
@@ -99,3 +93,68 @@ def read_language(
         return "auto"
     candidate = value.strip().lower()
     return candidate if candidate in {"auto", "zh", "en"} else "auto"
+
+
+DEEPSEEK_API_KEY_ENV = "DEEPSEEK_API_KEY"
+
+
+def read_deepseek_settings(
+    environ: Mapping[str, str] | None = None,
+    *,
+    platform: str = sys.platform,
+):
+    """Return DeepSeek settings, or None when no API key is configured.
+
+    The key comes from the ``[deepseek] api_key`` entry or the
+    ``DEEPSEEK_API_KEY`` environment variable, which wins so a shell can override
+    the file.
+    """
+
+    from quotaframe_bridge.sources.deepseek import DeepSeekSettings
+
+    source = os.environ if environ is None else environ
+    section = load_config(environ, platform=platform).get("deepseek")
+    section = section if isinstance(section, Mapping) else {}
+
+    key = section.get("api_key")
+    api_key = key.strip() if isinstance(key, str) else ""
+    api_key = source.get(DEEPSEEK_API_KEY_ENV, "").strip() or api_key
+    if not api_key:
+        return None
+
+    currency = section.get("currency")
+    currency = (
+        currency.strip().upper()
+        if isinstance(currency, str) and len(currency.strip()) == 3
+        else "CNY"
+    )
+    return DeepSeekSettings(api_key=api_key, currency=currency)
+
+
+def read_minimax_settings(
+    environ: Mapping[str, str] | None = None,
+    *,
+    platform: str = sys.platform,
+):
+    """Return MiniMax settings, or None when no console cookie is configured.
+
+    The console authenticates with its own session cookie, so the Bridge forwards
+    the ``[minimax] cookie`` string verbatim; ``token`` is accepted as a shortcut
+    for ``_token=<jwt>``.
+    """
+
+    from quotaframe_bridge.sources.minimax import MinimaxSettings
+
+    source = os.environ if environ is None else environ
+    section = load_config(environ, platform=platform).get("minimax")
+    section = section if isinstance(section, Mapping) else {}
+
+    cookie = section.get("cookie")
+    cookie = cookie.strip() if isinstance(cookie, str) else ""
+    token = section.get("token")
+    if not cookie and isinstance(token, str) and token.strip():
+        cookie = f"_token={token.strip()}"
+    cookie = source.get("MINIMAX_COOKIE", "").strip() or cookie
+    if not cookie:
+        return None
+    return MinimaxSettings(cookie=cookie)

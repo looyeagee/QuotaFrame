@@ -90,17 +90,19 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 ## 4. usage
 
 ```json
-{"cmd":"usage","v":"1","seq":"42","provider":"codex","state":"ok","sampled_at":"1789776000","sent_at":"1789776002","short_used_pct":"36","short_reset_at":"1789786800","week_used_pct":"61","week_reset_at":"1790175600"}
+{"cmd":"usage","v":"1","seq":"42","provider":"minimax","state":"ok","sampled_at":"1789776000","sent_at":"1789776002","short_used_pct":"54","short_reset_at":"1789786800","week_used_pct":"47","week_reset_at":"1790175600"}
+{"cmd":"usage","v":"1","seq":"43","provider":"deepseek","state":"ok","sampled_at":"1789776000","sent_at":"1789776002","balance_cents":"884","currency":"CNY"}
 {"ack":"usage","n":42,"ok":true}
-{"cmd":"usage","v":"1","seq":"43","provider":"claude","state":"partial","sampled_at":"1789776000","sent_at":"1789776002","week_used_pct":"25"}
+{"cmd":"usage","v":"1","seq":"43","provider":"minimax","state":"partial","sampled_at":"1789776000","sent_at":"1789776002","week_used_pct":"25"}
 {"ack":"usage","n":43,"ok":true}
-{"cmd":"usage","v":"1","seq":"44","provider":"claude","state":"unavailable","sampled_at":"1789776060","sent_at":"1789776061"}
+{"cmd":"usage","v":"1","seq":"44","provider":"deepseek","state":"unavailable","sampled_at":"1789776060","sent_at":"1789776061"}
+{"cmd":"usage","v":"1","seq":"45","provider":"minimax","state":"partial","sampled_at":"1789776060","sent_at":"1789776061","week_used_pct":"31"}
 {"ack":"usage","n":44,"ok":true}
 ```
 
 | 参数 | 规则 |
 | --- | --- |
-| provider | codex或claude，独立保存 |
+| provider | `deepseek` 或 `minimax`，独立保存 |
 | state | ok / partial / unavailable |
 | sampled_at、sent_at | 必需uint32十进制字符串，分别为数据源采样/尝试时间与Bridge编码时间，UTC Unix秒 |
 | short_used_pct、week_used_pct | 条件必需，0..100十进制字符串，表示已使用百分比 |
@@ -127,7 +129,7 @@ ACK表示校验并接受到可处理状态，不等待慢速屏幕刷新。重�
 {"ack":"screen_page","n":45,"ok":true}
 ```
 
-Bridge不要求page等于overview/codex/claude；可选page只展示，不驱动能力判断。没有对应能力则不发送。按键/手势在本地处理，屏幕操作不为离线设备排队，ACK丢失后不自动重放。OTA忙时按设备处理器规则返回ota_busy，status及ota_abort仍可用。
+Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不驱动能力判断。没有对应能力则不发送。按键/手势在本地处理，屏幕操作不为离线设备排队，ACK丢失后不自动重放。OTA忙时按设备处理器规则返回ota_busy，status及ota_abort仍可用。
 
 ## 6. 错误与远程解绑
 

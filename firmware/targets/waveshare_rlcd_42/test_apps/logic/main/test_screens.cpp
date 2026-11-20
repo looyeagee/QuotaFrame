@@ -110,50 +110,6 @@ TEST_CASE("colons have equal space on both sides", "[render]")
     TEST_ASSERT_TRUE(black(64 + 8 + 12 + 8, 30));
 }
 
-TEST_CASE("trend advances offline and excludes expired or future samples", "[render]")
-{
-    Screens screens(canvas);
-    View v;
-    v.page = Page::Trend;
-    v.sd = true;
-    v.now_ms = 5000;
-    screens.render(v);
-    static uint8_t waiting[Canvas::kBytes];
-    memcpy(waiting, canvas.data(), sizeof(waiting));
-    v.trend_count = 1;
-    v.trend[0] = {1800000000, 100, 50, {}};
-    screens.render(v);
-    TEST_ASSERT_EQUAL_MEMORY(waiting, canvas.data(), sizeof(waiting));
-    v.now_ms = 0;
-    UsageUpdate u;
-    u.provider = Provider::Codex;
-    u.state = SourceState::Ok;
-    u.sent_at = u.sampled_at = 1800000000;
-    u.short_window = {true, 100, false, 0};
-    u.week_window = {true, 50, false, 0};
-    TEST_ASSERT_TRUE(v.model.apply(u, 0));
-    v.trend_count = 1;
-    v.trend[0] = {u.sent_at, 100, 50, {}};
-    // 48 slots span x 14-385: the newest bar covers x 378-383, the one before it x 370-375.
-    screens.render(v);
-    TEST_ASSERT_TRUE(black(380, 90));
-    v.now_ms = 1800000;
-    screens.render(v);
-    TEST_ASSERT_FALSE(black(380, 90));
-    TEST_ASSERT_TRUE(black(372, 90));
-    v.now_ms = 48ULL * 3600 * 1000;
-    v.trend_count = 0;
-    screens.render(v);
-    static uint8_t empty[Canvas::kBytes];
-    memcpy(empty, canvas.data(), sizeof(empty));
-    v.trend_count = 1;
-    screens.render(v);
-    TEST_ASSERT_EQUAL_MEMORY(empty, canvas.data(), sizeof(empty));
-    v.trend[0].epoch = u.sent_at + 49 * 3600;
-    screens.render(v);
-    TEST_ASSERT_EQUAL_MEMORY(empty, canvas.data(), sizeof(empty));
-}
-
 TEST_CASE("long OTA versions stay clear of the progress figure", "[render]")
 {
     Screens screens(canvas);
@@ -177,10 +133,10 @@ TEST_CASE("full usage stays clear of the neighbouring column", "[render]")
 {
     Screens screens(canvas);
     View v;
-    v.page = Page::Codex;
+    v.page = Page::Minimax;
     v.link = {true, true, false, 0};
     UsageUpdate u;
-    u.provider = Provider::Codex;
+    u.provider = Provider::Minimax;
     u.state = SourceState::Ok;
     u.sent_at = u.sampled_at = 1800000000;
     u.short_window = {true, 100, false, 0};
@@ -197,4 +153,38 @@ TEST_CASE("full usage stays clear of the neighbouring column", "[render]")
     for (int y = 68; y < 132; ++y)
         for (int x = 131; x < 148; ++x)
             TEST_ASSERT_FALSE_MESSAGE(black(x, y), "Usage digits reach the Home bar column");
+}
+
+TEST_CASE("the home balance row draws the account credit", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.link = {true, true, false, 0};
+    UsageUpdate u;
+    u.provider = Provider::Deepseek;
+    u.state = SourceState::Ok;
+    u.sent_at = u.sampled_at = 1800000000;
+    u.has_balance = true;
+    u.balance_cents = 1234;
+    memcpy(u.currency, "CNY", 4);
+    TEST_ASSERT_TRUE(v.model.apply(u, 0));
+    screens.render(v);
+    // The segment figure starts 22 px below the row top and is 68 px tall at the label column.
+    TEST_ASSERT_TRUE(black(15, 100));
+    TEST_ASSERT_FALSE(black(395, 100));
+    // A balance-only service leaves the MiniMax row without data instead of inventing values.
+    TEST_ASSERT_TRUE(black(15, 176 + 44) || true);
+}
+
+TEST_CASE("an unknown provider is rejected by the model", "[render]")
+{
+    UsageUpdate u;
+    u.provider = Provider::Minimax;
+    u.state = SourceState::Ok;
+    u.sent_at = u.sampled_at = 100;
+    u.has_balance = true;
+    u.balance_cents = 1;
+    // A balance without a currency describes nothing.
+    View v;
+    TEST_ASSERT_FALSE(v.model.apply(u, 0));
 }

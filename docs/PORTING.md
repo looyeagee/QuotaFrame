@@ -53,8 +53,6 @@ firmware/
 │  ├─ usage_rtc/
 │  └─ esp_desktop_buddy_folder_push/
 └─ targets/
-   ├─ m5sticks3/
-   ├─ esp32_s3_touch_amoled_216/
    └─ <new-target>/
       ├─ CMakeLists.txt
       ├─ sdkconfig.defaults
@@ -205,7 +203,6 @@ All maintained targets use dual OTA slots and ESP-IDF rollback. A new maintained
 - two application partitions large enough for the built image;
 - rollback-enabled bootloader configuration.
 
-Do not copy partition sizes blindly from M5StickS3 or Waveshare. Size them for the target's flash capacity and actual firmware image.
 
 Current production OTA also expects target identity, SHA-256 validation, physical confirmation, inactive-slot writing, reboot, and rollback confirmation. See `protocol/README.md`, `firmware/README.md`, and `docs/verification.md` before claiming OTA support.
 

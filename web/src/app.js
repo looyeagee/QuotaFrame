@@ -540,7 +540,8 @@ export async function initialize({
     const firmware = registry?.targets.find((item) => item.id === device.id);
     return { ...device, asset: new URL(device.asset, siteRoot).href, description: t(device.description), image: firmware?.image, manifest: firmware?.manifest };
   }).sort(
-    (a, b) => Number(b.id === "waveshare_amoled_216") - Number(a.id === "waveshare_amoled_216"),
+    // Only one maintained target remains; keep the registry order.
+    () => 0,
   );
   for (const item of displayTargets) {
     const card = get(

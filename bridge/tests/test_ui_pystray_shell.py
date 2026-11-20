@@ -139,7 +139,7 @@ class PystrayThreadAffinityTests(unittest.TestCase):
     def test_publishing_status_never_rebuilds_the_menu_off_thread(self) -> None:
         """A freed menu handle is one the click handler is about to display."""
 
-        self.shell.set_info_lines(("M5 已连接", "Codex 42%"))
+        self.shell.set_info_lines(("M5 已连接", "DeepSeek 42%"))
         self.shell.set_autostart_checked(True)
         self.shell.set_state(TrayState.OK)
         self.shell.set_tooltip("QuotaFrame")

@@ -27,13 +27,19 @@ void publish(View &v, Provider p, uint8_t short_used) {
 }
 } // namespace
 
+namespace {
+// compute_pace is board-agnostic: these cases pin a five-hour window so they stay
+// independent of the short-window length a target configures.
+constexpr uint32_t kFiveHours = 5 * 3600;
+} // namespace
+
 TEST_CASE("pace compares usage with the elapsed window", "[pace]")
 {
     // With 2:14:05 remaining in a five-hour window, 55 % of the time has elapsed.
-    Pace p = compute_pace(window(42, 8045), kNow, kShortWindowSeconds);
+    Pace p = compute_pace(window(42, 8045), kNow, kFiveHours);
     TEST_ASSERT_TRUE(p.valid);
     TEST_ASSERT_EQUAL_INT(-13, p.delta);
-    p = compute_pace(window(84, 5045), kNow, kShortWindowSeconds);
+    p = compute_pace(window(84, 5045), kNow, kFiveHours);
     TEST_ASSERT_EQUAL_INT(12, p.delta);
     TEST_ASSERT_EQUAL_UINT32(12955, p.elapsed_s);
     p = compute_pace(window(61, 439320), kNow, kWeekWindowSeconds);
@@ -46,10 +52,10 @@ TEST_CASE("pace is invalid without a usable reset", "[pace]")
 {
     UsageWindow w = window(50, 100);
     w.has_reset = false;
-    TEST_ASSERT_FALSE(compute_pace(w, kNow, kShortWindowSeconds).valid);
-    TEST_ASSERT_FALSE(compute_pace(window(50, 0), kNow, kShortWindowSeconds).valid);
-    TEST_ASSERT_FALSE(compute_pace(window(50, kShortWindowSeconds + 1), kNow, kShortWindowSeconds).valid);
-    TEST_ASSERT_FALSE(compute_pace(window(50, 100), 0, kShortWindowSeconds).valid);
+    TEST_ASSERT_FALSE(compute_pace(w, kNow, kFiveHours).valid);
+    TEST_ASSERT_FALSE(compute_pace(window(50, 0), kNow, kFiveHours).valid);
+    TEST_ASSERT_FALSE(compute_pace(window(50, kFiveHours + 1), kNow, kFiveHours).valid);
+    TEST_ASSERT_FALSE(compute_pace(window(50, 100), 0, kFiveHours).valid);
 }
 
 TEST_CASE("countdowns follow the design formats", "[format]")
@@ -80,17 +86,16 @@ TEST_CASE("countdowns follow the design formats", "[format]")
 
 TEST_CASE("the landscape ring and the portrait ring cycle in both directions", "[nav]")
 {
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Codex), uint8_t(Navigator::next(Page::Home, false)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Claude), uint8_t(Navigator::next(Page::Codex, false)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Trend), uint8_t(Navigator::next(Page::Claude, false)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Trend, false)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(Navigator::next(Page::Home, false)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(Navigator::next(Page::Deepseek, false)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Minimax, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::next(Page::Clock, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Home, true)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::next(Page::Clock, true)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::previous(Page::Home, false)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Codex, false)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Deepseek, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::previous(Page::Home, true)));
-    for (Page page : {Page::Codex, Page::Claude, Page::Trend, Page::Settings})
+    for (Page page : {Page::Deepseek, Page::Minimax, Page::Settings})
         TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(page, true)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Settings, false)));
 }
@@ -103,18 +108,18 @@ TEST_CASE("KEY steps to the previous page and BOOT to the next", "[nav]")
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(v.page));
     nav.input(Input::Boot, v, 0);
     nav.input(Input::Boot, v, 0);
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Codex), uint8_t(v.page));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(v.page));
 }
 
 TEST_CASE("settings open on hold, cycle values and return to the previous page", "[nav]")
 {
     Navigator nav;
     View v = linked_view();
-    v.page = Page::Claude;
+    v.page = Page::Minimax;
     nav.input(Input::KeyHold, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Settings), uint8_t(v.page));
     TEST_ASSERT_EQUAL_INT(0, v.focus);
-    publish(v, Provider::Codex, 96);
+    publish(v, Provider::Deepseek, 96);
     v.warning = {2, 0};
     TEST_ASSERT_TRUE(nav.update_alert(v));
     TEST_ASSERT_TRUE(nav.input(Input::Boot, v, 0).save);
@@ -151,9 +156,9 @@ TEST_CASE("alert raises once, dismisses and re-arms below the threshold", "[aler
 {
     Navigator nav;
     View v = linked_view();
-    publish(v, Provider::Codex, 96);
-    publish(v, Provider::Claude, 97);
-    v.warning = {2, 2};
+    publish(v, Provider::Minimax, 96);
+    // Only the MiniMax slot carries a quota warning.
+    v.warning = {0, 2};
     TEST_ASSERT_TRUE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
     TEST_ASSERT_FALSE(nav.update_alert(v));
@@ -164,14 +169,12 @@ TEST_CASE("alert raises once, dismisses and re-arms below the threshold", "[aler
     TEST_ASSERT_FALSE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
     nav.input(Input::Key, v, 0);
-    TEST_ASSERT_TRUE(nav.update_alert(v));
-    TEST_ASSERT_EQUAL_INT(0, v.alert);
-    nav.input(Input::Key, v, 0);
     TEST_ASSERT_FALSE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(-1, v.alert);
-    v.warning = {2, 1};
+    // Dropping below level 2 re-arms the next raise.
+    v.warning = {0, 1};
     nav.update_alert(v);
-    v.warning = {2, 2};
+    v.warning = {0, 2};
     TEST_ASSERT_TRUE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
 }
@@ -180,7 +183,7 @@ TEST_CASE("alert stays off when disabled or unlinked", "[alert]")
 {
     Navigator nav;
     View v = linked_view();
-    publish(v, Provider::Claude, 97);
+    publish(v, Provider::Minimax, 97);
     v.warning = {0, 2};
     v.settings.alert = uint8_t(AlertMode::Off);
     TEST_ASSERT_FALSE(nav.update_alert(v));
@@ -198,7 +201,7 @@ TEST_CASE("auto cycle advances after the interval and pauses in settings", "[cyc
     nav.auto_cycle(v, 0);
     TEST_ASSERT_FALSE(nav.auto_cycle(v, 29999));
     TEST_ASSERT_TRUE(nav.auto_cycle(v, 30000));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Codex), uint8_t(v.page));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(v.page));
     v.page = Page::Settings;
     TEST_ASSERT_FALSE(nav.auto_cycle(v, 90000));
 }

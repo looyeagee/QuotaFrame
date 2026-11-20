@@ -15,8 +15,8 @@ from quotaframe_bridge.service.ownership import (
     normalize_address,
 )
 
-M5 = "m5sticks3"
-WS = "waveshare_amoled_216"
+M5 = "waveshare_rlcd_42"
+WS = "waveshare_rlcd_42"
 M5_LABEL = "M5StickS3"
 WS_LABEL = "Waveshare AMOLED 2.16"
 

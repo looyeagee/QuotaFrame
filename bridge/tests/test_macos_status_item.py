@@ -330,9 +330,9 @@ class MenuTests(unittest.TestCase):
     def test_info_lines_rebuild_the_menu(self) -> None:
         harness = Harness()
 
-        harness.shell.set_info_lines(("M5 已连接", "Codex 42% · Claude 17%"))
+        harness.shell.set_info_lines(("M5 已连接", "DeepSeek 42% · MiniMax 17%"))
 
-        self.assertEqual(harness.menu_titles()[:2], ["M5 已连接", "Codex 42% · Claude 17%"])
+        self.assertEqual(harness.menu_titles()[:2], ["M5 已连接", "DeepSeek 42% · MiniMax 17%"])
 
     def test_the_menu_is_never_replaced_after_startup(self) -> None:
         """Replacing an open menu stacks its rows; see _build_menu."""
@@ -340,17 +340,17 @@ class MenuTests(unittest.TestCase):
         harness = Harness()
 
         for percent in (11, 22, 33):
-            harness.shell.set_info_lines(("M5 已连接", f"Codex {percent}%"))
+            harness.shell.set_info_lines(("M5 已连接", f"DeepSeek {percent}%"))
         harness.shell.set_autostart_checked(True)
 
         self.assertEqual(harness.status_bar.item.set_menu_calls, 1)
-        self.assertEqual(harness.menu_titles()[1], "Codex 33%")
+        self.assertEqual(harness.menu_titles()[1], "DeepSeek 33%")
 
     def test_an_unchanged_snapshot_touches_nothing(self) -> None:
         """The controller republishes every five seconds regardless."""
 
         harness = Harness(inline_dispatch=False)
-        lines = ("M5 已连接", "Codex 42% · Claude 17%")
+        lines = ("M5 已连接", "DeepSeek 42% · MiniMax 17%")
         harness.shell.set_info_lines(lines)
         before = len(harness.dispatched)
 

@@ -4,7 +4,6 @@
 
 ## 首次配置
 
-ESP-Mosaico 的生产目标在 `main/idf_component.yml` 中显式声明 LVGL 和显示适配器。BSP 的显示依赖使用 Kconfig 条件，而干净目录首次配置时尚无 `sdkconfig`；显式声明保持首次与后续配置的直接依赖集合一致，避免重新求解并改写锁文件。修改这些声明后需核对干净配置和增量配置，不能只验证已有构建目录。
 
 ## Git 行尾
 
@@ -16,7 +15,6 @@ Git 来源组件的完整性检查依赖检出字节。LF 与 CRLF 转换可能�
 $env:GIT_CONFIG_COUNT = '1'
 $env:GIT_CONFIG_KEY_0 = 'core.autocrlf'
 $env:GIT_CONFIG_VALUE_0 = 'false'
-eim run "idf.py -C firmware/targets/m5sticks3 build" v6.1
 ```
 
 如果当前进程已有 `GIT_CONFIG_COUNT` 条目，应追加配置而不是覆盖。保留原有安全目录配置；镜像构建后核对实际版本，避免 Git 访问失败导致版本回退。

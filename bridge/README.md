@@ -1,6 +1,6 @@
 # QuotaFrame Bridge
 
-QuotaFrame 的电脑端配套应用，将 CodexBar / Win-CodexBar 获取的 Codex 和 Claude 用量通过蓝牙同步到独立桌面屏。
+QuotaFrame 的电脑端配套应用，把 DeepSeek 账户余额与 MiniMax 的 5 小时/周额度通过蓝牙同步到独立桌面屏。
 
 Windows 上发布给日常使用者的 Bridge 是托盘常驻程序：双击`quotaframe-bridge.exe` 后会出现托盘图标，右键图标可打开菜单。左键单击图标可切换所有已连接且支持该功能的设备的时钟屏保；是否支持以设备在安全 status 中通告的 `screen.toggle.v1` 为准。未连接、不支持或正在升级的设备会跳过。macOS 提供菜单栏应用。源码调试与无设备验证也可使用控制台入口 `python -m quotaframe_bridge`，见[开发指南](DEVELOPMENT.md)。
 
@@ -10,10 +10,10 @@ Bridge 仅同步用量百分比、重置时间和采样时间，不向设备发�
 
 | | Windows | macOS |
 | --- | --- | --- |
-| 系统 | Windows 10/11 | macOS 14 或更新（上游 CodexBar 要求） |
+| 系统 | Windows 10/11 | macOS 14 或更新 |
 | Python（仅源码运行） | 3.11 或更新 | 3.11 或更新 |
 | 形态 | 托盘常驻 + 控制台 | 菜单栏常驻 + 控制台 |
-| 数据源 | [Win-CodexBar](https://github.com/nesszer/Win-CodexBar) | [CodexBar](https://github.com/steipete/CodexBar) 及其 CLI |
+| 数据源 | DeepSeek 余额接口 / MiniMax 控制台接口（HTTPS） | 同左 |
 | 配对 | Bridge 主动发起 WinRT PIN 配对 | 由 macOS 自己弹窗，Bridge 不参与 |
 | 解除配对 | `--repair-pairing` | 只能去「系统设置 > 蓝牙 > 忘记此设备」 |
 
@@ -76,59 +76,40 @@ Bridge 不在后台下载、自行替换或执行自己的安装包。
 
 固件更新菜单只对通告 `ota.folder.v1` 的设备启用；仓库维护的固件目标都通告该能力。各目标的 OTA 实机验收范围见 [verification.md](../docs/verification.md)。
 
-## macOS 采集排查
+## 数据源
 
-Bridge 每轮读取 CodexBar 的来源开关，并独立同步已启用的 Codex 和 Claude。若 Bridge 报告 CLI 不兼容，请确认 `codexbar config providers --json` 能返回启用列表。
+面板显示两个服务，各自独立取数、独立发布：
 
-采集缓慢时，先单独检查 Claude OAuth 数据源：
+| 服务 | 来源 | 发布内容 |
+| --- | --- | --- |
+| DeepSeek | `GET https://api.deepseek.com/user/balance`（Bearer API key） | 余额 `balance_cents` + `currency` |
+| MiniMax | `GET https://www.minimax.cn/backend/account/token_plan/remains_percent`（控制台 Cookie） | 5 小时与周额度的已用百分比 + 重置时间 |
 
-```bash
-codexbar usage --provider claude --source oauth --format json
-```
-
-若命令失败，检查 CodexBar 的账号授权和数据源配置；采集耗时取决于数据源和认证方式。
-
-手工刷新仍需等待采集完成。采集超时和刷新周期的 CLI 设置见[开发指南](DEVELOPMENT.md#cli-与调度)。
-
-## 数据源与配置
-
-Bridge 会按以下顺序寻找并验证 CodexBar CLI：
-
-1. `--codexbar-cli` 显式指定的路径；
-2. `%APPDATA%\quotaframe\config.toml` 中的 `codexbar_cli`；
-3. Win-CodexBar 默认安装路径 `%LOCALAPPDATA%\Programs\CodexBar\codexbar-cli.exe`；
-4. QuotaFrame 管理的固定版本 CLI（校验摘要后使用）；
-5. 当前进程可见的 PATH，依次检查 `codexbar-cli.exe`、`codexbar-cli`、`codexbar.exe` 和 `codexbar`。
-
-每个候选都会先执行本地 `--version`，要求输出以 `codexbar x.y.z` 开头，再执行 `usage -p both --json` 并通过当前 JSON 解析器校验。桌面端或其他同名程序不会仅因位于 PATH 就被使用。候选失败时会自动尝试下一个；第一次成功后会复用该路径，若它后来失效则重新寻找。
-
-Windows 在没有可用 CLI、且未通过参数或配置手动指定路径时，自动下载官方 `v1.2.12` 的 `codexbar.exe`，保存为 `%LOCALAPPDATA%\quotaframe\dependencies\codexbar\1.2.12\codexbar-cli.exe`。下载大小与 SHA-256 固定在 `sources/codexbar_dependency.py`，通过校验后才启用，后续运行复用本机副本。下载失败会提示并限频重试；已有 CLI 的取数或凭据失败不会触发下载。可继续使用 `codexbar_cli` 指定本机 CLI，不会覆盖 Win-CodexBar 的安装目录。
-
-冻结包包含该 CLI 所需的 VC 运行库；首次安装与账号登录的验收范围见验证说明。自动下载不包含 Win-CodexBar 桌面安装流程，也不会替用户登录账号。
-
-不需要任何配置时，若 CLI 在 PATH 或默认安装位置：
-
-```powershell
-quotaframe-bridge
-```
-
-也可以用一个可选的 TOML 文件固定路径并设置托盘进程的日志级别：
+DeepSeek 没有用量或限流窗口接口，只公开余额，所以面板直接显示余额本身，不再换算成百分比。MiniMax 返回的是平台自己的额度窗口（`current_interval_used_percent` / `current_weekly_used_percent`）与 `end_time` / `weekly_end_time`。
 
 ```toml
-# %APPDATA%\quotaframe\config.toml
-codexbar_cli = 'D:\tools\codexbar-cli.exe'
-log_level = 'INFO'
+# macOS: ~/Library/Application Support/quotaframe/config.toml
+# Windows: %APPDATA%\quotaframe\config.toml
+[deepseek]
+api_key = "sk-..."      # 也可用环境变量 DEEPSEEK_API_KEY，环境变量优先
+currency = "CNY"        # 默认 CNY
+
+[minimax]
+# 控制台登录后的 Cookie；token 简写等价于 cookie = "_token=<jwt>"
+cookie = "_token=...; acw_tc=...; cdn_sec_tc=..."
 ```
 
-配置文件缺失、格式错误或路径不可用时会继续自动寻找。命令行参数优先级最高，如果显式路径不存在或校验失败，Bridge 会直接报错，不会自动回退到其他路径。`log_level` 可为 `DEBUG`、`INFO`、`WARNING` 或 `ERROR`，无效或缺失时使用`INFO`。托盘程序把日志写到`%LOCALAPPDATA%\quotaframe\bridge.log`，与 macOS 的`~/Library/Logs/quotaframe/bridge.log` 同由 `paths.log_directory` 决定。
+任一服务缺失配置时该服务不参与发布，面板显示 `--`；两者都缺失时 Bridge 启动报错。MiniMax 的 Cookie 会过期，过期后该服务变为 `unavailable`，重新登录平台复制新 Cookie 即可。采集间隔由 `--interval`（默认 60 秒）决定，两个请求并发执行，任一失败不影响另一个。
 
-也可以显式指定：
+## 配置文件
 
-```powershell
-quotaframe-bridge --codexbar-cli "C:\path\to\codexbar-cli.exe"
+```toml
+# macOS: ~/Library/Application Support/quotaframe/config.toml
+# Windows: %APPDATA%\quotaframe\config.toml
+log_level = 'INFO'      # DEBUG / INFO / WARNING / ERROR，默认 INFO
 ```
 
-找不到任何候选、找到的程序都不是兼容 CLI、或找到 CLI 但都无法解析用量时，Bridge 分别给出对应的脱敏错误提示；提示不会包含候选程序的 stdout、stderr、原始 JSON、账户信息或凭据。
+`log_level` 无效或缺失时使用 `INFO`。托盘程序把日志写到 `%LOCALAPPDATA%\quotaframe\bridge.log`，macOS 为 `~/Library/Logs/quotaframe/bridge.log`，同由 `paths.log_directory` 决定。
 
 ### 弹窗主题
 

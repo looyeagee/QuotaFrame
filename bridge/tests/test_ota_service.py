@@ -32,7 +32,7 @@ def status(
     *,
     error: str = "",
     version: str = "0.4.0",
-    target: str = "m5sticks3",
+    target: str = "waveshare_rlcd_42",
     offset: int = 0,
     size: int = 0,
 ) -> DeviceStatus:
@@ -94,7 +94,7 @@ class OtaServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.payload = app_payload(6000, TARGETS[0])
         self.image = FirmwareImage(
-            target="m5sticks3",
+            target="waveshare_rlcd_42",
             version="0.5.0",
             size=len(self.payload),
             sha256=hashlib.sha256(self.payload).hexdigest(),
@@ -164,7 +164,7 @@ class OtaServiceTests(unittest.IsolatedAsyncioTestCase):
                 "firmware_project": "quotaframe",
                 "sha256": self.image.sha256,
                 "size": len(self.payload),
-                "target": "m5sticks3",
+                "target": "waveshare_rlcd_42",
                 "version": "0.5.0",
             },
         )
@@ -190,7 +190,7 @@ class OtaServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(progress[-1], (len(self.payload), len(self.payload)))
 
     async def test_preflight_rejects_busy_or_wrong_target(self) -> None:
-        for initial in (status("receiving"), status(target="waveshare_amoled_216")):
+        for initial in (status("receiving"), status(target="waveshare_rlcd_42")):
             with self.subTest(initial=initial):
                 with self.assertRaises(UpgradeError):
                     await OtaService().upgrade(
@@ -331,7 +331,7 @@ class OtaServiceTests(unittest.IsolatedAsyncioTestCase):
 class OtaLifecycleTests(unittest.IsolatedAsyncioTestCase):
     def image(self):
         payload = app_payload(6000, TARGETS[0])
-        return FirmwareImage("m5sticks3", "0.5.0", len(payload),
+        return FirmwareImage("waveshare_rlcd_42", "0.5.0", len(payload),
                              hashlib.sha256(payload).hexdigest(),
                              "https://github.com/example/panel/releases/download/v0.5.0/m5.bin"), payload
 

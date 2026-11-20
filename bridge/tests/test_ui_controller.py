@@ -28,11 +28,10 @@ def status(*, connected: bool) -> PanelStatus:
             DeviceStatus("M5", connected=connected, ever_connected=True),
         ),
         providers={
-            Provider.CODEX: unavailable(Provider.CODEX),
-            Provider.CLAUDE: unavailable(Provider.CLAUDE),
+            Provider.DEEPSEEK: unavailable(Provider.DEEPSEEK),
+            Provider.MINIMAX: unavailable(Provider.MINIMAX),
         },
         consecutive_failures=0,
-        resolution_error=None,
     )
 
 
@@ -61,7 +60,7 @@ class TrayControllerTests(unittest.TestCase):
         """A single render failure must not freeze the tray on its placeholder."""
 
         def explode(_state: TrayState) -> None:
-            raise KeyError(Provider.CODEX)
+            raise KeyError(Provider.DEEPSEEK)
 
         self.shell.set_state = explode  # type: ignore[method-assign]
 

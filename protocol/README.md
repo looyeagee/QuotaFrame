@@ -9,7 +9,8 @@ Windows/macOS Bridge 作为 Central，经已配对、已加密的 NUS 连接发�
 ## Usage command
 
 ```json
-{"cmd":"usage","provider":"codex","sampled_at":"1785398400","sent_at":"1785398402","seq":"42","short_reset_at":"1785409200","short_used_pct":"36","state":"ok","v":"1","week_reset_at":"1785798000","week_used_pct":"61"}
+{"cmd":"usage","provider":"minimax","sampled_at":"1785398400","sent_at":"1785398402","seq":"42","short_reset_at":"1785409200","short_used_pct":"54","state":"ok","v":"1","week_reset_at":"1785798000","week_used_pct":"47"}
+{"cmd":"usage","provider":"deepseek","sampled_at":"1785398400","sent_at":"1785398402","seq":"43","balance_cents":"884","currency":"CNY","state":"ok","v":"1"}
 ```
 
 字段、数值编码和 `ok` / `partial` / `unavailable` 组合见[usage 契约](open-device-access.md#4-usage)。
@@ -26,7 +27,7 @@ Windows/macOS Bridge 作为 Central，经已配对、已加密的 NUS 连接发�
 {"ack":"usage","error":"invalid_request","n":42,"ok":false}
 ```
 
-Bridge 取数失败时继续发布该服务最后有效数据，保留原始状态、窗口和 `sampled_at`；尚无有效数据时发布 `unavailable`。固件收到 `unavailable` 时同样保留最后有效样本。仅蓝牙断开或从未取得有效数据时显示灰态，样本年龄和刷新失败不改变已有数据的显示。成功取数后立即采用新结果，Codex 与 Claude 独立更新。
+Bridge 取数失败时继续发布该服务最后有效数据，保留原始状态、窗口和 `sampled_at`；尚无有效数据时发布 `unavailable`。固件收到 `unavailable` 时同样保留最后有效样本。仅蓝牙断开或从未取得有效数据时显示灰态，样本年龄和刷新失败不改变已有数据的显示。成功取数后立即采用新结果，DeepSeek 与 MiniMax 独立更新：DeepSeek 只发布余额（`balance_cents` + `currency`），MiniMax 发布 5 小时与周额度窗口。
 
 ## Status
 
@@ -48,12 +49,7 @@ Bridge 必须确认 `sec=true`、`protocol=1` 和 `caps` 包含 `usage.v1`。
 
 | Target ID | 显示名称 |
 | --- | --- |
-| `m5sticks3` | `M5StickS3` |
-| `esp_mosaico` | `ESP-Mosaico` |
-| `waveshare_amoled_216` | `Waveshare AMOLED 2.16` |
-| `waveshare_epaper_397` | `Waveshare ePaper 3.97` |
 | `waveshare_rlcd_42` | `Waveshare RLCD 4.2` |
-| `mindreset_read_pico` | `MindReset Read Pico` |
 
 同名设备由 Bridge 添加地址后缀区分。BLE 广播名称继续使用 `QF-` 前缀、型号缩写和设备后缀；显示名称不参与 target 匹配或固件文件命名。
 
@@ -66,7 +62,6 @@ Bridge 必须确认 `sec=true`、`protocol=1` 和 `caps` 包含 `usage.v1`。
 支持 OTA 的固件还返回精确 target、固件版本和 OTA 状态：
 
 ```json
-{"ack":"status","data":{"caps":["usage.v1","ota.folder.v1"],"firmware_project":"quotaframe","fw":"0.9.0","boot_valid":true,"name":"M5StickS3","ota":{"err":"","off":"0","phase":"idle","size":"0"},"page":"overview","protocol":1,"sec":true,"target":"m5sticks3"},"ok":true,"n":0}
 ```
 
 可选身份字段、OTA 阶段和错误码见[接入契约](open-device-access.md#3-status数据)。
@@ -98,7 +93,6 @@ firmware/
 Bridge 根据发布 manifest 和已校验的本地镜像生成本次传输的 `manifest.json`；其内容是 UTF-8 JSON，不带行尾：
 
 ```json
-{"schema":"1","firmware_project":"quotaframe","sha256":"abababababababababababababababababababababababababababababababab","size":804896,"target":"m5sticks3","version":"0.9.0"}
 ```
 
 线上的完整顺序如下。`chunk.d` 是 standard padded base64；示例中的 size 和 total 是解码后的字节数，`total = manifest bytes + firmware bytes`。
@@ -130,7 +124,7 @@ Bridge 根据发布 manifest 和已校验的本地镜像生成本次传输的 `m
 
 ## Privacy allowlist
 
-usage 协议只允许 provider、百分比、重置时间、采样/发送时间、状态和序号。OTA 只允许公开固件字节以及 `schema`、`firmware_project`、`target`、`size`、`sha256`、`version`和恢复命令的 `seq`。禁止传输 Token、Cookie、API Key、邮箱、账户/组织标识、套餐、费用、余额、原始错误、Win-CodexBar source 信息。Bridge 编码测试会检查最终 JSON key 集合。
+usage 协议只允许 provider、百分比、重置时间、采样/发送时间、状态、余额（`balance_cents` 与 `currency`）和序号。OTA 只允许公开固件字节以及 `schema`、`firmware_project`、`target`、`size`、`sha256`、`version`和恢复命令的 `seq`。禁止传输 Token、Cookie、API Key、邮箱、账户/组织标识、套餐、费用明细和原始错误；余额本身是面板要显示的值，因此按上面的字段单独放行。Bridge 编码测试会检查最终 JSON key 集合。
 
 首发采用**无签名 OTA**。manifest 的 SHA-256 只能发现下载/传输损坏，不能证明发布者身份；发布权限、GitHub 账号和 TLS 是剩余信任边界。物理确认防止静默刷写，但不能判断用户确认的字节是否来自真正发布者。
 

@@ -24,13 +24,19 @@ class MockSourceTests(unittest.IsolatedAsyncioTestCase):
         first = await source.collect(attempted_at=1_000)
         second = await source.collect(attempted_at=1_060)
 
-        self.assertEqual(first[Provider.CODEX].short.used_percent, 12)
-        self.assertEqual(first[Provider.CLAUDE].week.used_percent, 48)
+        self.assertEqual(str(first[Provider.DEEPSEEK].balance), "12.34")
+        self.assertEqual(first[Provider.DEEPSEEK].currency, "CNY")
         self.assertNotEqual(
-            first[Provider.CODEX].short.used_percent,
-            second[Provider.CODEX].short.used_percent,
+            first[Provider.DEEPSEEK].balance,
+            second[Provider.DEEPSEEK].balance,
         )
-        self.assertEqual(first[Provider.CODEX].short.reset_at, 1_000 + 2 * 60 * 60)
+        self.assertEqual(first[Provider.MINIMAX].short.used_percent, 12)
+        self.assertEqual(first[Provider.MINIMAX].week.used_percent, 34)
+        self.assertNotEqual(
+            first[Provider.MINIMAX].short.used_percent,
+            second[Provider.MINIMAX].short.used_percent,
+        )
+        self.assertEqual(first[Provider.MINIMAX].short.reset_at, 1_000 + 2 * 60 * 60)
 
 
 class StateStoreTests(unittest.IsolatedAsyncioTestCase):
@@ -56,15 +62,15 @@ class StateStoreTests(unittest.IsolatedAsyncioTestCase):
         store.merge_collection(valid, attempted_at=1_000)
         fresh = await source.collect(attempted_at=1_060)
         merged = store.merge_collection(
-            {Provider.CODEX: fresh[Provider.CODEX]}, attempted_at=1_060
+            {Provider.DEEPSEEK: fresh[Provider.DEEPSEEK]}, attempted_at=1_060
         )
-        self.assertEqual(merged[Provider.CODEX], fresh[Provider.CODEX])
-        self.assertEqual(merged[Provider.CLAUDE], valid[Provider.CLAUDE])
+        self.assertEqual(merged[Provider.DEEPSEEK], fresh[Provider.DEEPSEEK])
+        self.assertEqual(merged[Provider.MINIMAX], valid[Provider.MINIMAX])
         expired = store.merge_collection(
-            {Provider.CODEX: fresh[Provider.CODEX]}, attempted_at=1_181
+            {Provider.DEEPSEEK: fresh[Provider.DEEPSEEK]}, attempted_at=1_181
         )
-        self.assertEqual(expired[Provider.CLAUDE], valid[Provider.CLAUDE])
-        self.assertEqual(expired[Provider.CODEX], fresh[Provider.CODEX])
+        self.assertEqual(expired[Provider.MINIMAX], valid[Provider.MINIMAX])
+        self.assertEqual(expired[Provider.DEEPSEEK], fresh[Provider.DEEPSEEK])
 
     async def test_initial_failure_has_no_data_but_old_valid_samples_are_retained(self) -> None:
         store = UsageStateStore()
@@ -109,7 +115,7 @@ class DryRunCliTests(unittest.TestCase):
         messages = [json.loads(line) for line in completed.stdout.splitlines()]
         self.assertEqual(
             [item["provider"] for item in messages],
-            ["codex", "claude"],
+            ["deepseek", "minimax"],
         )
         self.assertTrue(all(item["cmd"] == "usage" for item in messages))
         forbidden = {

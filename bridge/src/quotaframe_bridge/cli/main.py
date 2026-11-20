@@ -1,8 +1,8 @@
 """Command-line entry point for the standalone Bridge.
 
-Windows and macOS differ in three places only: which CodexBar CLI dialect the
-usage source speaks, who runs the pairing ceremony, and how the six-digit code
-reaches that ceremony. Everything below the transport is shared.
+Windows and macOS differ in one place only: who runs the pairing ceremony and
+how the six-digit code reaches it. The usage sources and the BLE transport are
+shared, and the sources themselves are plain HTTPS calls on both platforms.
 """
 
 from __future__ import annotations
@@ -27,10 +27,8 @@ from quotaframe_bridge.service.multi_device import (
     MultiDeviceBridgeService,
 )
 from quotaframe_bridge.sources.mock import MockUsageSource
-from quotaframe_bridge.sources.selection import (
-    UnsupportedPlatformError,
-    create_usage_source,
-)
+from quotaframe_bridge.pairing.base import UnsupportedPlatformError
+from quotaframe_bridge.sources.selection import create_usage_source
 from quotaframe_bridge.service.adoption import discover_device
 from quotaframe_bridge.service.ownership import OwnershipStore, display_name
 from quotaframe_bridge.transports.console import ConsoleTransport
@@ -39,7 +37,7 @@ from quotaframe_bridge.transports.console import ConsoleTransport
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="quotaframe-bridge",
-        description="Publish Codex and Claude usage to a supported panel over BLE.",
+        description="Publish DeepSeek balance and MiniMax usage to a panel over BLE.",
     )
     parser.add_argument(
         "--version",
@@ -55,7 +53,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cycles", type=int, help="stop after this many collections")
     parser.add_argument("--interval", type=float, default=60.0)
     parser.add_argument("--publish-interval", type=float, default=30.0)
-    parser.add_argument("--codexbar-cli", type=Path)
     parser.add_argument("--device-name")
     parser.add_argument(
         "--name-prefix",
@@ -97,10 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-timeout",
         type=float,
-        help=(
-            "seconds one CodexBar command may take; the default depends on "
-            "the platform's CLI (Windows 15, macOS 90)"
-        ),
+        help="seconds one source request may take before the provider is skipped",
     )
     parser.add_argument("--ack-timeout", type=float, default=5.0)
     parser.add_argument(
@@ -247,10 +241,7 @@ async def _run(args: argparse.Namespace) -> None:
     source = (
         MockUsageSource()
         if args.mock
-        else create_usage_source(
-            args.codexbar_cli,
-            timeout=args.source_timeout,
-        )
+        else create_usage_source(timeout=args.source_timeout)
     )
     if args.dry_run:
         transport = ConsoleTransport()

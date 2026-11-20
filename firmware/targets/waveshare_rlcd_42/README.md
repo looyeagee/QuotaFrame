@@ -11,7 +11,7 @@ eim run "idf.py -C firmware/targets/waveshare_rlcd_42 -p <PORT> flash" v6.1
 Evidence level: **partial hardware**. The firmware and `test_apps/logic` compile with ESP-IDF
 v6.1, and the logic tests pass on a host build. On one board, the landscape Home and detail
 pages rendered live usage from a bonded Bridge, which reconnected with an encrypted link after
-flashing. Portrait and flipped layouts, button debounce, sensors, audio, microSD card, first-time
+flashing. Portrait and flipped layouts, button debounce, sensors, audio, first-time
 pairing and OTA have not been exercised on hardware.
 
 The device advertises as `QF-WS-S3-R42-` followed by the final two Bluetooth MAC bytes and
@@ -19,6 +19,9 @@ reports `waveshare_rlcd_42` in the authenticated status. Usage publication, RTC
 synchronization, screen toggle/page commands and OTA reuse the shared BLE components.
 
 ## Display
+
+The panel renders two services: DeepSeek publishes an account balance, MiniMax
+publishes its five-hour and weekly quota windows.
 
 The 4.2-inch reflective LCD (ST7305) shows 400 x 300 black-and-white pixels without a backlight.
 It has no refresh waveform and no ghosting, so every change is a full-frame SPI write of
@@ -43,22 +46,24 @@ printed segment LCD instead of smoothing vector type:
 - Primary rules are solid, secondary separators dotted; a 2 px bezel frame sits 4 px inside the
   panel edge. Chips (link status, focused setting, pace) are inverted with rounded corners.
 
-The display uses the same SHORT / WEEK labels and used-percentage meaning as the other targets:
+The display labels the short window `5H` for MiniMax and used-percentage meaning as the other targets:
 
 | Page | Content |
 | --- | --- |
-| Home | Both services stacked; SHORT and WEEK usage bars with reset countdowns and elapsed-time markers |
-| Codex, Claude | One service: the SHORT window in 80 px figures with its RESET countdown, then SHORT and WEEK sections each with a usage bar, elapsed-time marker and elapsed time. OVER +N% marks usage at least 5 percentage points above the elapsed fraction of the window |
-| Trend | Last 24 hours from the microSD card, 48 half-hour bars per service |
-| Clock | Time with seconds, date, SHTC3 temperature and humidity, compact usage bars |
+| Home | DEEPSEEK row with the account balance in 68 px segment digits and its currency; MINIMAX row with the 5H bar (used percentage, reset countdown, pace marker) and the WEEK bar |
+| Deepseek | Balance in 96 px segment digits with the currency and the sample age |
+| Minimax | One service: the 5H window in 80 px figures with its RESET countdown, then the 5H and WEEK sections each with a usage bar, elapsed-time marker and elapsed time. OVER +N% marks usage at least 5 percentage points above the elapsed fraction of the window |
+| Clock | Time with seconds, date, SHTC3 temperature and humidity, one MiniMax bar and the DeepSeek balance |
 | Settings | Auto cycle, alert mode, seconds, rotation |
-| Alert | Full-screen inverted page once a short window reaches 95 %; NEAR LIMIT below 100 %, EXHAUSTED at 100 % |
+| Alert | Full-screen inverted page once the MiniMax 5H window reaches 95 %; NEAR LIMIT below 100 %, EXHAUSTED at 100 % |
+
+The board keeps no local history: it has no SD-card trend log and no trend page.
 
 Text is at least 2x (14 px, 2.9 mm cap height) and strokes at least 2 px in both orientations.
 Layout follows one grid: content starts 14 px from the panel edge, the first line sits 10 px
 below the header rule, rows and footers are separated by 10 px, and inverted chips grow around
 their text so it stays on the same left edge as plain labels. Home uses 64 px figures level with
-the top of the SHORT bar and the bottom of the WEEK bar; detail uses 80 px figures. On Home the countdown sits to the right of its window
+the top of the 5H bar and the bottom of the WEEK bar; detail uses 80 px figures. On Home the countdown sits to the right of its window
 label without a RESET prefix; the detail page labels it RESET. The header shows a chip only for
 OFFLINE, PAIRING and UPDATING; LINKED is the normal state and is not shown.
 
@@ -66,7 +71,8 @@ Offline pages retain the last values at full contrast with their sample age and 
 header chip, but show RESET -- rather than a live countdown. Missing windows also show --;
 RESET WAIT is reserved for a known reset time that has passed. On Home, a service with neither
 window collapses to NO DATA (offline) or WAITING FOR DATA (linked). Pace and time markers
-assume fixed windows of five hours and seven days because usage.v1 carries only reset times. They are omitted offline, for missing windows, or when
+assume fixed windows of five hours and seven days because usage.v1 carries only reset times,
+which matches the MiniMax intervals. The DeepSeek row has no window and no pace marker. They are omitted offline, for missing windows, or when
 the remaining time does not fit the assumed window.
 
 Rotation is manual (the board has no accelerometer): LAND, PORT (landscape turned 90 degrees
@@ -105,7 +111,6 @@ are recorded in [UPSTREAM.md](UPSTREAM.md).
 | I2C | SDA 13, SCL 14: PCF85063 0x51, SHTC3 0x70, ES8311 0x18 |
 | Keys | KEY 18, BOOT 0, active low |
 | Battery | GPIO4 / ADC1 channel 3 through a 1:3 divider |
-| microSD card | SDMMC 1-bit: CLK 38, CMD 21, D0 39 |
 | Speaker | I2S MCLK 16, BCLK 9, WS 45, DOUT 8; amplifier enable 46 |
 
 The ST7305 initialization sequence and pixel layout come from the Waveshare
@@ -113,13 +118,6 @@ ESP32-S3-RLCD-4.2 factory program; see [driver provenance](UPSTREAM.md).
 The battery percentage is a linear voltage proxy between
 3.0 V and 4.12 V; the board has no fuel gauge or charger status, so the OTA battery gate is
 not registered (the voltage cannot distinguish battery from USB power).
-
-The trend requires a mounted FAT microSD card; absence is nonfatal. Its record format matches the
-ePaper 3.97 target: up to 48 timestamped records in `trend.bin`, with `trend.bak` used when the
-primary file is missing, empty, truncated, oversized, unreadable or contains an invalid record.
-Sampling starts only after a Bridge publication supplies a valid epoch. Until then, the trend
-page shows `WAITING FOR TIME`, including when stored history is present; stored timestamps
-are not used as the current time.
 
 ## Hardware verification checklist
 
@@ -129,7 +127,6 @@ are not used as the current time.
   self-heating, which this firmware does not apply until measured.
 - Battery percentage on battery and on USB power.
 - ES8311 tone level and amplifier noise.
-- microSD card mount, trend persistence and backup recovery.
 - Pairing, reconnect, usage rendering with a real Bridge, and OTA with physical confirmation.
 
 ## Glyphs and preview

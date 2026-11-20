@@ -57,7 +57,7 @@ def status(*capabilities: str) -> DeviceStatus:
         protocol=1,
         page="overview",
         capabilities=frozenset(capabilities),
-        target="waveshare_amoled_216",
+        target="waveshare_rlcd_42",
     )
 
 
@@ -172,8 +172,8 @@ class DeviceSessionTimeSyncTests(unittest.IsolatedAsyncioTestCase):
         )
         providers = await UnavailableSource().collect(attempted_at=1_800_000_000)
         snapshot = UsageSnapshot(
-            codex=providers[Provider.CODEX],
-            claude=providers[Provider.CLAUDE],
+            deepseek=providers[Provider.DEEPSEEK],
+            minimax=providers[Provider.MINIMAX],
         )
         runner = asyncio.create_task(session.run())
         try:

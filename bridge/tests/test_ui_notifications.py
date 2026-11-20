@@ -26,11 +26,10 @@ def status(*, connected: bool, ever: bool = True, failures: int = 0) -> PanelSta
     return PanelStatus(
         devices=(DeviceStatus("M5", connected=connected, ever_connected=ever),),
         providers={
-            Provider.CODEX: unavailable(Provider.CODEX),
-            Provider.CLAUDE: unavailable(Provider.CLAUDE),
+            Provider.DEEPSEEK: unavailable(Provider.DEEPSEEK),
+            Provider.MINIMAX: unavailable(Provider.MINIMAX),
         },
         consecutive_failures=failures,
-        resolution_error=None,
     )
 
 

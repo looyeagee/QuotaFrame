@@ -168,6 +168,12 @@ def encode_usage(usage: ProviderUsage, seq: int, sent_at: int) -> bytes:
             payload["week_reset_at"] = _u32_text(
                 usage.week.reset_at, "week_reset_at"
             )
+    if usage.balance is not None:
+        # Cents keep the amount exact through the device's integer-only parser.
+        payload["balance_cents"] = _u32_text(
+            int(usage.balance * 100), "balance_cents"
+        )
+        payload["currency"] = usage.currency
     return _json_line(payload)
 
 

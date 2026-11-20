@@ -33,11 +33,13 @@ class Screens {
     int big_percent(int x, int top, int percent, int h, Ink ink = Ink::Black);
     static int big_percent_width(int h);
     void home(const View &v);
-    void home_row(const View &v, int provider, int top);
+    /** DeepSeek row: the account balance in segment digits. */
+    void balance_row(const View &v, int top);
+    /** MiniMax row: the five-hour and weekly bars. */
+    void windows_row(const View &v, int top);
     void home_portrait(const View &v);
     void focus(const View &v, int provider);
     void alert(const View &v);
-    void trend(const View &v);
     void clock(const View &v);
     void settings(const View &v);
     void pairing(const View &v);

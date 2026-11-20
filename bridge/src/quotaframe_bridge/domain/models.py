@@ -1,20 +1,21 @@
-"""Credential-free usage models shared by Bridge adapters."""
+"""Sanitized usage models shared by the Bridge's data sources."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import Enum
 
 
 class Provider(str, Enum):
-    """Usage providers supported by protocol version 1."""
+    """Services a panel renders, in display order."""
 
-    CODEX = "codex"
-    CLAUDE = "claude"
+    DEEPSEEK = "deepseek"
+    MINIMAX = "minimax"
 
 
 class SourceState(str, Enum):
-    """Whether a provider sample contains all, some, or no usage windows."""
+    """Whether a provider sample carries every value that provider publishes."""
 
     OK = "ok"
     PARTIAL = "partial"
@@ -37,24 +38,41 @@ class UsageWindow:
 
 @dataclass(frozen=True, slots=True)
 class ProviderUsage:
-    """Sanitized provider state; deliberately contains no identity metadata."""
+    """Sanitized provider state; deliberately contains no identity metadata.
+
+    A provider publishes either quota windows (MiniMax) or an account balance
+    (DeepSeek). Both may appear together; the panel decides what to draw.
+    """
 
     provider: Provider
     state: SourceState
     sampled_at: int
     short: UsageWindow | None = None
     week: UsageWindow | None = None
+    balance: Decimal | None = None
+    currency: str = ""
 
     def __post_init__(self) -> None:
         if not 0 <= self.sampled_at <= 0xFFFFFFFF:
             raise ValueError("sampled_at must fit an unsigned 32-bit timestamp")
-        present = int(self.short is not None) + int(self.week is not None)
-        expected = (
-            SourceState.OK
-            if present == 2
-            else SourceState.PARTIAL
-            if present == 1
-            else SourceState.UNAVAILABLE
+        if self.balance is not None:
+            if self.balance < 0:
+                raise ValueError("balance must not be negative")
+            if not (len(self.currency) == 3 and self.currency.isalpha()):
+                raise ValueError("currency must be a three-letter code")
+            if self.balance * 100 != (self.balance * 100).to_integral_value():
+                raise ValueError("balance must be expressible in whole cents")
+        elif self.currency:
+            raise ValueError("currency without a balance describes nothing")
+
+        present = (
+            int(self.short is not None)
+            + int(self.week is not None)
+            + int(self.balance is not None)
         )
-        if self.state is not expected:
-            raise ValueError(f"{self.state.value} does not match available windows")
+        if self.state is SourceState.OK and present == 0:
+            raise ValueError("ok requires at least one value")
+        if self.state is SourceState.UNAVAILABLE and present != 0:
+            raise ValueError("unavailable must not carry values")
+        if self.state is SourceState.PARTIAL and present == 0:
+            raise ValueError("partial requires at least one value")

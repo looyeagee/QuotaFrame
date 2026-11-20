@@ -5,10 +5,16 @@
 
 namespace usage_panel {
 
-/** Usage providers supported by protocol version 1. */
-enum class Provider : uint8_t { Codex, Claude };
+/**
+ * Services a panel renders, in display order.
+ *
+ * DeepSeek publishes an account balance; MiniMax publishes the 5-hour and weekly
+ * quota windows. A provider may carry either kind of value, and the model stores
+ * both without deciding which one the UI draws.
+ */
+enum class Provider : uint8_t { Deepseek, Minimax };
 
-/** Whether a source sample contains both, one, or no usage windows. */
+/** Whether a source sample carries every value its provider publishes. */
 enum class SourceState : uint8_t { Ok, Partial, Unavailable };
 
 /** UI state derived from the last valid sample and link state. */
@@ -32,12 +38,17 @@ struct UsageWindow {
 
 /** One validated usage publication before it is merged into the cached model. */
 struct UsageUpdate {
-    Provider provider = Provider::Codex;
+    Provider provider = Provider::Deepseek;
     SourceState state = SourceState::Unavailable;
     uint32_t sampled_at = 0;  // Source sample time, in UTC epoch seconds.
     uint32_t sent_at = 0;     // Bridge send time, in UTC epoch seconds.
     UsageWindow short_window;
     UsageWindow week_window;
+    // Account balance for services that publish credit instead of quota windows.
+    // Cents keep the value exact on the wire and in the segment display.
+    bool has_balance = false;
+    uint32_t balance_cents = 0;
+    char currency[4]{};  // ISO 4217 code, empty when the balance is absent.
 };
 
 /** Cached state for one provider, including the last valid values. */
@@ -55,8 +66,13 @@ struct ProviderSnapshot {
     // sample without changing the cached values.
     bool latest_short_present = false;
     bool latest_week_present = false;
+    bool latest_balance_present = false;
     UsageWindow short_window;
     UsageWindow week_window;
+    // Retained balance of the last publication that carried one.
+    bool has_balance = false;
+    uint32_t balance_cents = 0;
+    char currency[4]{};
 };
 
 /** Maintains last-known usage while tracking the current source/link state. */
@@ -69,7 +85,7 @@ public:
      * valid sample's state, timestamp, windows, and window selection.
      * `monotonic_ms` uses the same millisecond clock as estimated_epoch().
      *
-     * @return false if percentages, timestamps, or state/window cardinality
+     * @return false if percentages, timestamps, or the state/value cardinality
      *         violate the protocol contract; true otherwise.
      */
     bool apply(const UsageUpdate& update, uint64_t monotonic_ms);

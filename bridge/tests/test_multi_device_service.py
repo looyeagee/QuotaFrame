@@ -21,8 +21,6 @@ from quotaframe_bridge.service.multi_device import (
     MultiDeviceBridgeService,
     UsageSnapshot,
 )
-from quotaframe_bridge.sources.codexbar import CodexBarResolutionError, WinCodexBarSource
-from quotaframe_bridge.sources.codexbar_mac import MacCodexBarSource
 from quotaframe_bridge.transports.base import TransportReset
 
 
@@ -111,13 +109,13 @@ class UnexpectedFailureTransport(RecordingTransport):
 
 def snapshot(sampled_at: int) -> UsageSnapshot:
     return UsageSnapshot(
-        codex=ProviderUsage(
-            Provider.CODEX,
+        deepseek=ProviderUsage(
+            Provider.DEEPSEEK,
             SourceState.UNAVAILABLE,
             sampled_at,
         ),
-        claude=ProviderUsage(
-            Provider.CLAUDE,
+        minimax=ProviderUsage(
+            Provider.MINIMAX,
             SourceState.UNAVAILABLE,
             sampled_at,
         ),
@@ -138,13 +136,13 @@ class RecordingSource:
         if self.fail:
             raise RuntimeError("private source failure")
         return {
-            Provider.CODEX: ProviderUsage(
-                Provider.CODEX,
+            Provider.DEEPSEEK: ProviderUsage(
+                Provider.DEEPSEEK,
                 SourceState.UNAVAILABLE,
                 attempted_at,
             ),
-            Provider.CLAUDE: ProviderUsage(
-                Provider.CLAUDE,
+            Provider.MINIMAX: ProviderUsage(
+                Provider.MINIMAX,
                 SourceState.UNAVAILABLE,
                 attempted_at,
             ),
@@ -155,16 +153,16 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
     async def test_clock_rollback_preserves_cache_and_publishes_both_providers(self):
         from quotaframe_bridge.service.state import UsageStateStore
 
-        cached = ProviderUsage(Provider.CODEX, SourceState.PARTIAL, 1000,
+        cached = ProviderUsage(Provider.DEEPSEEK, SourceState.PARTIAL, 1000,
                                short=UsageWindow(42))
-        other = ProviderUsage(Provider.CLAUDE, SourceState.PARTIAL, 600,
+        other = ProviderUsage(Provider.MINIMAX, SourceState.PARTIAL, 600,
                               short=UsageWindow(34))
         store = UsageStateStore()
-        store.merge_collection({Provider.CODEX: cached, Provider.CLAUDE: other},
+        store.merge_collection({Provider.DEEPSEEK: cached, Provider.MINIMAX: other},
                                attempted_at=1000)
         store.mark_all_unavailable(attempted_at=699)
-        update = UsageSnapshot(store.providers[Provider.CODEX],
-                               store.providers[Provider.CLAUDE])
+        update = UsageSnapshot(store.providers[Provider.DEEPSEEK],
+                               store.providers[Provider.MINIMAX])
         transport = RecordingTransport()
         now = 700
         session = DeviceSession("panel", transport,
@@ -179,9 +177,9 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
                                  str(now) if expected == "unavailable" else "1000")
                 self.assertEqual(messages[1]["state"], "partial")
                 self.assertEqual(messages[1]["short_used_pct"], "34")
-            self.assertEqual(store.providers[Provider.CODEX], cached)
-            self.assertEqual(store.last_valid[Provider.CODEX], cached)
-            self.assertEqual(update.codex, cached)
+            self.assertEqual(store.providers[Provider.DEEPSEEK], cached)
+            self.assertEqual(store.last_valid[Provider.DEEPSEEK], cached)
+            self.assertEqual(update.deepseek, cached)
         finally:
             await session.close()
 
@@ -718,92 +716,66 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
 
 class MultiDeviceBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_results_reach_panel_before_slow_peer(self) -> None:
-        for platform in ("windows", "macos"):
-            with self.subTest(platform=platform):
-                await self._check_provider_publication(platform)
+        """A slow MiniMax request must not hold back the DeepSeek balance."""
 
-    async def _check_provider_publication(self, platform: str) -> None:
-        fixture = "codexbar_mac_both.json" if platform == "macos" else "codexbar_both.json"
-        source_type = MacCodexBarSource if platform == "macos" else WinCodexBarSource
-        records = {
-            record["provider"]: record
-            for record in json.loads(
-                (Path(__file__).parent / "fixtures" / fixture).read_text(encoding="utf-8")
-            )
-        }
+        from decimal import Decimal
+
+        from quotaframe_bridge.domain.models import Provider, ProviderUsage, SourceState
+        from quotaframe_bridge.sources.combined import CombinedUsageSource
+
+        fast_release = asyncio.Event()
+        fast_started = asyncio.Event()
+        slow_started = asyncio.Event()
+
+        class FastSource:
+            providers = (Provider.DEEPSEEK,)
+            label = "fast"
+
+            async def collect(self, attempted_at=None):
+                fast_started.set()
+                await fast_release.wait()
+                return {
+                    Provider.DEEPSEEK: ProviderUsage(
+                        Provider.DEEPSEEK, SourceState.OK, 1_000,
+                        balance=Decimal("12.34"), currency="CNY",
+                    )
+                }
+
+        class SlowSource:
+            providers = (Provider.MINIMAX,)
+            label = "slow"
+
+            async def collect(self, attempted_at=None):
+                slow_started.set()
+                await asyncio.sleep(0.05)
+                raise RuntimeError("offline")
+
         transport = RecordingTransport()
-        slow_providers = ("claude", "codex", "claude")
-        slow_started = [asyncio.Event() for _ in slow_providers]
-        release = [asyncio.Event() for _ in slow_providers]
-        cycle = -1
-
-        async def cli(argv: tuple[str, ...], timeout: float) -> tuple[int, str, str]:
-            nonlocal cycle
-            if argv[1:] == ("--version",):
-                version = "CodexBar 0.60.3" if platform == "macos" else "codexbar 0.70.0"
-                return 0, version, ""
-            if argv[1:] == ("config", "providers", "--json"):
-                cycle += 1
-                return 0, json.dumps([
-                    {"provider": provider, "enabled": True} for provider in records
-                ]), ""
-            provider = argv[3]
-            if platform == "macos":
-                self.assertEqual(argv[1:], ("usage", "--provider", provider, "--format", "json"))
-                self.assertEqual(timeout, 90.0)
-            else:
-                self.assertEqual(argv[1:], ("usage", "-p", provider, "--json"))
-                self.assertEqual(timeout, 15.0)
-            if provider == slow_providers[cycle]:
-                slow_started[cycle].set()
-                await release[cycle].wait()
-                if cycle == 0:
-                    raise TimeoutError
-            record = records[provider]
-            used_percent = "usedPercent" if platform == "macos" else "used_percent"
-            record["usage"]["primary"][used_percent] = 10 * (cycle + 1)
-            return 0, json.dumps([record]), ""
-
-        async def wait_for_panel(codex: str, claude: str | None) -> None:
+        service = MultiDeviceBridgeService(
+            CombinedUsageSource([FastSource(), SlowSource()]),  # type: ignore[arg-type]
+            (DeviceSession("Panel", transport),),
+            interval=3600,
+            publish_interval=3600,
+        )
+        runner = asyncio.create_task(service.run())
+        try:
+            await asyncio.wait_for(fast_started.wait(), 2)
+            await asyncio.wait_for(slow_started.wait(), 2)
+            fast_release.set()
             async with asyncio.timeout(2):
                 while True:
-                    usage = [json.loads(payload) for payload, command, _ in transport.sent
-                             if command == "usage"]
-                    state = {row["provider"]: row.get("short_used_pct") for row in usage}
-                    if state == {"codex": codex, "claude": claude}:
-                        return
+                    rows = [
+                        json.loads(payload)
+                        for payload, command, _ in transport.sent
+                        if command == "usage"
+                    ]
+                    if any(row["provider"] == "deepseek" and row.get("balance_cents") == "1234"
+                           for row in rows):
+                        break
                     await asyncio.sleep(0.001)
-
-        with tempfile.TemporaryDirectory() as directory:
-            executable = Path(directory) / "codexbar-cli.exe"
-            executable.touch()
-            service = MultiDeviceBridgeService(
-                source_type(executable, runner=cli),
-                (DeviceSession("Panel", transport),),
-                interval=3600,
-                publish_interval=3600,
-            )
-            runner = asyncio.create_task(service.run())
-            try:
-                await asyncio.wait_for(slow_started[0].wait(), 2)
-                await wait_for_panel("10", None)
-                self.assertEqual(service.collection_count, 0)
-                service.request_collection()
-                release[0].set()
-
-                await asyncio.wait_for(slow_started[1].wait(), 2)
-                await wait_for_panel("10", "20")
-                release[1].set()
-                await wait_for_panel("20", "20")
-
-                service.request_collection()
-                await asyncio.wait_for(slow_started[2].wait(), 2)
-                await wait_for_panel("30", "20")
-                release[2].set()
-                await wait_for_panel("30", "30")
-            finally:
-                runner.cancel()
-                await asyncio.gather(runner, return_exceptions=True)
+        finally:
+            runner.cancel()
+            await asyncio.gather(runner, return_exceptions=True)
 
     async def test_added_session_receives_cached_usage_without_waiting_for_tick(self):
         source = RecordingSource()
@@ -822,7 +794,7 @@ class MultiDeviceBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
             messages = [json.loads(data) for data, command, _ in transport.sent
                         if command == "usage"]
             self.assertEqual([message["provider"] for message in messages],
-                             ["codex", "claude"])
+                             ["deepseek", "minimax"])
             self.assertEqual(len(source.calls), 1)
         finally:
             runner.cancel()
@@ -857,27 +829,6 @@ class MultiDeviceBridgeServiceTests(unittest.IsolatedAsyncioTestCase):
                 for message in logs.output
             )
         )
-
-    async def test_resolution_failure_records_category_and_consecutive_count(
-        self,
-    ) -> None:
-        source = RecordingSource()
-        source.fail = False
-
-        async def fail_resolution(*, attempted_at: int):
-            raise CodexBarResolutionError("not_found")
-
-        source.collect = fail_resolution  # type: ignore[method-assign]
-        service = MultiDeviceBridgeService(
-            source,
-            (DeviceSession("M5", RecordingTransport()),),
-            clock=lambda: 100,
-        )
-
-        await service.collect()
-
-        self.assertEqual(service.consecutive_failures, 1)
-        self.assertEqual(service.resolution_error, "not_found")
 
     async def test_collects_once_and_offers_same_snapshot_to_both_sessions(
         self,

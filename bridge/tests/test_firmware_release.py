@@ -20,7 +20,7 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.image = b"known firmware bytes"
         self.image_url = (
             "https://github.com/example/panel/releases/download/v0.5.0/"
-            "m5sticks3-0.5.0.bin"
+            "waveshare_rlcd_42-0.5.0.bin"
         )
         self.manifest_url = (
             "https://github.com/example/panel/releases/download/v0.5.0/manifest.json"
@@ -28,7 +28,7 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
 
     def manifest(self, **overrides: object) -> bytes:
         item = {
-            "target": "m5sticks3",
+            "target": "waveshare_rlcd_42",
             "firmware_project": "quotaframe",
             "kind": "app",
             "version": "0.5.0",
@@ -49,7 +49,7 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
         )
 
         manifest = await source.fetch_manifest(self.manifest_url)
-        selected = manifest.for_target("m5sticks3")
+        selected = manifest.for_target("waveshare_rlcd_42")
         downloaded = await source.download_image(selected)
 
         self.assertEqual(downloaded, self.image)
@@ -82,7 +82,7 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
         manifest = await source.fetch_manifest(self.manifest_url)
 
         with self.assertRaises(FirmwareReleaseError):
-            manifest.for_target("waveshare_amoled_216")
+            manifest.for_target("unknown_target")
 
         for override in (
             {"size": len(self.image) + 1},
@@ -94,7 +94,7 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
             )
             bad_manifest = await bad_source.fetch_manifest(self.manifest_url)
             with self.assertRaises(FirmwareReleaseError):
-                await bad_source.download_image(bad_manifest.for_target("m5sticks3"))
+                await bad_source.download_image(bad_manifest.for_target("waveshare_rlcd_42"))
 
     async def test_rejects_oversized_manifest_image_and_fetch_result(self) -> None:
         oversized_manifest = b"x" * (64 * 1024 + 1)
@@ -111,25 +111,26 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
             fetcher=lambda _url, _limit: self.manifest()
         ).fetch_manifest(self.manifest_url)
         with self.assertRaises(FirmwareReleaseError):
-            await source.download_image(manifest.for_target("m5sticks3"))
+            await source.download_image(manifest.for_target("waveshare_rlcd_42"))
 
-        too_large = json.loads(self.manifest(size=7 * 1024 * 1024 + 1))
+        too_large = json.loads(self.manifest(size=5 * 1024 * 1024))
         source = FirmwareReleaseSource(
             fetcher=lambda _url, _limit: json.dumps(too_large).encode()
         )
         with self.assertRaises(FirmwareReleaseError):
             await source.fetch_manifest(self.manifest_url)
 
-    async def test_accepts_mosaico_image_within_expanded_ota_slot(self) -> None:
+    async def test_accepts_image_up_to_the_ota_slot_size(self) -> None:
+        # RLCD 4.2 reserves a 4 MB OTA slot, so a full-slot image must validate.
         source = FirmwareReleaseSource(
             fetcher=lambda _url, _limit: self.manifest(
-                target="esp_mosaico", firmware_project="mosaico_usage_panel",
-                size=7 * 1024 * 1024,
+                target="waveshare_rlcd_42", firmware_project="ws_rlcd_42",
+                size=4 * 1024 * 1024,
             )
         )
         manifest = await source.fetch_manifest(self.manifest_url)
-        image = manifest.for_target("esp_mosaico", "mosaico_usage_panel")
-        self.assertEqual(image.size, 7 * 1024 * 1024)
+        image = manifest.for_target("waveshare_rlcd_42", "ws_rlcd_42")
+        self.assertEqual(image.size, 4 * 1024 * 1024)
 
     async def test_rejects_noncanonical_semver(self) -> None:
         for version in ("01.2.3", "1.02.3", "1.2.03", "1.2.3-alpha..1", "1.2.3-01"):

@@ -32,8 +32,9 @@ struct UsageCommandParseResult {
  *
  * Decimal integers must use their canonical text form, percentages must be
  * 0-100, reset timestamps may only accompany their corresponding windows,
- * and state must match the number of windows present. sent_at may precede
- * sampled_at by at most five minutes to tolerate limited clock skew.
+ * `balance_cents` requires a `currency` of at most three characters, and state
+ * must match the number of values present (windows and balance together).
+ * sent_at may precede sampled_at by at most five minutes to tolerate skew.
  */
 UsageCommandParseResult parse_usage_command(
     const esp_desktop_buddy_command_view_t* request);

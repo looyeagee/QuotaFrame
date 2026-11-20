@@ -19,10 +19,10 @@ from quotaframe_bridge.service.devices import (
 
 from quotaframe_bridge.ui.tray_service import snapshot_tray_status
 
-M5 = "m5sticks3"
-WS = "waveshare_amoled_216"
-M5_LABEL = "M5StickS3"
-WS_LABEL = "Waveshare AMOLED 2.16"
+M5 = "waveshare_rlcd_42"
+WS = "waveshare_rlcd_42"
+M5_LABEL = "Waveshare RLCD 4.2"
+WS_LABEL = "Waveshare RLCD 4.2"
 
 
 class StoreFixture(unittest.TestCase):
@@ -69,7 +69,7 @@ class GraphAssemblyTests(StoreFixture):
     def test_one_session_per_owned_address(self) -> None:
         graph = self.graph(((M5, "AA:BB:CC:DD:EE:01"), (WS, "AA:BB:CC:DD:EE:02")))
 
-        self.assertEqual(graph.names, (M5_LABEL, WS_LABEL))
+        self.assertEqual(graph.names, (f"{M5_LABEL} ·EE01", f"{WS_LABEL} ·EE02"))
         self.assertEqual(len(graph.service.sessions), 2)
 
     def test_two_boards_of_one_model_each_get_a_session(self) -> None:
@@ -84,7 +84,7 @@ class GraphAssemblyTests(StoreFixture):
         graph = self.graph(((M5, "AA:BB:CC:DD:EE:01"),))
 
         self.assertEqual(graph.names, (M5_LABEL,))
-        self.assertNotIn(WS_LABEL, graph.names)
+        self.assertEqual(len(graph.service.sessions), 1)
 
     def test_session_transport_is_built_for_the_owned_address_and_target(self) -> None:
         graph = self.graph(((WS, "AA:BB:CC:DD:EE:02"),))
@@ -374,8 +374,8 @@ class DiscoveryTests(StoreFixture):
         )
 
         self.assertEqual(len(adopted), 2)
-        self.assertEqual(announced, [M5_LABEL, WS_LABEL])
-        self.assertEqual(graph.names, (M5_LABEL, WS_LABEL))
+        self.assertEqual(announced, [M5_LABEL, f"{WS_LABEL} ·EE02"])
+        self.assertEqual(graph.names, (f"{M5_LABEL} ·EE01", f"{WS_LABEL} ·EE02"))
         self.assertEqual(
             [device.address for device in OwnershipStore(self.path)],
             ["AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02"],
@@ -426,20 +426,18 @@ class SnapshotTests(StoreFixture):
     def test_snapshot_reads_shared_service_state(self) -> None:
         graph = self.graph(((M5, "AA:BB:CC:DD:EE:01"), (WS, "AA:BB:CC:DD:EE:02")))
         graph.service.consecutive_failures = 2
-        graph.service.resolution_error = "not_found"
 
         status = snapshot_tray_status(graph)
 
         self.assertEqual(
             status.devices,
             (
-                DeviceStatus(M5_LABEL, connected=False, ever_connected=False, address="AA:BB:CC:DD:EE:01", session=graph.devices[0].session),
-                DeviceStatus(WS_LABEL, connected=False, ever_connected=False, address="AA:BB:CC:DD:EE:02", session=graph.devices[1].session),
+                DeviceStatus(f"{M5_LABEL} ·EE01", connected=False, ever_connected=False, address="AA:BB:CC:DD:EE:01", session=graph.devices[0].session),
+                DeviceStatus(f"{WS_LABEL} ·EE02", connected=False, ever_connected=False, address="AA:BB:CC:DD:EE:02", session=graph.devices[1].session),
             ),
         )
         self.assertEqual(status.providers, {})
         self.assertEqual(status.consecutive_failures, 2)
-        self.assertEqual(status.resolution_error, "not_found")
 
     def test_a_user_owning_nothing_reports_no_devices(self) -> None:
         status = snapshot_tray_status(self.graph())

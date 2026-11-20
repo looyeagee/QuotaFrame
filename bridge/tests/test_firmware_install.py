@@ -29,7 +29,7 @@ class InstallationTests(unittest.IsolatedAsyncioTestCase):
         self.current = self.device
         self.graph = SimpleNamespace(get=lambda address: self.current)
         self.payload = app_payload(6000, TARGETS[0])
-        self.image = FirmwareImage("m5sticks3", "0.5.0", len(self.payload),
+        self.image = FirmwareImage("waveshare_rlcd_42", "0.5.0", len(self.payload),
             hashlib.sha256(self.payload).hexdigest(), "https://github.com/example/panel/releases/download/v0.5.0/app.bin")
         self.source = SimpleNamespace(fetch_manifest=AsyncMock(return_value=FirmwareManifest((self.image,))),
                                      download_image=AsyncMock(return_value=self.payload))

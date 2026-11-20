@@ -247,7 +247,7 @@ class ReleaseAssemblerTests(unittest.TestCase):
         self.output.mkdir()
         sentinel = self.output / "keep-me"
         sentinel.write_text("preserved", encoding="utf-8")
-        target = TARGETS_BY_ID["m5sticks3"]
+        target = TARGETS_BY_ID["waveshare_rlcd_42"]
         (self._artifact(target.id) / target.full_image).unlink()
         completed = self._run()
 

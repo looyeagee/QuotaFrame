@@ -19,7 +19,12 @@ SEPARATOR = " · "
 NO_DEVICES_TEXT = tr("no_devices")
 NO_DEVICES_SCANNING_TEXT = tr("no_devices_scanning")
 
-_PROVIDER_LABELS = {Provider.CODEX: "Codex", Provider.CLAUDE: "Claude"}
+_PROVIDER_LABELS = {
+    Provider.DEEPSEEK: "DeepSeek",
+    Provider.MINIMAX: "MiniMax",
+}
+# Before the first collection the tray names both services without data.
+_IDLE_PROVIDERS = (Provider.DEEPSEEK, Provider.MINIMAX)
 
 
 class TrayState(enum.Enum):
@@ -70,7 +75,6 @@ class PanelStatus:
     devices: tuple[DeviceStatus, ...]
     providers: Mapping[Provider, ProviderUsage]
     consecutive_failures: int
-    resolution_error: str | None
     adoption_running: bool = False
     incompatible_found: bool = False
     devices_unreadable: bool = False
@@ -80,9 +84,7 @@ class PanelStatus:
         if self.devices_unreadable or self.incompatible_found or any(device.incompatible or device.cleanup_failed or device.metadata_error for device in self.devices):
             return TrayState.WARN
         # Without a confirmed incompatibility, an undiscovered device alone
-        # does not warrant a warning; source resolution errors remain idle.
-        if self.resolution_error is not None:
-            return TrayState.IDLE
+        # does not warrant a warning.
         if not any(device.ever_connected for device in self.devices):
             return TrayState.IDLE
         if any(
@@ -93,10 +95,23 @@ class PanelStatus:
         return TrayState.OK
 
 
+_CURRENCY_SYMBOLS = {"CNY": "¥", "USD": "$", "EUR": "€"}
+
+
+def format_balance(amount: object, currency: str) -> str:
+    """Format a balance for the tray menu, using a symbol when one is known."""
+
+    symbol = _CURRENCY_SYMBOLS.get(currency.upper())
+    text = f"{amount:.2f}"
+    return f"{symbol}{text}" if symbol else f"{text} {currency.upper()}"
+
+
 def _provider_text(provider: Provider, usage: ProviderUsage | None) -> str:
     label = _PROVIDER_LABELS[provider]
     if usage is None or usage.state is SourceState.UNAVAILABLE:
         return f"{label} --"
+    if usage.balance is not None and usage.short is None and usage.week is None:
+        return f"{label} {format_balance(usage.balance, usage.currency)}"
     window = usage.short or usage.week
     if window is None:
         return f"{label} --"
@@ -166,8 +181,10 @@ def format_info_lines(status: PanelStatus) -> tuple[str, str]:
             else format_device_summary(status.devices)
         )
     )
+    reported = [provider for provider in Provider if provider in status.providers]
     providers = SEPARATOR.join(
-        _provider_text(provider, status.providers.get(provider)) for provider in Provider
+        _provider_text(provider, status.providers.get(provider))
+        for provider in (reported or _IDLE_PROVIDERS)
     )
     if status.devices_unreadable:
         devices = tr("devices_unreadable")

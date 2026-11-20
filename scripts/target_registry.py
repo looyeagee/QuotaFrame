@@ -16,8 +16,6 @@ from quotaframe_bridge.targets import IDF_IMAGES, TARGETS  # noqa: E402
 
 # Branch protection requires these check names independently of display labels.
 _CI_LABELS = {
-    "waveshare_amoled_216": "ESP32-S3-Touch-AMOLED-2.16",
-    "waveshare_epaper_397": "ESP32-S3-ePaper-3.97",
     "waveshare_rlcd_42": "ESP32-S3-RLCD-4.2",
 }
 
@@ -55,7 +53,6 @@ def ci_matrix() -> dict[str, list[dict[str, object]]]:
         test_apps = [
             ("protocol tests", "firmware/test_apps/protocol"),
             ("ota tests", "firmware/test_apps/ota"),
-            ("panel_state tests", "firmware/test_apps/panel_state"),
         ]
         test_apps.extend(
             (f"{_CI_LABELS.get(target.id, target.label)} {Path(app).name} tests", app)

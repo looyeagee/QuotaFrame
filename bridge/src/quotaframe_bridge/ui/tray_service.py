@@ -28,7 +28,6 @@ def snapshot_tray_status(
         devices=devices,
         providers=dict(graph.service.store.providers),
         consecutive_failures=graph.service.consecutive_failures,
-        resolution_error=graph.service.resolution_error,
         adoption_running=adoption_running,
         incompatible_found=bool(graph.incompatible_devices),
         devices_unreadable=graph.store.read_error,

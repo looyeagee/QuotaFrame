@@ -1,0 +1,305 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600">
+<defs>
+<pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#18233a"/><line x1="0" y1="0" x2="0" y2="8" stroke="#2b3b5c" stroke-width="3"/></pattern>
+<pattern id="hatch2" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="#141c2e"/><line x1="0" y1="0" x2="0" y2="10" stroke="#202c46" stroke-width="3"/></pattern>
+</defs>
+<rect x="0.0" y="0.0" width="1600.0" height="1600.0" fill="#0b1020" rx="0" opacity="1.0"/>
+<text x="56.0" y="74.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="34" fill="#e6ebf5" font-weight="700" text-anchor="start" opacity="1.0">waveshare_rlcd_42 · Flash 分区存储布局</text>
+<text x="56.0" y="104.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="15" fill="#93a1b8" font-weight="400" text-anchor="start" opacity="1.0">QuotaFrame 固件 · ESP32-S3 · 16 MB SPI Flash（QIO / 80 MHz）· 数值取自本机现场镜像读出</text>
+<rect x="1445.2" y="54.0" width="98.8" height="28.0" fill="#16213a" rx="14" opacity="1.0" stroke="#a78bfa" stroke-width="1"/>
+<text x="1494.6" y="73.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#a78bfa" font-weight="600" text-anchor="middle" opacity="1.0">IDF v6.1.1</text>
+<rect x="1292.7" y="54.0" width="142.5" height="28.0" fill="#16213a" rx="14" opacity="1.0" stroke="#2dd4bf" stroke-width="1"/>
+<text x="1364.0" y="73.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#2dd4bf" font-weight="600" text-anchor="middle" opacity="1.0">PSRAM 8 MB octal</text>
+<rect x="1162.1" y="54.0" width="120.6" height="28.0" fill="#16213a" rx="14" opacity="1.0" stroke="#38bdf8" stroke-width="1"/>
+<text x="1222.4" y="73.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="middle" opacity="1.0">APP 751,744 B</text>
+<rect x="56.0" y="132.0" width="1488.0" height="220.0" fill="#111a2e" rx="14" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="150.0" width="4.0" height="20.0" fill="#38bdf8" rx="2" opacity="1.0"/>
+<text x="90.0" y="167.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="19" fill="#e6ebf5" font-weight="600" text-anchor="start" opacity="1.0">①  16 MB 全片地址映射（严格按字节比例）</text>
+<rect x="78.0" y="196.0" width="5.6" height="58.0" fill="#8fa3bf" rx="0" opacity="1.0"/>
+<rect x="78.0" y="196.0" width="5.6" height="58.0" fill="none" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.4"/>
+<rect x="83.6" y="196.0" width="361.0" height="58.0" fill="#38bdf8" rx="0" opacity="1.0"/>
+<rect x="83.6" y="196.0" width="361.0" height="58.0" fill="none" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.4"/>
+<rect x="444.6" y="196.0" width="361.0" height="58.0" fill="#1d3b5c" rx="0" opacity="1.0"/>
+<rect x="444.6" y="196.0" width="361.0" height="58.0" fill="none" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.4"/>
+<rect x="805.6" y="196.0" width="0.7" height="58.0" fill="#fbbf24" rx="0" opacity="1.0"/>
+<rect x="805.6" y="196.0" width="0.7" height="58.0" fill="none" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.4"/>
+<rect x="806.3" y="196.0" width="715.7" height="58.0" fill="url(#hatch2)" rx="0" opacity="1.0"/>
+<rect x="806.3" y="196.0" width="715.7" height="58.0" fill="none" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.4"/>
+<rect x="83.6" y="196.0" width="64.7" height="58.0" fill="#0b7fc4" rx="0" opacity="1.0"/>
+<text x="116.0" y="230.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#dff1ff" font-weight="700" text-anchor="middle" opacity="1.0">APP</text>
+<text x="303.1" y="220.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="15" fill="#04202f" font-weight="700" text-anchor="middle" opacity="1.0">ota_0 · 4 MB · 运行分区</text>
+<text x="303.1" y="240.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#0a3b57" font-weight="600" text-anchor="middle" opacity="1.0">空闲 82%（0x348780 ≈ 3.28 MB）</text>
+<text x="664.1" y="220.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="15" fill="#b9d6f2" font-weight="700" text-anchor="middle" opacity="1.0">ota_1 · 4 MB</text>
+<text x="664.1" y="240.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#7fa4c8" font-weight="600" text-anchor="middle" opacity="1.0">空白 0xFF · 下次 OTA 写入目标</text>
+<text x="1203.2" y="220.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="14" fill="#5d6f8c" font-weight="600" text-anchor="middle" opacity="1.0">未分配 0x812000 – 0x1000000</text>
+<text x="1203.2" y="240.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#4b5b74" font-weight="500" text-anchor="middle" opacity="1.0">8,314,880 B ≈ 7.93 MB</text>
+<line x1="80.0" y1="254.0" x2="80.0" y2="266.0" stroke="#8fa3bf" stroke-width="1.2" opacity="1.0"/>
+<text x="78.0" y="274.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#8fa3bf" font-weight="600" text-anchor="start" opacity="1.0">▲ 元数据 64 KB（图中仅 5.7 px）→ ②</text>
+<line x1="116.0" y1="254.0" x2="116.0" y2="266.0" stroke="#0b7fc4" stroke-width="1.2" opacity="1.0"/>
+<text x="378.0" y="274.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#38bdf8" font-weight="600" text-anchor="start" opacity="1.0">▲ ws_rlcd_42.bin 751,744 B（占 ota_0 的 17.9%）</text>
+<line x1="805.6" y1="254.0" x2="805.6" y2="266.0" stroke="#fbbf24" stroke-width="1.4" opacity="1.0"/>
+<text x="813.6" y="274.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#fbbf24" font-weight="600" text-anchor="start" opacity="1.0">▲ otadata 8 KB（0.7 px）</text>
+<line x1="78.0" y1="290.0" x2="1522.0" y2="290.0" stroke="#33425f" stroke-width="1" opacity="1.0"/>
+<line x1="78.0" y1="286.0" x2="78.0" y2="294.0" stroke="#33425f" stroke-width="1" opacity="1.0"/>
+<text x="78.0" y="309.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="start" opacity="1.0">0x0000000</text>
+<line x1="439.0" y1="286.0" x2="439.0" y2="294.0" stroke="#33425f" stroke-width="1" opacity="1.0"/>
+<text x="439.0" y="309.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="middle" opacity="1.0">0x0400000</text>
+<line x1="800.0" y1="286.0" x2="800.0" y2="294.0" stroke="#33425f" stroke-width="1" opacity="1.0"/>
+<text x="800.0" y="309.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="middle" opacity="1.0">0x0800000</text>
+<line x1="1161.0" y1="286.0" x2="1161.0" y2="294.0" stroke="#33425f" stroke-width="1" opacity="1.0"/>
+<text x="1161.0" y="309.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="middle" opacity="1.0">0x0C00000</text>
+<line x1="1522.0" y1="286.0" x2="1522.0" y2="294.0" stroke="#33425f" stroke-width="1" opacity="1.0"/>
+<text x="1522.0" y="309.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="end" opacity="1.0">0x1000000</text>
+<text x="78.0" y="340.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">MicroSD 卡不在 SPI Flash 内：trend.bin / trend.bak 存放在独立 FAT 卷，掉卡只影响 Trend 页。</text>
+<rect x="56.0" y="368.0" width="1488.0" height="380.0" fill="#111a2e" rx="14" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="386.0" width="4.0" height="20.0" fill="#8fa3bf" rx="2" opacity="1.0"/>
+<text x="90.0" y="403.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="19" fill="#e6ebf5" font-weight="600" text-anchor="start" opacity="1.0">②  元数据区放大：0x000000 – 0x010000（64 KB，1 KB ≈ 22.6 px）</text>
+<rect x="78.0" y="450.0" width="720.0" height="104.0" fill="#f472b6" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.6"/>
+<rect x="800.0" y="450.0" width="88.2" height="104.0" fill="#a78bfa" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.6"/>
+<rect x="890.2" y="450.0" width="539.5" height="104.0" fill="#2dd4bf" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.6"/>
+<rect x="1431.8" y="450.0" width="88.2" height="104.0" fill="#8fa3bf" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.6"/>
+<rect x="78.0" y="450.0" width="489.3" height="104.0" fill="#f472b6" rx="0" opacity="1.0"/>
+<rect x="567.3" y="450.0" width="230.7" height="104.0" fill="url(#hatch)" rx="0" opacity="1.0"/>
+<text x="90.0" y="484.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="16" fill="#3d0a22" font-weight="700" text-anchor="start" opacity="1.0">bootloader</text>
+<text x="90.0" y="504.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#3d0a22" font-weight="600" text-anchor="start" opacity="1.0">22,208 B / 32,768 B</text>
+<text x="90.0" y="524.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#3d0a22" font-weight="600" text-anchor="start" opacity="1.0">已用 67.8%</text>
+<text x="575.3" y="484.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#9aa8c5" font-weight="600" text-anchor="start" opacity="1.0">自由 10,560 B（32%）</text>
+<text x="808.0" y="484.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#1b1140" font-weight="700" text-anchor="start" opacity="1.0">partition</text>
+<text x="808.0" y="502.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#1b1140" font-weight="700" text-anchor="start" opacity="1.0">table</text>
+<text x="808.0" y="522.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#1b1140" font-weight="600" text-anchor="start" opacity="1.0">3,072 B</text>
+<text x="902.2" y="482.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="16" fill="#00201c" font-weight="700" text-anchor="start" opacity="1.0">nvs · 24 KB</text>
+<text x="902.2" y="502.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#00201c" font-weight="600" text-anchor="start" opacity="1.0">6 页 × 4 KB</text>
+<text x="902.2" y="522.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#00201c" font-weight="600" text-anchor="start" opacity="1.0">第 0 页已用 96/126 条目</text>
+<text x="902.2" y="540.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#0a3f39" font-weight="500" text-anchor="start" opacity="1.0">第 1–5 页空（0xFF）</text>
+<line x1="980.5" y1="454.0" x2="980.5" y2="550.0" stroke="#0b1020" stroke-width="1.2" opacity="0.45"/>
+<line x1="1070.8" y1="454.0" x2="1070.8" y2="550.0" stroke="#0b1020" stroke-width="1.2" opacity="0.45"/>
+<line x1="1161.0" y1="454.0" x2="1161.0" y2="550.0" stroke="#0b1020" stroke-width="1.2" opacity="0.45"/>
+<line x1="1251.2" y1="454.0" x2="1251.2" y2="550.0" stroke="#0b1020" stroke-width="1.2" opacity="0.45"/>
+<line x1="1341.5" y1="454.0" x2="1341.5" y2="550.0" stroke="#0b1020" stroke-width="1.2" opacity="0.45"/>
+<text x="1437.8" y="484.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#161f2e" font-weight="700" text-anchor="start" opacity="1.0">phy_init</text>
+<text x="1437.8" y="502.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#161f2e" font-weight="600" text-anchor="start" opacity="1.0">4 KB</text>
+<text x="1437.8" y="520.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#161f2e" font-weight="600" text-anchor="start" opacity="1.0">全 0xFF</text>
+<text x="1437.8" y="538.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="11" fill="#3c4a5e" font-weight="600" text-anchor="start" opacity="1.0">未使用</text>
+<rect x="78.0" y="574.0" width="3.0" height="13.0" fill="#f472b6" rx="1.5" opacity="1.0"/>
+<text x="90.0" y="584.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#b9c4d6" font-weight="400" text-anchor="start" opacity="1.0">引导装载器：起始 0x0，二级 bootloader 镜像；余量 32% 留给后续版本。</text>
+<rect x="78.0" y="604.0" width="3.0" height="13.0" fill="#2dd4bf" rx="1.5" opacity="1.0"/>
+<text x="90.0" y="614.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#b9c4d6" font-weight="400" text-anchor="start" opacity="1.0">nvs：配对密钥、射频校准、用户设置全在这 24 KB 里（③ ④ 展开）。</text>
+<rect x="78.0" y="634.0" width="3.0" height="13.0" fill="#a78bfa" rx="1.5" opacity="1.0"/>
+<text x="90.0" y="644.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#b9c4d6" font-weight="400" text-anchor="start" opacity="1.0">分区表本体 3,072 B；改 partitions.csv 会整体改变本图的所有偏移。</text>
+<rect x="78.0" y="665.0" width="3.0" height="15.0" fill="#fbbf24" rx="1.5" opacity="1.0"/>
+<text x="90.0" y="676.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#e8c98a" font-weight="400" text-anchor="start" opacity="1.0">phy_init 是标准 PHY 校准分区，但本构建把 cal_data 写进了 nvs 的 "phy" 命名空间</text>
+<text x="90.0" y="698.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#8f7b52" font-weight="400" text-anchor="start" opacity="1.0">（CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=y，未开 INIT_DATA_IN_PARTITION），故此处为空。</text>
+<rect x="56.0" y="764.0" width="748.0" height="454.0" fill="#111a2e" rx="14" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="782.0" width="4.0" height="20.0" fill="#2dd4bf" rx="2" opacity="1.0"/>
+<text x="90.0" y="799.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="19" fill="#e6ebf5" font-weight="600" text-anchor="start" opacity="1.0">③  nvs 分区内部：6 页 × 4 KB</text>
+<text x="78.0" y="858.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#93a1b8" font-weight="500" text-anchor="start" opacity="1.0">page 0  @0x009000  state=0xFFFFFFFE(active)  seq=0</text>
+<rect x="78.0" y="868.0" width="4.9" height="50.0" fill="#5ef0da" rx="0.6" opacity="1.0"/>
+<rect x="83.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="89.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="94.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="100.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="105.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="111.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="117.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="122.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="128.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="133.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="139.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="144.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="150.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="156.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="161.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="167.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="172.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="178.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="183.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="189.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="195.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="200.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="206.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="211.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="217.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="222.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="228.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="234.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="239.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="245.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="250.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="256.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="261.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="267.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="273.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="278.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="284.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="289.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="295.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="300.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="306.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="312.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="317.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="323.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="328.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="334.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="339.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="345.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="351.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="356.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="362.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="367.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="373.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="378.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="384.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="390.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="395.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="401.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="406.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="412.3" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="417.9" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="423.4" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="429.0" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="434.6" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="440.1" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="445.7" y="868.0" width="4.9" height="50.0" fill="#2dd4bf" rx="0.6" opacity="1.0"/>
+<rect x="451.3" y="868.0" width="4.9" height="50.0" fill="#ff9ccb" rx="0.6" opacity="1.0"/>
+<rect x="456.9" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="462.4" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="468.0" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="473.6" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="479.1" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="484.7" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="490.3" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="495.9" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="501.4" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="507.0" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="512.6" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="518.1" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="523.7" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="529.3" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="534.9" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="540.4" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="546.0" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="551.6" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="557.1" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="562.7" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="568.3" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="573.9" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="579.4" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="585.0" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="590.6" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="596.1" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="601.7" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="607.3" y="868.0" width="4.9" height="50.0" fill="#f472b6" rx="0.6" opacity="1.0"/>
+<rect x="612.9" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="618.4" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="624.0" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="629.6" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="635.1" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="640.7" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="646.3" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="651.9" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="657.4" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="663.0" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="668.6" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="674.1" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="679.7" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="685.3" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="690.9" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="696.4" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="702.0" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="707.6" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="713.1" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="718.7" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="724.3" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="729.9" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="735.4" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="741.0" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="746.6" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="752.1" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="757.7" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="763.3" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="768.9" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="774.4" y="868.0" width="4.9" height="50.0" fill="#22304a" rx="0.6" opacity="1.0"/>
+<rect x="78.0" y="868.0" width="704.0" height="50.0" fill="none" rx="0" opacity="1.0" stroke="#0b1020" stroke-width="1.2"/>
+<text x="78.0" y="942.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="11" fill="#6b7a94" font-weight="500" text-anchor="start" opacity="1.0">0</text>
+<text x="451.3" y="942.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="11" fill="#6b7a94" font-weight="500" text-anchor="middle" opacity="1.0">67</text>
+<text x="612.9" y="942.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="11" fill="#6b7a94" font-weight="500" text-anchor="middle" opacity="1.0">96</text>
+<text x="782.0" y="942.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="11" fill="#6b7a94" font-weight="500" text-anchor="end" opacity="1.0">126 条目</text>
+<rect x="78.0" y="961.0" width="10.0" height="10.0" fill="#5ef0da" rx="2.5" opacity="1.0"/>
+<text x="95.0" y="972.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">ns 索引记录</text>
+<rect x="183.2" y="961.0" width="10.0" height="10.0" fill="#2dd4bf" rx="2.5" opacity="1.0"/>
+<text x="200.2" y="972.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">phy（0–66）</text>
+<rect x="291.2" y="961.0" width="10.0" height="10.0" fill="#f472b6" rx="2.5" opacity="1.0"/>
+<text x="308.2" y="972.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">nimble_bond（67–95）</text>
+<rect x="459.7" y="961.0" width="10.0" height="10.0" fill="#22304a" rx="2.5" opacity="1.0"/>
+<text x="476.7" y="972.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">空闲（96–125）</text>
+<text x="78.0" y="998.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#3a4a66" font-weight="400" text-anchor="start" opacity="1.0">每条目 32 B：ns / type / span / chunk / crc / key[16] / data[8]</text>
+<text x="78.0" y="1024.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#93a1b8" font-weight="500" text-anchor="start" opacity="1.0">page 1 – 5  @0x00A000 – 0x00E000（16 KB，全 0xFF，尚未分配）</text>
+<rect x="78.0" y="1036.0" width="704.0" height="20.0" fill="url(#hatch)" rx="2" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="1062.0" width="704.0" height="20.0" fill="url(#hatch)" rx="2" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="1088.0" width="704.0" height="20.0" fill="url(#hatch)" rx="2" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="1114.0" width="704.0" height="20.0" fill="url(#hatch)" rx="2" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="1140.0" width="704.0" height="20.0" fill="url(#hatch)" rx="2" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<text x="78.0" y="1188.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">6 × 126 = 756 个槽位；页状态 0xFFFFFFFE = 活动页，0xFFFFFFFF = 空闲页。</text>
+<rect x="832.0" y="764.0" width="712.0" height="454.0" fill="#111a2e" rx="14" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="854.0" y="782.0" width="4.0" height="20.0" fill="#f472b6" rx="2" opacity="1.0"/>
+<text x="866.0" y="799.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="19" fill="#e6ebf5" font-weight="600" text-anchor="start" opacity="1.0">④  nvs 里的命名空间（现场读出）</text>
+<rect x="854.0" y="857.0" width="12.0" height="12.0" fill="#2dd4bf" rx="3" opacity="1.0"/>
+<text x="874.0" y="868.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="16" fill="#e6ebf5" font-weight="700" text-anchor="start" opacity="1.0">phy</text>
+<text x="914.9" y="868.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="start" opacity="1.0">ns 1 · 3 键</text>
+<text x="1522.0" y="868.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#93a1b8" font-weight="500" text-anchor="end" opacity="1.0">Wi-Fi/BLE 射频校准</text>
+<text x="890.0" y="892.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">cal_data      blob 61 条 ≈ 1.9 KB</text>
+<text x="890.0" y="912.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">cal_mac       blob 1 条</text>
+<text x="890.0" y="932.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">cal_version   u8 1 条</text>
+<rect x="854.0" y="963.0" width="12.0" height="12.0" fill="#f472b6" rx="3" opacity="1.0"/>
+<text x="874.0" y="974.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="16" fill="#e6ebf5" font-weight="700" text-anchor="start" opacity="1.0">nimble_bond</text>
+<text x="986.6" y="974.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="start" opacity="1.0">ns 2 · 7 键</text>
+<text x="1522.0" y="974.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#93a1b8" font-weight="500" text-anchor="end" opacity="1.0">配对密钥·隐私地址·订阅</text>
+<text x="890.0" y="998.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">local_irk_1   our_sec_1</text>
+<text x="890.0" y="1018.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">peer_sec_1    rpa_rec_1</text>
+<text x="890.0" y="1038.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">cccd_sec_1/2  csfc_sec_1</text>
+<rect x="854.0" y="1069.0" width="12.0" height="12.0" fill="#fbbf24" rx="3" opacity="1.0"/>
+<text x="874.0" y="1080.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="16" fill="#e6ebf5" font-weight="700" text-anchor="start" opacity="1.0">rlcd42</text>
+<text x="941.8" y="1080.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="start" opacity="1.0">ns 3* · 未创建</text>
+<text x="1522.0" y="1080.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#93a1b8" font-weight="500" text-anchor="end" opacity="1.0">Settings 页选项</text>
+<text x="890.0" y="1104.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#aab6c9" font-weight="400" text-anchor="start" opacity="1.0">cycle / alert / seconds / rotation</text>
+<text x="854.0" y="1148.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">* rlcd42 尚未写入：只有改过 Settings 才会创建该命名空间。</text>
+<text x="854.0" y="1170.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">MAX_BONDS=3（最多 3 条配对）；当前链路为第 1 条，即 _1 后缀。</text>
+<rect x="56.0" y="1234.0" width="748.0" height="278.0" fill="#111a2e" rx="14" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="78.0" y="1252.0" width="4.0" height="20.0" fill="#38bdf8" rx="2" opacity="1.0"/>
+<text x="90.0" y="1269.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="19" fill="#e6ebf5" font-weight="600" text-anchor="start" opacity="1.0">⑤  idf.py flash 实际写入的 4 个区域</text>
+<text x="78.0" y="1334.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="start" opacity="1.0">0x000000</text>
+<text x="174.0" y="1334.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#c6d1e2" font-weight="400" text-anchor="start" opacity="1.0">bootloader/bootloader.bin</text>
+<text x="782.0" y="1334.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="end" opacity="1.0">22,208 B</text>
+<text x="78.0" y="1364.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="start" opacity="1.0">0x008000</text>
+<text x="174.0" y="1364.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#c6d1e2" font-weight="400" text-anchor="start" opacity="1.0">partition_table/partition-table.bin</text>
+<text x="782.0" y="1364.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="end" opacity="1.0">3,072 B</text>
+<text x="78.0" y="1394.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="start" opacity="1.0">0x010000</text>
+<text x="174.0" y="1394.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#c6d1e2" font-weight="400" text-anchor="start" opacity="1.0">ws_rlcd_42.bin  →  ota_0</text>
+<text x="782.0" y="1394.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="end" opacity="1.0">751,744 B</text>
+<text x="78.0" y="1424.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="start" opacity="1.0">0x810000</text>
+<text x="174.0" y="1424.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="13" fill="#c6d1e2" font-weight="400" text-anchor="start" opacity="1.0">ota_data_initial.bin（OTA 选择器初始化）</text>
+<text x="782.0" y="1424.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="12" fill="#6b7a94" font-weight="500" text-anchor="end" opacity="1.0">8,192 B</text>
+<rect x="78.0" y="1432.0" width="704.0" height="30.0" fill="#0f2030" rx="7" opacity="1.0" stroke="#2dd4bf" stroke-width="1"/>
+<text x="90.0" y="1454.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#7fe8db" font-weight="400" text-anchor="start" opacity="1.0">0x009000 nvs 与 0x00F000 phy_init 不在清单里 → 配对 / 校准 / 设置原样保留</text>
+<text x="78.0" y="1498.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#8fa3bf" font-weight="400" text-anchor="start" opacity="1.0">本次实测擦除范围：0x000000–0x005FFF（bootloader）、0x00810000–0x00811FFF（otadata）、</text>
+<text x="78.0" y="1518.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#8fa3bf" font-weight="400" text-anchor="start" opacity="1.0">0x00010000–0x000C7FFF（应用）；partition-table 内容一致被跳过，nvs / phy_init 未被触碰。</text>
+<rect x="832.0" y="1234.0" width="712.0" height="278.0" fill="#111a2e" rx="14" opacity="1.0" stroke="#243252" stroke-width="1.0"/>
+<rect x="854.0" y="1252.0" width="4.0" height="20.0" fill="#fb7185" rx="2" opacity="1.0"/>
+<text x="866.0" y="1269.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="19" fill="#e6ebf5" font-weight="600" text-anchor="start" opacity="1.0">⑥  什么情况会清空 nvs</text>
+<rect x="854.0" y="1312.0" width="6.0" height="6.0" fill="#fb7185" rx="3" opacity="1.0"/>
+<text x="870.0" y="1322.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#f3b0bd" font-weight="600" text-anchor="start" opacity="1.0">idf.py erase-flash</text>
+<text x="870.0" y="1341.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">整片 16 MB 擦除，配对 / 设置 / 校准全丢</text>
+<rect x="854.0" y="1348.0" width="6.0" height="6.0" fill="#fb7185" rx="3" opacity="1.0"/>
+<text x="870.0" y="1358.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#f3b0bd" font-weight="600" text-anchor="start" opacity="1.0">整片合并 bin 写 0x0</text>
+<text x="870.0" y="1377.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">覆盖 0x9000，等于重建 NVS</text>
+<rect x="854.0" y="1384.0" width="6.0" height="6.0" fill="#fb7185" rx="3" opacity="1.0"/>
+<text x="870.0" y="1394.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#f3b0bd" font-weight="600" text-anchor="start" opacity="1.0">改 partitions.csv 挪 nvs</text>
+<text x="870.0" y="1413.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">新偏移是空白区，NVS 重新格式化</text>
+<rect x="854.0" y="1420.0" width="6.0" height="6.0" fill="#fb7185" rx="3" opacity="1.0"/>
+<text x="870.0" y="1430.0" font-family="SF Mono, Menlo, Courier New, monospace" font-size="13" fill="#f3b0bd" font-weight="600" text-anchor="start" opacity="1.0">对端删除设备</text>
+<text x="870.0" y="1449.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">链路密钥消失，只能重新配对</text>
+<text x="854.0" y="1494.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#9db4c9" font-weight="400" text-anchor="start" opacity="1.0">OTA 升级只写 ota_0 / ota_1 + otadata，配对同样保留。</text>
+<line x1="56.0" y1="1524.0" x2="1544.0" y2="1524.0" stroke="#1d2740" stroke-width="1.0" opacity="1.0"/>
+<text x="56.0" y="1552.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="start" opacity="1.0">读取方式：esptool read-flash 0x9000 0x6000 / 0xF000 0x1000 / 0x410000 0x100 / 0x810000 0x40 · IDF v6.1.1 · 2026-11-21</text>
+<text x="1544.0" y="1552.0" font-family="PingFang SC, Hiragino Sans GB, Helvetica Neue, Arial" font-size="12" fill="#6b7a94" font-weight="400" text-anchor="end" opacity="1.0">QuotaFrame · firmware/targets/waveshare_rlcd_42</text>
+</svg>

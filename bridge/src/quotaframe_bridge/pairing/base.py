@@ -5,6 +5,14 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 
+class UnsupportedPlatformError(RuntimeError):
+    """The host has no pairing ceremony for this operating system."""
+
+    def __init__(self, platform: str) -> None:
+        self.platform = platform
+        super().__init__(f"no pairing ceremony for platform {platform!r}")
+
+
 class PairingError(ConnectionError):
     """A sanitized pairing failure, with no platform or user detail."""
 

@@ -68,16 +68,16 @@ class WebFlasherAssemblerTests(unittest.TestCase):
 
         self.assertEqual(result, self.output.resolve())
         self.assertEqual(
-            (self.output / "firmware" / "m5sticks3-full-v1.2.3.bin").read_bytes(),
-            b"full:m5sticks3",
+            (self.output / "firmware" / "waveshare-esp32-s3-rlcd-42-full-v1.2.3.bin").read_bytes(),
+            b"full:waveshare_rlcd_42",
         )
         manifest = json.loads(
-            (self.output / "manifests" / "m5sticks3.json").read_text("utf-8")
+            (self.output / "manifests" / "waveshare_rlcd_42.json").read_text("utf-8")
         )
         self.assertEqual(
             manifest,
             {
-                "name": "M5StickS3",
+                "name": "Waveshare RLCD 4.2",
                 "version": "1.2.3",
                 "new_install_prompt_erase": True,
                 "new_install_improv_wait_time": 0,
@@ -86,10 +86,10 @@ class WebFlasherAssemblerTests(unittest.TestCase):
                         "chipFamily": "ESP32-S3",
                         "parts": [
                             {
-                                "path": "../firmware/m5sticks3-full-v1.2.3.bin",
+                                "path": "../firmware/waveshare-esp32-s3-rlcd-42-full-v1.2.3.bin",
                                 "offset": 0,
                                 "sha256": hashlib.sha256(
-                                    b"full:m5sticks3"
+                                    b"full:waveshare_rlcd_42"
                                 ).hexdigest(),
                             }
                         ],
@@ -122,38 +122,6 @@ class WebFlasherAssemblerTests(unittest.TestCase):
             document["targets"],
             [
                 {
-                    "id": "m5sticks3",
-                    "name": "M5StickS3",
-                    "description": "135 × 240 显示屏 · 正面按键翻页",
-                    "asset": "assets/devices/m5sticks3.jpg",
-                    "image": "m5sticks3-full-v1.2.3.bin",
-                    "manifest": "manifests/m5sticks3.json",
-                },
-                {
-                    "id": "waveshare_amoled_216",
-                    "name": "Waveshare AMOLED 2.16",
-                    "description": "480 × 480 圆角方形 AMOLED · 触控与滑动操作",
-                    "asset": "assets/devices/waveshare_amoled_216.jpg",
-                    "image": "waveshare-esp32-s3-touch-amoled-216-full-v1.2.3.bin",
-                    "manifest": "manifests/waveshare_amoled_216.json",
-                },
-                {
-                    "id": "waveshare_epaper_397",
-                    "name": "Waveshare ePaper 3.97",
-                    "description": "800 × 480 四灰阶墨水屏 · 三向拨轮操作",
-                    "asset": "assets/devices/waveshare_epaper_397.jpg",
-                    "image": "waveshare-esp32-s3-epaper-397-full-v1.2.3.bin",
-                    "manifest": "manifests/waveshare_epaper_397.json",
-                },
-                {
-                    "id": "esp_mosaico",
-                    "name": "ESP-Mosaico",
-                    "description": "480 × 480 AMOLED · 触控与 AI 按键翻页",
-                    "asset": "assets/devices/esp_mosaico.png",
-                    "image": "espressif-esp-mosaico-full-v1.2.3.bin",
-                    "manifest": "manifests/esp_mosaico.json",
-                },
-                {
                     "id": "waveshare_rlcd_42",
                     "name": "Waveshare RLCD 4.2",
                     "description": "400 × 300 黑白反射式 LCD · KEY / BOOT 按键翻页",
@@ -161,19 +129,19 @@ class WebFlasherAssemblerTests(unittest.TestCase):
                     "image": "waveshare-esp32-s3-rlcd-42-full-v1.2.3.bin",
                     "manifest": "manifests/waveshare_rlcd_42.json",
                 },
-                {
-                    "id": "mindreset_read_pico",
-                    "name": "MindReset Read Pico",
-                    "description": "684 × 1216 十六灰阶墨水屏 · 触屏与按键操作",
-                    "asset": "assets/devices/mindreset_read_pico.png",
-                    "image": "mindreset-read-pico-full-v1.2.3.bin",
-                    "manifest": "manifests/mindreset_read_pico.json",
-                },
             ],
         )
 
     def test_targets_without_web_metadata_are_left_out(self) -> None:
-        enabled, disabled = TARGETS[0], replace(TARGETS[1], web_flash=None)
+        enabled = TARGETS[0]
+        disabled = replace(
+            enabled,
+            id="unlisted_target",
+            label="Unlisted target",
+            release_stem="unlisted-target",
+            firmware_project="firmware/targets/unlisted_target",
+            web_flash=None,
+        )
         with mock.patch(
             "scripts.assemble_web_flasher.TARGETS", (enabled, disabled)
         ):
@@ -207,7 +175,7 @@ class WebFlasherAssemblerTests(unittest.TestCase):
             "export {};\n",
         )
         self.assertTrue(
-            (self.output / "assets" / "devices" / "waveshare_amoled_216.jpg")
+            (self.output / "assets" / "devices" / "waveshare_rlcd_42.jpg")
             .is_file()
         )
         self.assertTrue(
@@ -222,7 +190,7 @@ class WebFlasherAssemblerTests(unittest.TestCase):
         )
 
     def test_missing_required_input_preserves_existing_output(self) -> None:
-        missing = self.release_assets / "m5sticks3-full-v1.2.3.bin"
+        missing = self.release_assets / "waveshare-esp32-s3-rlcd-42-full-v1.2.3.bin"
         missing.unlink()
         self.output.mkdir()
         marker = self.output / "keep.txt"
@@ -243,7 +211,7 @@ class WebFlasherAssemblerTests(unittest.TestCase):
         self.assertEqual(marker.read_text("utf-8"), "preserve")
 
     def test_missing_device_art_or_vendor_license_is_rejected(self) -> None:
-        waveshare = self.web_root / "dist/assets/devices/waveshare_amoled_216.jpg"
+        waveshare = self.web_root / "dist/assets/devices/waveshare_rlcd_42.jpg"
         waveshare.unlink()
         with self.assertRaisesRegex(WebAssemblyError, "device art"):
             assemble(self.arguments())

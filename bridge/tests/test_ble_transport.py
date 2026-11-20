@@ -773,17 +773,17 @@ class IdentityVerificationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_matching_target_connects(self) -> None:
         transport, _ = await self._connect(
-            reported="m5sticks3", expected="m5sticks3"
+            reported="waveshare_rlcd_42", expected="waveshare_rlcd_42"
         )
 
         await transport.connect()
 
-        self.assertEqual(transport.status.target, "m5sticks3")
+        self.assertEqual(transport.status.target, "waveshare_rlcd_42")
         await transport.close()
 
     async def test_changed_target_does_not_block_usage(self) -> None:
         transport, fake_client = await self._connect(
-            reported="waveshare_amoled_216", expected="m5sticks3"
+            reported="waveshare_rlcd_42", expected="waveshare_rlcd_42"
         )
 
         await transport.connect()
@@ -797,11 +797,11 @@ class IdentityVerificationTests(unittest.IsolatedAsyncioTestCase):
         await transport.close()
 
     async def test_no_expected_target_keeps_adoption_scans_open(self) -> None:
-        transport, _ = await self._connect(reported="m5sticks3", expected=None)
+        transport, _ = await self._connect(reported="waveshare_rlcd_42", expected=None)
 
         await transport.connect()
 
-        self.assertEqual(transport.status.target, "m5sticks3")
+        self.assertEqual(transport.status.target, "waveshare_rlcd_42")
         await transport.close()
 
 

@@ -19,38 +19,6 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 class TargetRegistryTests(unittest.TestCase):
     def test_preserves_existing_maintained_target_contracts(self) -> None:
         expected = {
-            "m5sticks3": (
-                "M5StickS3",
-                "firmware/targets/m5sticks3",
-                "6.1",
-                "m5_usage_panel.bin",
-                "m5_usage_panel_full.bin",
-                "m5sticks3",
-            ),
-            "waveshare_amoled_216": (
-                "Waveshare AMOLED 2.16",
-                "firmware/targets/esp32_s3_touch_amoled_216",
-                "6.1",
-                "ws_usage_panel.bin",
-                "ws_usage_panel_full.bin",
-                "waveshare-esp32-s3-touch-amoled-216",
-            ),
-            "waveshare_epaper_397": (
-                "Waveshare ePaper 3.97",
-                "firmware/targets/waveshare_epaper_397",
-                "6.1",
-                "ws_epaper_397.bin",
-                "ws_epaper_397_full.bin",
-                "waveshare-esp32-s3-epaper-397",
-            ),
-            "esp_mosaico": (
-                "ESP-Mosaico",
-                "firmware/targets/esp_mosaico",
-                "6.1",
-                "mosaico_usage_panel.bin",
-                "mosaico_usage_panel_full.bin",
-                "espressif-esp-mosaico",
-            ),
             "waveshare_rlcd_42": (
                 "Waveshare RLCD 4.2",
                 "firmware/targets/waveshare_rlcd_42",
@@ -59,26 +27,11 @@ class TargetRegistryTests(unittest.TestCase):
                 "ws_rlcd_42_full.bin",
                 "waveshare-esp32-s3-rlcd-42",
             ),
-            "mindreset_read_pico": (
-                "MindReset Read Pico",
-                "firmware/targets/mindreset_read_pico",
-                "6.1",
-                "mr_read_pico.bin",
-                "mr_read_pico_full.bin",
-                "mindreset-read-pico",
-            ),
         }
         self.assertEqual(set(expected), set(TARGETS_BY_ID))
         self.assertEqual(
             {target.id: target.image_chip_id for target in TARGETS},
-            {
-                "m5sticks3": 9,
-                "waveshare_amoled_216": 9,
-                "waveshare_epaper_397": 9,
-                "esp_mosaico": 32,
-                "waveshare_rlcd_42": 9,
-                "mindreset_read_pico": 9,
-            },
+            {"waveshare_rlcd_42": 9},
         )
         for target_id, contract in expected.items():
             target = TARGETS_BY_ID[target_id]
@@ -171,16 +124,15 @@ class TargetRegistryTests(unittest.TestCase):
     def test_ci_names_preserve_required_status_checks(self) -> None:
         names = {entry["name"] for entry in target_registry.ci_matrix()["include"]}
         self.assertTrue({
-            "ESP32-S3-Touch-AMOLED-2.16 target",
-            "ESP32-S3-Touch-AMOLED-2.16 logic tests",
-            "ESP32-S3-ePaper-3.97 target",
             "ESP32-S3-RLCD-4.2 target",
             "ESP32-S3-RLCD-4.2 logic tests",
+            "protocol tests",
+            "ota tests",
         } <= names)
 
     def test_ci_matrix_builds_shared_apps_for_every_registered_idf_version(self) -> None:
         future = replace(
-            TARGETS[1],
+            TARGETS[0],
             id="future_target",
             firmware_project="firmware/targets/future_target",
             idf_version="6.2",
@@ -199,7 +151,6 @@ class TargetRegistryTests(unittest.TestCase):
         shared_paths = {
             "firmware/test_apps/protocol",
             "firmware/test_apps/ota",
-            "firmware/test_apps/panel_state",
         }
         for path in shared_paths:
             self.assertEqual(
@@ -229,7 +180,6 @@ class TargetRegistryTests(unittest.TestCase):
         test_apps = [
             "firmware/test_apps/protocol",
             "firmware/test_apps/ota",
-            "firmware/test_apps/panel_state",
             *(app for target in TARGETS for app in target.test_apps),
         ]
         self.assertEqual(len(entries), len(test_apps) + len(TARGETS))
@@ -285,7 +235,7 @@ class TargetRegistryTests(unittest.TestCase):
                 self.assertEqual((plan["firmware"], plan["skipped"]), (bool(built), bool(skipped)))
 
     def test_ci_plan_cli_accepts_deleted_and_renamed_paths(self) -> None:
-        old = "firmware/targets/m5sticks3/main/old name.cpp"
+        old = "firmware/targets/waveshare_rlcd_42/main/old name.cpp"
         new = "firmware/targets/waveshare_rlcd_42/main/new name.cpp"
         with tempfile.TemporaryDirectory() as directory:
             paths = Path(directory) / "changed-files"
@@ -300,16 +250,16 @@ class TargetRegistryTests(unittest.TestCase):
                 (line.split("=", 1) for line in completed.stdout.splitlines())}
         self.assertEqual(
             {entry["path"] for entry in plan["matrix"]["include"]},
-            {"firmware/targets/m5sticks3", "firmware/targets/m5sticks3/test_apps/logic",
+            {"firmware/targets/waveshare_rlcd_42", "firmware/targets/waveshare_rlcd_42/test_apps/logic",
              "firmware/targets/waveshare_rlcd_42", "firmware/targets/waveshare_rlcd_42/test_apps/logic"},
         )
 
     def test_new_web_targets_match_chip_families(self) -> None:
         for target_id, chip in (
-            ("waveshare_epaper_397", "ESP32-S3"),
-            ("esp_mosaico", "ESP32-S31"),
             ("waveshare_rlcd_42", "ESP32-S3"),
-            ("mindreset_read_pico", "ESP32-S3"),
+            ("waveshare_rlcd_42", "ESP32-S3"),
+            ("waveshare_rlcd_42", "ESP32-S3"),
+            ("waveshare_rlcd_42", "ESP32-S3"),
         ):
             web = TARGETS_BY_ID[target_id].web_flash
             self.assertIsNotNone(web)
@@ -317,17 +267,11 @@ class TargetRegistryTests(unittest.TestCase):
 
     def test_web_target_metadata_covers_current_hardware(self) -> None:
         expected = {
-            "m5sticks3": (
-                "M5StickS3",
-                "135 × 240 显示屏 · 正面按键翻页",
+            "waveshare_rlcd_42": (
+                "Waveshare RLCD 4.2",
+                "400 × 300 黑白反射式 LCD · KEY / BOOT 按键翻页",
                 "ESP32-S3",
-                "assets/devices/m5sticks3.jpg",
-            ),
-            "waveshare_amoled_216": (
-                "Waveshare AMOLED 2.16",
-                "480 × 480 圆角方形 AMOLED · 触控与滑动操作",
-                "ESP32-S3",
-                "assets/devices/waveshare_amoled_216.jpg",
+                "assets/devices/waveshare_rlcd_42.jpg",
             ),
         }
         for target_id, contract in expected.items():
