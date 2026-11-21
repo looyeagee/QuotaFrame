@@ -34,6 +34,7 @@ import re
 import sqlite3
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -65,7 +66,7 @@ ENDED_GRACE_SECONDS = 5
 CACHE_DIR_RELATIVE = Path("Library/Caches/quotaframe/lyrics")
 # A cached document is only reused by the parser version that wrote it, so an
 # entry turns stale instead of outliving a change to parsing or filtering.
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 # Small text files per song; the ceiling keeps a long listening history from
 # growing without bound.
 MAX_CACHE_ENTRIES = 512
@@ -90,6 +91,21 @@ _CREDIT_GLOSS = re.compile(r"[（(][^）)]*[）)]")
 
 class NeteaseMusicError(RuntimeError):
     """The local database or the lyric endpoint did not answer as expected."""
+
+
+def display_text(text: str) -> str:
+    """Fold `text` onto the characters the panel can draw.
+
+    Lyrics and metadata reach the panel in compatibility forms the 12 x 12 font
+    does not cover: Kangxi radicals standing in for the ideographs they derive
+    from (``U+2F00`` for ``一``, ``U+2F08`` for ``人``) and full-width
+    punctuation, which has no glyph while the built-in ASCII font draws the
+    plain form. Compatibility normalisation folds both onto covered characters,
+    so the panel never draws the box it uses for a missing glyph. Folding runs
+    before any byte limit, so a line is measured in the bytes that will arrive.
+    """
+
+    return unicodedata.normalize("NFKC", text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +157,9 @@ _TITLE_SEPARATOR = re.compile(r"[\s\u3000]+")
 
 
 def _comparable_title(text: str) -> str:
-    return _TITLE_SEPARATOR.sub("", text).casefold()
+    # The client and its history row can spell the same title with different
+    # compatibility forms, so they are compared as the panel would draw them.
+    return _TITLE_SEPARATOR.sub("", display_text(text)).casefold()
 
 
 def _same_title(mirrored: str, recorded: str) -> bool:
@@ -176,9 +194,9 @@ def parse_track(song_id: str, playtime_ms: int, payload: object) -> Track:
     duration = payload.get("duration")
     return Track(
         song_id=song_id,
-        title=title if isinstance(title, str) else "",
-        artist=_artists(payload),
-        album=_album(payload),
+        title=display_text(title) if isinstance(title, str) else "",
+        artist=display_text(_artists(payload)),
+        album=display_text(_album(payload)),
         duration_seconds=max(0, int(duration)) // 1000
         if isinstance(duration, (int, float))
         else 0,
@@ -257,7 +275,7 @@ def parse_lrc(text: str) -> tuple[LyricLine, ...]:
         stamps = list(_LRC_TIMESTAMP.finditer(raw))
         if not stamps:
             continue
-        content = raw[stamps[-1].end():].strip()
+        content = display_text(raw[stamps[-1].end():].strip())
         for stamp in stamps:
             minutes = int(stamp.group(1))
             seconds = int(stamp.group(2))
@@ -610,6 +628,7 @@ __all__ = [
     "Track",
     "default_cache_dir",
     "default_database",
+    "display_text",
     "fetch_lyrics",
     "is_credit_line",
     "parse_lrc",

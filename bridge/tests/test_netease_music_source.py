@@ -40,6 +40,7 @@ from quotaframe_bridge.sources.netease_music import (
     NeteaseMusicError,
     NeteaseMusicSource,
     current_index,
+    display_text,
     fetch_lyrics,
     is_credit_line,
     parse_lrc,
@@ -123,6 +124,27 @@ class LrcParsingTest(unittest.TestCase):
     def test_milliseconds_are_three_digits(self) -> None:
         self.assertEqual(parse_lrc("[00:01.250]x\n")[0].time_seconds, 1)
 
+    def test_lines_arrive_in_the_forms_the_panel_draws(self) -> None:
+        lines = parse_lrc("[00:01.00]\u5355\u4f9d\u7eaf\uff1a\u2f00\u4e2a\u2f08\n")
+        self.assertEqual(lines, (LyricLine(1, "\u5355\u4f9d\u7eaf:\u4e00\u4e2a\u4eba"),))
+
+
+class DisplayTextTest(unittest.TestCase):
+    """The panel's font covers neither Kangxi radicals nor full-width forms."""
+
+    def test_kangxi_radicals_fold_onto_the_ideographs(self) -> None:
+        self.assertEqual(display_text("\u2f00\u4e2a\u2f08"), "\u4e00\u4e2a\u4eba")
+
+    def test_full_width_punctuation_folds_onto_the_ascii_form(self) -> None:
+        self.assertEqual(
+            display_text("\u4ed6\u8bf4\uff1a\u597d\uff0c\u8d70\u5427\uff08\u505c\uff09\uff1f"),
+            "\u4ed6\u8bf4:\u597d,\u8d70\u5427(\u505c)?",
+        )
+
+    def test_ideographs_and_ideographic_punctuation_are_untouched(self) -> None:
+        text = "\u4e00\u4e2a\u4eba\u3002\u3001"
+        self.assertEqual(display_text(text), text)
+
 
 class WindowTest(unittest.TestCase):
     LINES = tuple(LyricLine(index * 10, f"line {index}") for index in range(6))
@@ -155,6 +177,15 @@ class TrackReadingTest(unittest.TestCase):
         self.assertEqual(track.artist, "甲 / 乙")
         self.assertEqual(track.album, "后会友期 主题曲")
         self.assertEqual(track.duration_seconds, 231)
+
+    def test_title_and_artist_arrive_in_the_forms_the_panel_draws(self) -> None:
+        track = parse_track("42", 1_700_000_000_000, {
+            **TRACK_JSON,
+            "name": "\u2f00\u4e2a\u2f08\uff1a",
+            "artists": [{"name": "\u5355\u4f9d\u7eaf\uff08\u7ffb\u5531\uff09"}],
+        })
+        self.assertEqual(track.title, "\u4e00\u4e2a\u4eba:")
+        self.assertEqual(track.artist, "\u5355\u4f9d\u7eaf(\u7ffb\u5531)")
 
     def test_newest_row_wins(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -636,6 +667,18 @@ class NeteaseMirrorTest(unittest.TestCase):
         # The database clock alone would say 42 s and "playing".
         self.assertFalse(publication.playing)
         self.assertEqual(publication.position_seconds, 120)
+
+    def test_a_title_in_another_compatibility_form_still_matches(self) -> None:
+        # The client draws the radical, the history row keeps the ideograph.
+        state = self._state(title="\u2f00\u4e2a\u2f08", elapsed_seconds=120.65)
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(
+                Path(directory), state, record={**TRACK_JSON, "name": "\u4e00\u4e2a\u4eba"},
+            ).read()
+        assert publication is not None
+        # The mirror's 120 s wins only when the two are read as the same song.
+        self.assertEqual(publication.position_seconds, 120)
+        self.assertEqual(publication.title, "\u4e00\u4e2a\u4eba")
 
     def test_a_seek_moves_the_playhead_without_a_new_track(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
