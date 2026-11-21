@@ -211,3 +211,70 @@ TEST_CASE("auto cycle advances after the interval and pauses in settings", "[cyc
     v.page = Page::Settings;
     TEST_ASSERT_FALSE(nav.auto_cycle(v, 90000));
 }
+
+TEST_CASE("a lyric line that fits never moves", "[lyrics]")
+{
+    // No overflow, no motion, however long the line stays on screen.
+    for (uint64_t age : {0, 1400, 5000, 60000, 3600000})
+        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(0, age));
+}
+
+TEST_CASE("the scroll pace comes from the length of the line", "[lyrics]")
+{
+    // 200 px of overflow is 17 columns: 1 s of lead-in and 17 x 0.4 s.
+    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, 0));
+    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, 999));
+    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, 1200));
+    TEST_ASSERT_EQUAL_INT(96, lyric_scroll_offset(200, 4400));
+    TEST_ASSERT_EQUAL_INT(204, lyric_scroll_offset(200, 7800));
+    // It stops at its end and stays there however long the line is on screen, so an interlude
+    // after the line cannot make it crawl across the gap.
+    TEST_ASSERT_EQUAL_INT(204, lyric_scroll_offset(200, 20000));
+    TEST_ASSERT_EQUAL_INT(204, lyric_scroll_offset(200, 600000));
+    // A shorter overflow needs fewer columns and is revealed sooner.
+    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(36, 1000));
+    TEST_ASSERT_EQUAL_INT(24, lyric_scroll_offset(36, 1800));
+    TEST_ASSERT_EQUAL_INT(36, lyric_scroll_offset(36, 2200));
+}
+
+TEST_CASE("the scroll steps whole text columns", "[lyrics]")
+{
+    // Whole columns keep every glyph on the layout the font draws it for, so a moving line
+    // never shows half a character at either edge of its clip.
+    for (uint64_t age = 0; age < 12000; age += 250)
+        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, age) % kLyricScrollColumn);
+}
+
+namespace {
+/** One publication carrying a single lyric line. */
+NowPlayingUpdate publication(const char *line) {
+    NowPlayingUpdate update;
+    snprintf(update.title, sizeof(update.title), "Song");
+    update.playing = true;
+    update.line_count = 1;
+    snprintf(update.lines[0], sizeof(update.lines[0]), "%s", line);
+    return update;
+}
+} // namespace
+
+TEST_CASE("the scroll restarts only when the sung line changes", "[lyrics]")
+{
+    View v;
+    apply_now_playing(v, publication("first line"), 1000);
+    TEST_ASSERT_EQUAL_UINT64(1000, v.music_line_ms);
+    TEST_ASSERT_TRUE(v.music_valid);
+
+    // The Bridge republishes the same window every tick; the line keeps its place.
+    apply_now_playing(v, publication("first line"), 5000);
+    TEST_ASSERT_EQUAL_UINT64(1000, v.music_line_ms);
+
+    apply_now_playing(v, publication("second line"), 9000);
+    TEST_ASSERT_EQUAL_UINT64(9000, v.music_line_ms);
+
+    // A window without lyrics is not a line either, so it restarts the next one.
+    NowPlayingUpdate empty;
+    empty.line_count = 0;
+    apply_now_playing(v, empty, 12000);
+    TEST_ASSERT_EQUAL_UINT64(12000, v.music_line_ms);
+    TEST_ASSERT_FALSE(v.music.line_count);
+}

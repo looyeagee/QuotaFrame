@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 namespace usage_panel::rlcd {
 Pace compute_pace(const UsageWindow &window, uint32_t now_epoch, uint32_t window_s) {
     Pace pace;
@@ -94,6 +95,50 @@ uint32_t cycle_interval_ms(uint8_t cycle) {
 int setting_options(int row) {
     constexpr int options[kSettingRows] = {4, 3, 2, 3};
     return row >= 0 && row < kSettingRows ? options[row] : 0;
+}
+
+namespace {
+// The line holds still long enough to read its first word before it starts to move.
+constexpr uint32_t kLyricLeadInMs = 1000;
+// Then each column of overflow takes this long: 0.4 s per twelve pixels is a little under
+// half a hanzi a second, which is comfortable to read and roughly matches how fast a line is
+// sung. Nothing about the song's timing is involved, so an interlude after the line changes
+// nothing: the line stops at its end and waits there.
+constexpr uint32_t kLyricColumnMs = 400;
+
+/** Columns a line has to scroll to bring its end into view. */
+int scroll_columns(int travel) {
+    return (travel + kLyricScrollColumn - 1) / kLyricScrollColumn;
+}
+} // namespace
+
+void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms) {
+    // The window the Bridge sends is anchored on the sung line, so comparing that one line is
+    // enough to know whether the text under the highlight changed.
+    bool same_line = view.music_valid && update.line_count > 0 && view.music.line_count > 0;
+    if (same_line) {
+        const uint8_t before = view.music.current_line;
+        const uint8_t after = update.current_line;
+        same_line = before < view.music.line_count && after < update.line_count &&
+                    std::strcmp(view.music.lines[before], update.lines[after]) == 0;
+    }
+    view.music = update;
+    view.music_valid = true;
+    if (!same_line)
+        view.music_line_ms = now_ms;
+}
+
+int lyric_scroll_offset(int travel, uint64_t age_ms) {
+    if (travel <= 0)
+        return 0;
+    const int columns = scroll_columns(travel);
+    if (age_ms < kLyricLeadInMs)
+        return 0;
+    const uint64_t moving = age_ms - kLyricLeadInMs;
+    const uint32_t duration = static_cast<uint32_t>(columns) * kLyricColumnMs;
+    const uint64_t step = moving * static_cast<uint64_t>(columns) / duration;
+    return static_cast<int>(std::min<uint64_t>(step, static_cast<uint64_t>(columns))) *
+           kLyricScrollColumn;
 }
 
 Provider provider_for(int slot) { return slot ? Provider::Minimax : Provider::Deepseek; }

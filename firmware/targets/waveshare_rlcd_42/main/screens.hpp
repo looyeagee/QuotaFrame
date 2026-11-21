@@ -60,6 +60,16 @@ class Screens {
      * column. The line being sung is inverted, like the lyric window on the music page.
      */
     void now_playing_summary(const View &v, int x, int top, int width, int rows);
+    /**
+     * Draws the line being sung inside `width` starting at `x`.
+     *
+     * A line that fits is drawn as it is; a wider one scrolls through the room the row gives
+     * it, clipped to that room so it cannot reach the rows above or below. The clip and the
+     * offset both fall on text columns, which keeps every glyph whole.
+     */
+    void lyric_row(const View &v, int x, int top, int width, const char *line, Ink ink);
+    /** Draws a lyric line above or below the sung one: fitted to `width`, with an ellipsis. */
+    void context_row(int x, int top, int width, const char *line, Ink ink);
     /** Music page: the song, its artist, the playhead and the lyric window. */
     void music(const View &v);
     void settings(const View &v);

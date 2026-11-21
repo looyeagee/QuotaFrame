@@ -30,6 +30,21 @@ class CjkText {
      */
     static void fit(char *out, size_t out_size, const char *text, int max_width, int scale);
     /**
+     * Offset of the last character boundary at or before `limit` pixels into `text`.
+     *
+     * A scrolling line is clipped on a boundary, so it never shows half a character.
+     */
+    static int boundary_at_or_before(const char *text, int limit, int scale);
+    /** Advance width of the whole characters from `start` that fit in `room` pixels. */
+    static int window_width(const char *text, int start, int room, int scale);
+    /**
+     * Offset of the first character boundary from which the rest of `text` fits in `room`.
+     *
+     * A scrolling line ends here: the whole tail is visible, flush against the end of the row,
+     * and no character is left out or cut.
+     */
+    static int tail_start(const char *text, int room, int scale);
+    /**
      * Draws `text` with its line top at `top`.
      * @return the advance width in pixels.
      */

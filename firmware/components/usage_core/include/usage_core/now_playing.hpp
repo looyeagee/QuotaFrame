@@ -6,10 +6,16 @@ namespace usage_panel {
 
 /** Number of lyric lines one publication carries. */
 constexpr uint8_t kMaxLyricLines = 8;
-/** Bytes of one lyric line, without its terminator. */
-constexpr uint8_t kMaxLyricLineBytes = 47;
+/**
+ * Bytes of one lyric line, without its terminator.
+ *
+ * A line of Chinese is three bytes a character, so this holds sixty-four of them; the panel
+ * shows about fifteen at a time and scrolls the rest. Lines longer than this arrive truncated
+ * at a whole character, which is what the panel used to do to every line at sixteen.
+ */
+constexpr uint16_t kMaxLyricLineBytes = 192;
 /** Bytes of the song title and of the artist, without their terminators. */
-constexpr uint8_t kMaxTitleBytes = 47;
+constexpr uint8_t kMaxTitleBytes = 96;
 
 /**
  * One now-playing publication.

@@ -148,7 +148,7 @@ ACK 表示已入应用事件队列；不表示屏幕已完成刷新。未启用�
 {"cmd":"now_playing","v":"1","seq":"42","title":"证据","artist":"杨乃文","position":"54","duration":"275","state":"playing","current":"0","lines":"被当作乱放电的诱惑\n我双鱼 为什么天蝎要恨我\n难道都是我的错"}
 ```
 
-`position` / `duration` 为秒，`state` 为 `playing` 或 `paused`。`lines` 是 `\n` 分隔的歌词窗口（最多 8 行），`current` 是正在唱的那一行在窗口中的下标；整首歌词放不进一帧，所以 Bridge 按播放进度推送当前行及其后几行。字段、截断规则和隐私边界见[接入契约](open-device-access.md#6-正在播放nowplayingv1)。
+`position` / `duration` 为秒，`state` 为 `playing` 或 `paused`。`lines` 是 `\n` 分隔的歌词窗口（最多 8 行），`current` 是正在唱的那一行在窗口中的下标；整首歌词放不进一帧，所以 Bridge 按播放进度推送当前行及其后四行。放不下的歌词行由设备按文本长度自行滚动，与本句演唱时长和间奏无关。字段、截断规则和隐私边界见[接入契约](open-device-access.md#6-正在播放nowplayingv1)。
 
 成功 ACK 为 `{"ack":"now_playing","n":42,"ok":true}`；OTA 期间返回 `ota_busy`，非法字段返回 `invalid_request`。该命令是快照而不是事件，Bridge 不重放历史。
 

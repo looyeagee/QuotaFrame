@@ -32,6 +32,13 @@ class Canvas {
     void dotted(int x, int y, int w, int t = 2, Ink ink = Ink::Black);
 
     /**
+     * Restricts later drawing to a rectangle, which is how a line of text is kept inside the
+     * room a row gives it. `reset_clip` restores the whole panel; `begin` starts without one.
+     */
+    void clip(int x, int y, int w, int h);
+    void reset_clip();
+
+    /**
      * Draws pixel-font text with its cell top at `top`. ASCII letters are drawn in uppercase;
      * characters without a glyph are skipped. @return advance width in pixels.
      */
@@ -58,6 +65,7 @@ class Canvas {
     uint8_t bits_[kBytes]{};
     uint8_t rotation_ = 0;
     int width_ = kNativeWidth, height_ = kNativeHeight;
+    int clip_x_ = 0, clip_y_ = 0, clip_w_ = kNativeWidth, clip_h_ = kNativeHeight;
     void segment(int left, int top, int w, int h, int t, int index, Ink ink);
 };
 } // namespace usage_panel::rlcd

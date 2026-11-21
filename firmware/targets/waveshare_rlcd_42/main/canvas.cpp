@@ -121,11 +121,27 @@ void Canvas::begin(uint8_t rotation, bool black_background) {
     const bool portrait = rotation == static_cast<uint8_t>(Rotation::Portrait);
     width_ = portrait ? kNativeHeight : kNativeWidth;
     height_ = portrait ? kNativeWidth : kNativeHeight;
+    reset_clip();
     memset(bits_, black_background ? 0xff : 0x00, sizeof(bits_));
 }
 
+void Canvas::clip(int x, int y, int w, int h) {
+    // Empty or off-panel rectangles collapse to a window nothing lands in.
+    clip_x_ = std::max(0, x);
+    clip_y_ = std::max(0, y);
+    clip_w_ = std::max(0, std::min(w, width_ - clip_x_));
+    clip_h_ = std::max(0, std::min(h, height_ - clip_y_));
+}
+
+void Canvas::reset_clip() {
+    clip_x_ = 0;
+    clip_y_ = 0;
+    clip_w_ = width_;
+    clip_h_ = height_;
+}
+
 void Canvas::pixel(int x, int y, Ink ink) {
-    if (x < 0 || y < 0 || x >= width_ || y >= height_)
+    if (x < clip_x_ || y < clip_y_ || x >= clip_x_ + clip_w_ || y >= clip_y_ + clip_h_)
         return;
     const bool black = ink == Ink::Black;
     int nx = x, ny = y;

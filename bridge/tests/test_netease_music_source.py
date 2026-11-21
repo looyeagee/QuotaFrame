@@ -141,6 +141,11 @@ class DisplayTextTest(unittest.TestCase):
             "\u4ed6\u8bf4:\u597d,\u8d70\u5427(\u505c)?",
         )
 
+    def test_zero_width_marks_are_dropped(self) -> None:
+        # They would reach the panel as a box where nothing should be drawn.
+        self.assertEqual(display_text("\u4f60\u200b\u597d"), "\u4f60\u597d")
+        self.assertEqual(display_text("a\ufeffb"), "ab")
+
     def test_ideographs_and_ideographic_punctuation_are_untouched(self) -> None:
         text = "\u4e00\u4e2a\u4eba\u3002\u3001"
         self.assertEqual(display_text(text), text)
@@ -157,6 +162,15 @@ class WindowTest(unittest.TestCase):
     def test_window_stops_at_the_song_end(self) -> None:
         window = select_window(self.LINES, 50, before=1, after=3)
         self.assertEqual([line.text for line in window], ["line 4", "line 5"])
+
+    def test_default_window_fills_the_panel_rows_after_the_sung_line(self) -> None:
+        # The music page draws five rows from the sung line onward, so the default window
+        # has to carry four lines after it rather than stopping at three.
+        lines = tuple(LyricLine(index * 10, f"line {index}") for index in range(12))
+        window = select_window(lines, 32)
+        current = current_index(window, 32)
+        self.assertEqual(len(window) - current, 5)
+        self.assertEqual(window[current].text, "line 3")
 
     def test_position_before_the_first_line_keeps_the_start(self) -> None:
         self.assertEqual(current_index(self.LINES, 0), 0)

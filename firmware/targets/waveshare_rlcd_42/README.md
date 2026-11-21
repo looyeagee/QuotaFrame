@@ -94,17 +94,33 @@ clockwise) or FLIP. Portrait provides Home, Clock and Settings; the other pages 
 landscape only.
 
 The music page only fills while a Bridge publishes `nowplaying.v1`: the Bridge reads the song
-from the NetEase Cloud Music client on the computer and sends the line being sung with the
-next four, so the panel shows lyrics without holding a whole song. A device that never received
-a song shows WAITING FOR DATA (linked) or NO MUSIC (offline); a song with no lyrics keeps the
-title, the artist and the playhead and shows NO LYRICS below the rule.
+from the NetEase Cloud Music client on the computer and sends a window of lyric lines with the
+one being sung at its head, so the panel shows lyrics without holding a whole song. The page
+draws five lyric rows under the playhead, and the Bridge sends four lines after the sung one,
+which fills them all. A line may carry up to 192 bytes, so a Chinese lyric of sixty-four
+characters arrives whole; the row shows about fifteen of them and scrolls the rest. A device that never received a song shows WAITING FOR DATA (linked) or
+NO MUSIC (offline); a song with no lyrics keeps the title, the artist and the playhead and
+shows NO LYRICS below the rule.
 
 The Clock page shows the same song in a summary block: the balance shares the DeepSeek caption
 row so the space below it carries the title and artist on one row, then the line being sung
 inverted above the line after it. Two lyric rows at the music scale are all the block holds, so
-a lyric line is fitted to nine glyphs in landscape and eleven in portrait; PAUSED marks a
-stopped player in the label scale, which keeps six of those glyphs for the song. The block falls
-back to NO MUSIC, WAITING FOR DATA or NO LYRICS on the same rows.
+a lyric line has nine glyphs in landscape and eleven in portrait; PAUSED marks a stopped player
+in the label scale, which keeps six of those glyphs for the song. The block falls back to
+NO MUSIC, WAITING FOR DATA or NO LYRICS on the same rows.
+
+Only the line being sung scrolls; the lines below it stay put and keep the trailing ellipsis of
+a line that does not fit, because they are context rather than the words being sung. A sung line
+that does not fit holds still for a second, then moves right to left one text column every 0.4 s
+until its whole tail fits, and stays there until the next line replaces it. The pace comes from
+the length of the line and nothing else, so an instrumental interlude after the line leaves it
+resting at its end instead of crawling across the gap, and a song whose lyric timing is wrong
+still reads correctly. The scroll stops on a character boundary with the last character whole
+and flush against the end of the row, so neither edge of a moving line ever shows half a glyph.
+A paused player holds the line at its first word instead of scrolling away.
+
+The window the Bridge sends is rebuilt around the sung line every time it changes, so the page
+always has one line of context above the highlight and four below it.
 
 ## Controls
 

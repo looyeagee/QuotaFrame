@@ -110,8 +110,7 @@ extern "C" void app_main() {
         // The now-playing publication is a snapshot: the newest one replaces the last.
         NowPlayingUpdate music;
         if (ble.take_now_playing(music)) {
-            view.music = music;
-            view.music_valid = true;
+            apply_now_playing(view, music, view.now_ms);
             redraw = true;
         }
 

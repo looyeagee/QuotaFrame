@@ -79,6 +79,50 @@ int CjkText::width(const char *text, int scale) {
     return total;
 }
 
+int CjkText::boundary_at_or_before(const char *text, int limit, int scale) {
+    int pen = 0;
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p;) {
+        const uint32_t codepoint = next_codepoint(p);
+        const int advance = codepoint >= 0x20 ? advance_of(codepoint, scale) : 0;
+        if (pen + advance > limit)
+            break;
+        pen += advance;
+    }
+    return pen;
+}
+
+int CjkText::window_width(const char *text, int start, int room, int scale) {
+    int pen = 0, visible = 0;
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p;) {
+        const uint32_t codepoint = next_codepoint(p);
+        const int advance = codepoint >= 0x20 ? advance_of(codepoint, scale) : 0;
+        if (pen >= start) {
+            if (visible + advance > room)
+                break;
+            visible += advance;
+        }
+        pen += advance;
+    }
+    return visible;
+}
+
+int CjkText::tail_start(const char *text, int room, int scale) {
+    const int total = width(text, scale);
+    if (total <= room)
+        return 0;
+    // Walk the boundaries in order and stop at the first one whose tail fits: every later
+    // boundary shows less of the line than it could.
+    int pen = 0;
+    for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p;) {
+        const uint32_t codepoint = next_codepoint(p);
+        const int advance = codepoint >= 0x20 ? advance_of(codepoint, scale) : 0;
+        if (total - pen <= room)
+            return pen;
+        pen += advance;
+    }
+    return pen;
+}
+
 void CjkText::fit(char *out, size_t out_size, const char *text, int max_width, int scale) {
     if (!out || out_size == 0)
         return;

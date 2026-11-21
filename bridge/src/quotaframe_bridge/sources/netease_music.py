@@ -60,7 +60,10 @@ REQUEST_TIMEOUT_SECONDS = 10.0
 MAX_RESPONSE_BYTES = 256 * 1024
 # Lines kept before and after the current one so the panel can show context.
 WINDOW_BEFORE = 1
-WINDOW_AFTER = 3
+# The panel's music page draws five lyric rows from the line being sung onward,
+# so the window has to carry four lines after it; the lead-in keeps a consumer
+# that shows context above the highlight working.
+WINDOW_AFTER = 4
 # A track that ended long ago is history, not a song in progress.
 ENDED_GRACE_SECONDS = 5
 CACHE_DIR_RELATIVE = Path("Library/Caches/quotaframe/lyrics")
@@ -111,6 +114,11 @@ class NeteaseMusicError(RuntimeError):
     """The local database or the lyric endpoint did not answer as expected."""
 
 
+# Zero-width marks survive compatibility normalisation and would reach the panel
+# as a box where nothing should be drawn.
+_ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u200e\u200f\ufeff\u00ad"), None)
+
+
 def display_text(text: str) -> str:
     """Fold `text` onto the characters the panel can draw.
 
@@ -123,7 +131,7 @@ def display_text(text: str) -> str:
     before any byte limit, so a line is measured in the bytes that will arrive.
     """
 
-    return unicodedata.normalize("NFKC", text)
+    return unicodedata.normalize("NFKC", text).translate(_ZERO_WIDTH)
 
 
 @dataclass(frozen=True, slots=True)

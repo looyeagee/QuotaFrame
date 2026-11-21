@@ -61,6 +61,27 @@ Provider provider_for(int slot);
 /** Whether a slot has received data, so a page or row can show values instead of a message. */
 bool service_visible(const View &v, int slot);
 
+/**
+ * Applies a now-playing publication and restarts the lyric scroll when the line being sung
+ * changes. The scroll anchor is the moment the panel began showing that line, so a line that
+ * has to move starts at its beginning instead of wherever an earlier line left off.
+ */
+void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms);
+
+/**
+ * Right-to-left offset for `travel` pixels of overflow, `age_ms` after the line appeared.
+ *
+ * The pace comes from the line itself, not from the song: it holds for a moment, then moves
+ * one column of text every 0.4 s, so a line three times as long takes three times as long to
+ * reveal. Nothing here knows when the line stops being sung, which is why an interlude after
+ * the line leaves it resting at its end instead of crawling across the gap. Offsets are whole
+ * columns, so a moving line never shows half a glyph, and no overflow returns zero.
+ */
+int lyric_scroll_offset(int travel, uint64_t age_ms);
+
+/** Text column the lyric scroll steps by: the ASCII cell of the lyric font at its scale. */
+constexpr int kLyricScrollColumn = 12;
+
 /** Header ring index of a page, or -1 when the page is outside the ring. */
 int ring_index(Page page);
 

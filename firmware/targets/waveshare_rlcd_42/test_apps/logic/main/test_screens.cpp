@@ -1,4 +1,6 @@
 #include "canvas.hpp"
+#include "cjk_font.hpp"
+#include "panel_logic.hpp"
 #include "screens.hpp"
 #include "unity.h"
 #include <cstdio>
@@ -324,4 +326,98 @@ TEST_CASE("an unknown provider is rejected by the model", "[render]")
     // A balance without a currency describes nothing.
     View v;
     TEST_ASSERT_FALSE(v.model.apply(u, 0));
+}
+
+namespace {
+/** Bounding box of the pixels that differ between the panel and `reference`. */
+void changed_box(const uint8_t *reference, int &left, int &top, int &right, int &bottom) {
+    left = top = 1 << 30;
+    right = bottom = -1;
+    for (int y = 0; y < Canvas::kNativeHeight; ++y) {
+        for (int x = 0; x < Canvas::kNativeWidth; ++x) {
+            const int n = y * Canvas::kNativeWidth + x;
+            const bool before = reference[n >> 3] & (0x80 >> (n & 7));
+            if (before == black(x, y))
+                continue;
+            if (x < left) left = x;
+            if (y < top) top = y;
+            if (x > right) right = x;
+            if (y > bottom) bottom = y;
+        }
+    }
+}
+
+/** One lyric window: a short sung line and a wider line under it. */
+View lyric_view(const char *sung, const char *next) {
+    View v;
+    v.link = {true, true, false, 0};
+    v.page = Page::Music;
+    v.music_valid = true;
+    snprintf(v.music.title, sizeof(v.music.title), "Song");
+    snprintf(v.music.artist, sizeof(v.music.artist), "Artist");
+    v.music.position_seconds = 54;
+    v.music.duration_seconds = 275;
+    v.music.playing = true;
+    v.music.line_count = 2;
+    snprintf(v.music.lines[0], sizeof(v.music.lines[0]), "%s", sung);
+    snprintf(v.music.lines[1], sizeof(v.music.lines[1]), "%s", next);
+    return v;
+}
+
+void render_at(Screens &screens, const View &base, uint64_t age_ms) {
+    View v = base;
+    v.music_line_ms = 0;
+    v.now_ms = age_ms;
+    screens.render(v);
+}
+} // namespace
+
+TEST_CASE("a lyric line that fits holds still between frames", "[render][lyrics]")
+{
+    Screens screens(canvas);
+    const View v = lyric_view("说你也爱我", "I love you");
+    render_at(screens, v, 0);
+    static uint8_t reference[Canvas::kBytes];
+    memcpy(reference, canvas.data(), sizeof(reference));
+    render_at(screens, v, 30000);
+    int left, top, right, bottom;
+    changed_box(reference, left, top, right, bottom);
+    TEST_ASSERT_EQUAL_INT(-1, right);
+}
+
+TEST_CASE("a pure hanzi line stops with its last character whole", "[render][lyrics]")
+{
+    // 24 hanzi are 576 px in a 364 px row and every boundary is 24 px apart, so the plain end
+    // of the travel falls inside a glyph: the tail has to be aligned to a boundary instead.
+    const char *line = "好到两个人都觉得知音难找恨不得把旁人都删掉了吗真的";
+    const int room = 364;
+    const int start = CjkText::tail_start(line, room, 2);
+    const int total = CjkText::width(line, 2);
+    TEST_ASSERT_TRUE(total > room);
+    TEST_ASSERT_EQUAL_INT(0, start % 24);
+    TEST_ASSERT_TRUE(total - start <= room);
+    // The scroll reaches that boundary and stays there.
+    TEST_ASSERT_TRUE(lyric_scroll_offset(start, 60000) >= start);
+}
+
+TEST_CASE("only the sung line scrolls inside its own row", "[render][lyrics]")
+{
+    Screens screens(canvas);
+    // The next line is far wider than its row too, but it is context: it keeps the ellipsis.
+    const View v = lyric_view(
+        "This is a very long English lyric that will not fit", "这一行也很长很长很长很长很长很长很长很长很长很长");
+    render_at(screens, v, 0);
+    static uint8_t start[Canvas::kBytes];
+    memcpy(start, canvas.data(), sizeof(start));
+    render_at(screens, v, 4300);
+    int left, top, right, bottom;
+    changed_box(start, left, top, right, bottom);
+
+    // Every changed pixel stays inside the sung row's band and inside its text margin.
+    TEST_ASSERT_TRUE(right > left);
+    TEST_ASSERT_TRUE(left >= 14);
+    TEST_ASSERT_TRUE(top >= 140);
+    TEST_ASSERT_TRUE(bottom <= 163);
+    // The clip ends on a text column, so the right edge never cuts a glyph in half.
+    TEST_ASSERT_TRUE(right <= 373);
 }

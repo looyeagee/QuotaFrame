@@ -658,14 +658,36 @@ void Screens::clock(const View &v) {
     }
 }
 
+void Screens::lyric_row(const View &v, int x, int top, int width, const char *line, Ink ink) {
+    // The line stops where its whole tail fits, so its last character is always shown in full,
+    // and both edges of the clip fall between glyphs rather than through one.
+    const int end = CjkText::tail_start(line, width, kMusicScale);
+    const uint64_t age = v.now_ms > v.music_line_ms ? v.now_ms - v.music_line_ms : 0;
+    // A paused player keeps the line at its first word instead of scrolling away from it.
+    const int offset = v.music.playing ? lyric_scroll_offset(end, age) : 0;
+    const int start = CjkText::boundary_at_or_before(line, std::min(offset, end), kMusicScale);
+    const int visible = CjkText::window_width(line, start, width, kMusicScale);
+    c_.clip(x, top, visible, kMusicLineHeight);
+    CjkText::draw(c_, x - start, top, line, kMusicScale, ink);
+    c_.reset_clip();
+}
+
+void Screens::context_row(int x, int top, int width, const char *line, Ink ink) {
+    // Room for the longest line a row can hold plus its ellipsis, so a fitted line is never
+    // cut by the buffer instead of by the row.
+    char fitted[kMaxLyricLineBytes + 4];
+    CjkText::fit(fitted, sizeof(fitted), line, width, kMusicScale);
+    CjkText::draw(c_, x, top, fitted, kMusicScale, ink);
+}
+
 void Screens::now_playing_summary(const View &v, int x, int top, int width, int rows) {
     if (!v.music_valid) {
         c_.text(x, top + 2, v.link.encrypted ? "WAITING FOR DATA" : "NO MUSIC", 2);
         return;
     }
     const auto &m = v.music;
-    // The longest head joins a 47-byte title and a 47-byte artist around the separator.
-    char head[112], fitted[112];
+    // The longest head joins a full title and a full artist around the separator.
+    char head[2 * kMaxTitleBytes + 8], fitted[2 * kMaxTitleBytes + 8];
     if (m.artist[0])
         snprintf(head, sizeof(head), "%s\u30fb%s", m.title, m.artist);
     else
@@ -686,16 +708,15 @@ void Screens::now_playing_summary(const View &v, int x, int top, int width, int 
         const int index = m.current_line + row;
         if (index >= m.line_count)
             break;
-        CjkText::fit(fitted, sizeof(fitted), m.lines[index], width - 2 * kMusicTextInset,
-                     kMusicScale);
+        const int lyric_width = width - 2 * kMusicTextInset;
         const int row_top = top + kSummaryLyricTop + row * kSummaryLyricPitch;
         if (row == 0) {
             // The line being sung is inverted, like the lyric window on the music page.
             c_.fill(x - kMusicTextInset, row_top - 2, width + 2 * kMusicTextInset,
                     CjkText::line_height(kMusicScale) + 4);
-            CjkText::draw(c_, x, row_top, fitted, kMusicScale, Ink::White);
+            lyric_row(v, x, row_top, lyric_width, m.lines[index], Ink::White);
         } else {
-            CjkText::draw(c_, x, row_top, fitted, kMusicScale);
+            context_row(x, row_top, lyric_width, m.lines[index], Ink::Black);
         }
     }
 }
@@ -709,7 +730,7 @@ void Screens::music(const View &v) {
         return;
     }
     const auto &m = v.music;
-    char fitted[64];
+    char fitted[kMaxTitleBytes + 8];
     // The song and its artist sit above the playhead, in the line height of the lyric font.
     CjkText::fit(fitted, sizeof(fitted), m.title, content, kMusicScale);
     CjkText::draw(c_, kLeft, 46, fitted, kMusicScale);
@@ -744,15 +765,14 @@ void Screens::music(const View &v) {
         const int index = m.current_line + row;
         if (index >= m.line_count)
             break;
-        CjkText::fit(fitted, sizeof(fitted), m.lines[index], lyric_width, kMusicScale);
         const int top = kMusicLyricsTop + row * kMusicLyricPitch;
         if (row == 0) {
             // The line being sung is inverted, like the chips elsewhere on the panel.
             c_.fill(kLeft - kMusicTextInset, top - 2, content + 2 * kMusicTextInset,
                     kMusicLineHeight + 4);
-            CjkText::draw(c_, kLeft, top, fitted, kMusicScale, Ink::White);
+            lyric_row(v, kLeft, top, lyric_width, m.lines[index], Ink::White);
         } else {
-            CjkText::draw(c_, kLeft, top, fitted, kMusicScale);
+            context_row(kLeft, top, lyric_width, m.lines[index], Ink::Black);
         }
     }
 }
