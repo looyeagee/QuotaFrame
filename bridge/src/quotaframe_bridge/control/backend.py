@@ -41,6 +41,9 @@ class PanelControl(Protocol):
     def turn_page(self, direction: int) -> dict[str, object]:
         """Ask every eligible panel to change usage page by one step."""
 
+    def set_alert(self, mode: int) -> dict[str, object]:
+        """Ask every eligible panel to persist one alert mode."""
+
     def refresh(self) -> dict[str, object]:
         """Ask the collection loop to read usage now."""
 
@@ -97,6 +100,25 @@ class ServiceControl:
             raise ValueError("page direction must be -1 or 1")
         return self._dispatch(SCREEN_PAGE_CAPABILITY, direction)
 
+    def set_alert(self, mode: int) -> dict[str, object]:
+        if type(mode) is not int or mode not in (0, 1, 2):
+            raise ValueError("alert mode must be 0, 1 or 2")
+        results = []
+        eligible = False
+        for session in self._service.sessions:
+            reason = session.alert_command_unavailable()
+            eligible = eligible or reason is None
+            results.append(
+                {
+                    "name": session.label,
+                    "accepted": reason is None,
+                    "reason": reason,
+                }
+            )
+        if eligible:
+            self._service.set_alert(mode)
+        return {"devices": results, "alert": mode}
+
     def refresh(self) -> dict[str, object]:
         self._service.request_collection()
         return {"requested": True}
@@ -150,6 +172,11 @@ class ServiceControl:
                 "page": _availability(
                     session.screen_command_unavailable(SCREEN_PAGE_CAPABILITY)
                 ),
+            },
+            "alert": {
+                # The session reports a written mode until a reconnect re-reads status.
+                "mode": session.alert_mode,
+                "set": _availability(session.alert_command_unavailable()),
             },
         }
 

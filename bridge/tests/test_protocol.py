@@ -15,6 +15,7 @@ from quotaframe_bridge.protocol.messages import (
     IncompatibleProtocolError,
     ProtocolError,
     Sequence,
+    encode_alert_set,
     encode_status_query,
     encode_usage,
     parse_ack,
@@ -205,6 +206,17 @@ class ResponseValidationTests(unittest.TestCase):
                 parse_status(message)
 
 
+class AlertCommandTests(unittest.TestCase):
+    def test_alert_encoder_carries_the_mode_as_canonical_text(self) -> None:
+        self.assertEqual(
+            encode_alert_set(47, 2),
+            b'{"cmd":"alert_set","mode":"2","seq":"47","v":"1"}\n',
+        )
+        for mode in (True, -1, 3, 2.0, "2"):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                encode_alert_set(47, mode)
+
+
 class OpenStatusTests(unittest.TestCase):
     def parse(self, **fields):
         data = {"name": '书桌 "额度" \\ 屏', "sec": True, "protocol": 1, "caps": ["usage.v1"]}
@@ -224,6 +236,13 @@ class OpenStatusTests(unittest.TestCase):
                        {"target": ""}, {"firmware_project": "Invalid"}, {"page": None}):
             with self.subTest(fields=fields), self.assertRaises(ProtocolError):
                 self.parse(**fields)
+
+    def test_alert_mode_is_optional_and_bounded(self):
+        self.assertIsNone(self.parse().alert)
+        self.assertEqual(self.parse(caps=["usage.v1", "alert.set.v1"], alert=2).alert, 2)
+        for value in (3, -1, True, "2", 2.0):
+            with self.subTest(value=value), self.assertRaises(ProtocolError):
+                self.parse(caps=["usage.v1", "alert.set.v1"], alert=value)
 
     def test_duplicate_decoded_keys_are_rejected_at_every_depth(self):
         for raw in (b'{"n":0,"n":1}\n', b'{"data":{"a":1,"\\u0061":2}}\n'):

@@ -33,6 +33,7 @@ idf_component_register(
         "test_ota_commands.cpp"
         "test_time_sync.cpp"
         "test_time_sync_ble.cpp"
+        "test_alert_set_ble.cpp"
         "test_now_playing_command.cpp"
         "test_usage_command.cpp"
         "test_usage_state.cpp"

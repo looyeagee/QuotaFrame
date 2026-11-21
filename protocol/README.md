@@ -140,6 +140,18 @@ usage 协议只允许 provider、百分比、重置时间、采样/发送时间�
 
 ACK 表示已入应用事件队列；不表示屏幕已完成刷新。未启用、OTA 占用、无效参数和队列满分别返回 `unsupported`、`ota_busy`、`invalid_request`、`queue_full`。配对或 OTA 期间应用层不执行翻页。相对翻页不是幂等操作，ACK 丢失或断线后不自动重发，也不为离线设备排队。
 
+## 告警档位（alert.set.v1）
+
+设备在 `caps` 中声明 `alert.set.v1` 后，Bridge 可设置 MiniMax 5H 达到 95% 时设备的表现：
+
+```json
+{"cmd":"alert_set","v":"1","seq":"47","mode":"2"}
+```
+
+`mode` 为十进制字符串：`"0"` 关闭告警，`"1"` 只显示全屏告警页，`"2"` 告警页加提示音。其他值返回 `invalid_request`；未声明该能力返回 `unsupported`；OTA 接收期间返回 `ota_busy`；事件队列已满返回 `queue_full`。
+
+该命令写入设备自己的 NVS，与设备本地设置页共用同一个档位，因此设备重启、断线重连和固件升级都保留，Bridge 不需要在重连后重发。设备在 status 的 `alert` 字段回报当前值；缺省表示设备不报告。命令是绝对设置而不是切换，ACK 丢失后重发同一条不会改变结果，但 Bridge 仍不在结果未知时自动重放，等待下一次状态刷新确认。
+
 ## 正在播放（nowplaying.v1）
 
 设备在 `caps` 中声明 `nowplaying.v1` 后，Bridge 可发送当前歌曲和歌词窗口：

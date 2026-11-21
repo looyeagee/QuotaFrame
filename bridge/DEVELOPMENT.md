@@ -138,10 +138,11 @@ GET  /                   页面（令牌随查询串带入）
 GET  /api/state          设备、额度、播放状态快照
 POST /api/screen/toggle  切换到时钟 / 额度
 POST /api/screen/page    {"direction": "next" | "previous"}
+POST /api/alert          {"mode": 0 | 1 | 2}，0 关闭、1 仅告警页、2 告警页加提示音
 POST /api/refresh        立即采集
 ```
 
-`backend.ServiceControl` 把服务适配成这组窄接口，命令调用的是 `toggle_screensavers()` / `turn_pages()` / `request_collection()`，也就是托盘用的同一入口。设备是否会接受命令由 `DeviceSession.screen_command_unavailable()` 判定；它和设备发送前的自检是同一个判断，因此返回 202 时会附每台设备的 `accepted` 与 `reason`，不会把被丢弃的命令报成成功。
+`backend.ServiceControl` 把服务适配成这组窄接口，命令调用的是 `toggle_screensavers()` / `turn_pages()` / `set_alert()` / `request_collection()`，也就是托盘用的同一入口。设备是否会接受命令由 `DeviceSession.screen_command_unavailable()` 与 `alert_command_unavailable()` 判定；它们和设备发送前的自检是同一个判断，因此返回 202 时会附每台设备的 `accepted` 与 `reason`，不会把被丢弃的命令报成成功。告警档位由设备写入自己的 NVS；`/api/state` 回报 `DeviceSession.alert_mode`，即本次连接内最近一次 ACK 的写入值，重连后回落到新读到的 `status.alert`，面板因此始终是权威来源。设备本地设置页改档位后，页面要等到下一次重连或再次应用才反映。
 
 `server.py` 是标准库 `asyncio` 实现的 HTTP/1.1，不引入第三方框架：请求头上限 8 KiB、请求体上限 4 KiB、空闲连接 30 秒回收。`routes.py` 与套接字层分离，可脱离网络直接测试。令牌来自 `control.token`（`paths.data_directory()`，权限 0600），由 `token.py` 首次生成；绑定环回地址时额外校验 `Host` 头以防 DNS rebinding，绑定其他地址时只依赖令牌。
 

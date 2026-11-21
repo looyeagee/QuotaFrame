@@ -158,7 +158,10 @@ The Bridge screen-toggle command switches to and from Clock; page commands step 
 ## Alerts
 
 `ALERT 95%` selects OFF, PAGE (full-screen page) or +BEEP (page plus three 2 kHz tones
-through the ES8311 codec and speaker amplifier). The tone plays once when an alert is raised.
+through the ES8311 codec and speaker amplifier). The same three values are the `alert_set`
+modes of the `alert.set.v1` capability, so the Bridge control page sets the same persisted
+field the Settings page writes; `status.alert` reports it back. The tone plays once when an
+alert is raised.
 Reconnecting restores an undismissed alert without repeating its tone. A provider's alert
 re-arms after its warning level falls below 2 (usage below 93% with hysteresis).
 The codec is configured for DAC-only slave operation at 16 kHz; its register values are derived

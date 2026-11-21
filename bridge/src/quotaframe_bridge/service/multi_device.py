@@ -17,9 +17,11 @@ from quotaframe_bridge.domain.models import (
     SourceState,
 )
 from quotaframe_bridge.protocol.messages import (
+    ALERT_SET_CAPABILITY,
     MAX_INVERSE_CLOCK_SKEW_SECONDS,
     NOW_PLAYING_CAPABILITY,
     Sequence,
+    encode_alert_set,
     encode_now_playing,
     encode_screen_toggle,
     encode_screen_page,
@@ -107,6 +109,10 @@ class DeviceSession:
         self._time_sync = TimeSyncScheduler(wall_now, monotonic)
         self._time_sync_task: asyncio.Task[None] | None = None
         self._screen_command_task: asyncio.Task[None] | None = None
+        self._alert_command_task: asyncio.Task[None] | None = None
+        # Last alert mode this session wrote or read; cleared on every reconnect
+        # so the panel's own status stays authoritative across a restart.
+        self._alert_mode: int | None = None
         self._force_time_sync = True
 
     @property
@@ -122,6 +128,21 @@ class DeviceSession:
         """True while a screen command is in flight and would swallow a new one."""
 
         return self._screen_command_task is not None and not self._screen_command_task.done()
+
+    @property
+    def alert_command_pending(self) -> bool:
+        """True while an alert mode change is in flight."""
+
+        return self._alert_command_task is not None and not self._alert_command_task.done()
+
+    @property
+    def alert_mode(self) -> int | None:
+        """Alert mode the panel holds: our last acknowledged write, else its status."""
+
+        if self._alert_mode is not None:
+            return self._alert_mode
+        status = device_status(self.transport)
+        return None if status is None else status.alert
 
     def screen_command_unavailable(self, capability: str) -> str | None:
         """Return why a screen command would be dropped, or None when it would run.
@@ -156,6 +177,47 @@ class DeviceSession:
             raise ValueError("page direction must be -1 or 1")
         self._schedule_screen_command(direction < 0)
 
+    def alert_command_unavailable(self) -> str | None:
+        """Return why an alert mode change would be dropped, or None.
+
+        The mode is a persisted write, so the panel has to report the capability
+        and hold a usable link before sending it is worth anything.
+        """
+
+        if self.alert_command_pending:
+            return "busy"
+        return self.screen_command_unavailable(ALERT_SET_CAPABILITY)
+
+    def schedule_alert_set(self, mode: int) -> None:
+        if type(mode) is not int or mode not in (0, 1, 2):
+            raise ValueError("alert mode must be 0, 1 or 2")
+        if self.alert_command_unavailable() is not None:
+            return
+        self._alert_command_task = asyncio.create_task(self._send_alert_set(mode))
+
+    async def _send_alert_set(self, mode: int) -> None:
+        # An absolute setting is idempotent, but an unknown outcome is still not
+        # replayed: the next state poll shows which mode the panel kept.
+        status = device_status(self.transport)
+        if (not self.connected or self.exclusive_active or status is None
+                or not status.secure
+                or ALERT_SET_CAPABILITY not in status.capabilities):
+            return
+        try:
+            async with self._exclusive_lock:
+                if (not self.connected or self.exclusive_active
+                        or device_status(self.transport) is not status):
+                    return
+                sequence = self._sequence.next()
+                await self.transport.send_command(
+                    encode_alert_set(sequence, mode), "alert_set", sequence)
+                # The ACK is the only fresh value until the next status query.
+                self._alert_mode = mode
+        except TransportReset:
+            LOGGER.warning("%s alert_set outcome unknown; not replayed", self.label)
+        except Exception as exc:
+            LOGGER.warning("%s alert_set failed: %s", self.label, type(exc).__name__)
+
     def _schedule_screen_command(self, previous: bool | None) -> None:
         # Relative commands cannot be replayed safely after an unknown outcome.
         capability = SCREEN_TOGGLE_CAPABILITY if previous is None else SCREEN_PAGE_CAPABILITY
@@ -189,6 +251,10 @@ class DeviceSession:
         await _cancel(self._screen_command_task)
         self._screen_command_task = None
 
+    async def _cancel_alert_command(self) -> None:
+        await _cancel(self._alert_command_task)
+        self._alert_command_task = None
+
     async def run_exclusive(
         self,
         operation: Callable[[UsageTransport], Awaitable[T]],
@@ -210,6 +276,7 @@ class DeviceSession:
             if interrupt_connect:
                 await self._cancel_time_sync()
                 await self._cancel_screen_command()
+                await self._cancel_alert_command()
                 if self._connect_task is not None:
                     self._connect_task.cancel()
             async with self._exclusive_lock:
@@ -284,6 +351,8 @@ class DeviceSession:
         self._connect_task = task
         try:
             await task
+            # A reconnect re-reads status, which becomes the alert mode again.
+            self._alert_mode = None
             return True
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():
@@ -347,6 +416,7 @@ class DeviceSession:
             self._connected = False
             await self._cancel_exclusive()
             await self._cancel_screen_command()
+            await self._cancel_alert_command()
             await self._cancel_time_sync()
             await self.transport.close()
             if self._pending is not None:
@@ -359,6 +429,7 @@ class DeviceSession:
         self._connected = False
         await self._cancel_exclusive()
         await self._cancel_screen_command()
+        await self._cancel_alert_command()
         runner = self._runner
         current = asyncio.current_task()
         if runner is not None and runner is not current and not runner.done():
@@ -481,6 +552,13 @@ class MultiDeviceBridgeService:
         """Apply one wheel step to every connected, capable device."""
         for session in self.sessions:
             session.schedule_screen_page(direction)
+
+    def set_alert(self, mode: int) -> None:
+        """Apply one alert mode to every capable panel; each panel persists it."""
+        if type(mode) is not int or mode not in (0, 1, 2):
+            raise ValueError("alert mode must be 0, 1 or 2")
+        for session in self.sessions:
+            session.schedule_alert_set(mode)
 
     def request_collection(self) -> None:
         """Ask the live loop to collect now instead of after the interval."""

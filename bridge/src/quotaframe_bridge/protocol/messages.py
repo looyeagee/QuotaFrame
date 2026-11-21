@@ -20,6 +20,13 @@ MAX_U32 = 0xFFFFFFFF
 MAX_INVERSE_CLOCK_SKEW_SECONDS = 300
 # Capability a device declares when it renders the now-playing command.
 NOW_PLAYING_CAPABILITY = "nowplaying.v1"
+# Capability a device declares when the alert mode can be set over the link.
+ALERT_SET_CAPABILITY = "alert.set.v1"
+# Alert modes share one numbering with the firmware settings page.
+ALERT_OFF = 0
+ALERT_PAGE = 1
+ALERT_BEEP = 2
+ALERT_MODES = (ALERT_OFF, ALERT_PAGE, ALERT_BEEP)
 # Display text bounds; the whole frame must stay inside the 4096 byte limit.
 MAX_TITLE_BYTES = 192
 MAX_LINES = 8
@@ -69,6 +76,8 @@ class DeviceStatus:
     ota: OtaStatus | None = None
     boot_valid: bool = False
     firmware_project: str = ""
+    # Persisted alert mode the panel reports, or None when it reports none.
+    alert: int | None = None
 
 
 class Sequence:
@@ -194,6 +203,19 @@ def encode_screen_page(seq: int, previous: bool) -> bytes:
 
     return _json_line({"cmd": "screen_page", "v": "1", "seq": _u32_text(seq, "seq"),
                        "previous": "1" if previous else "0"})
+
+
+def encode_alert_set(seq: int, mode: int) -> bytes:
+    """Set one panel's persisted alert mode (0 off, 1 page, 2 page and tone).
+
+    The device writes the value to its own storage, so the setting survives a
+    reboot and a reconnect without Bridge repeating it.
+    """
+
+    if type(mode) is not int or mode not in ALERT_MODES:
+        raise ValueError("alert mode must be 0, 1 or 2")
+    return _json_line({"cmd": "alert_set", "v": "1", "seq": _u32_text(seq, "seq"),
+                       "mode": str(mode)})
 
 
 def _truncate_utf8(text: str, limit: int) -> str:
@@ -347,6 +369,12 @@ def parse_status(message: Mapping[str, Any]) -> DeviceStatus:
     boot_valid = data.get("boot_valid", False)
     if not isinstance(boot_valid, bool):
         raise ProtocolError("device boot validation state is invalid")
+    alert = data.get("alert")
+    if "alert" in data:
+        if isinstance(alert, bool) or not isinstance(alert, int) or alert not in ALERT_MODES:
+            raise ProtocolError("device alert mode is invalid")
+    else:
+        alert = None
     try:
         ota = None if "ota" not in data else parse_ota_status(ota_value)
     except OtaMessageError as exc:
@@ -379,4 +407,5 @@ def parse_status(message: Mapping[str, Any]) -> DeviceStatus:
         target=target,
         firmware_project=firmware_project,
         ota=ota,
+        alert=alert,
     )

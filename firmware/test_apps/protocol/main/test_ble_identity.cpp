@@ -90,6 +90,29 @@ TEST_CASE("BLE status declares the now-playing capability", "[ble_identity]")
     TEST_ASSERT_NULL(strstr(status, "nowplaying.v1"));
 }
 
+TEST_CASE("BLE status reports the persisted alert mode", "[ble_identity]")
+{
+    char status[1024]{};
+    OtaSnapshot ota{};
+    TEST_ASSERT_TRUE(make_status_json(
+        "Waveshare RLCD 4.2", true, "overview", "0.5.0", "waveshare_rlcd_42",
+        ota, true, status, sizeof(status), true, true, true, false, true, 2));
+    TEST_ASSERT_NOT_NULL(strstr(status, "\"alert.set.v1\""));
+    TEST_ASSERT_NOT_NULL(strstr(status, "\"alert\":2"));
+
+    // Without the capability the setting is neither advertised nor reported.
+    TEST_ASSERT_TRUE(make_status_json(
+        "Waveshare RLCD 4.2", true, "overview", "0.5.0", "waveshare_rlcd_42",
+        ota, true, status, sizeof(status), true, true, true, false, false, 2));
+    TEST_ASSERT_NULL(strstr(status, "alert.set.v1"));
+    TEST_ASSERT_NULL(strstr(status, "\"alert\":"));
+
+    // Values outside the contract are rejected before any JSON is produced.
+    TEST_ASSERT_FALSE(make_status_json(
+        "Waveshare RLCD 4.2", true, "overview", "0.5.0", "waveshare_rlcd_42",
+        ota, true, status, sizeof(status), true, true, true, false, true, 3));
+}
+
 TEST_CASE("BLE status reports active OTA progress and error", "[ble_identity]")
 {
     char status[1024]{};

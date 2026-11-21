@@ -23,7 +23,7 @@ from quotaframe_bridge.domain.models import (
     SourceState,
     UsageWindow,
 )
-from quotaframe_bridge.protocol.messages import DeviceStatus
+from quotaframe_bridge.protocol.messages import ALERT_SET_CAPABILITY, DeviceStatus
 from quotaframe_bridge.service.multi_device import (
     SCREEN_PAGE_CAPABILITY,
     SCREEN_TOGGLE_CAPABILITY,
@@ -46,6 +46,7 @@ class ScreenTransport:
         *,
         connected: bool = True,
         secure: bool = True,
+        alert: int | None = None,
     ) -> None:
         self.connected = connected
         self.sent: list[tuple[bytes, str, int]] = []
@@ -57,6 +58,7 @@ class ScreenTransport:
             capabilities=capabilities,
             firmware_version="v1.2.1",
             target="waveshare_rlcd_42",
+            alert=alert,
         )
 
     async def send_command(self, payload: bytes, command: str, sequence: int) -> None:
@@ -77,10 +79,13 @@ class FakeSession:
         connected: bool = True,
         secure: bool = True,
         reason: str | None = None,
+        alert: int | None = None,
     ) -> None:
         self.label = label
         self.connected = connected
-        self.transport = ScreenTransport(capabilities, connected=connected, secure=secure)
+        self.transport = ScreenTransport(
+            capabilities, connected=connected, secure=secure, alert=alert
+        )
         self._reason = reason
 
     def screen_command_unavailable(self, capability: str) -> str | None:
@@ -93,6 +98,13 @@ class FakeSession:
         if capability not in self.transport.status.capabilities:
             return "missing_capability"
         return None
+
+    def alert_command_unavailable(self) -> str | None:
+        return self.screen_command_unavailable(ALERT_SET_CAPABILITY)
+
+    @property
+    def alert_mode(self) -> int | None:
+        return self.transport.status.alert
 
 
 class FakeService:
@@ -108,6 +120,7 @@ class FakeService:
             self.store.merge_collection(usage, attempted_at=1_700_000_100)
         self.toggles = 0
         self.pages: list[int] = []
+        self.alerts: list[int] = []
         self.refreshes = 0
 
     def toggle_screensavers(self) -> None:
@@ -115,6 +128,9 @@ class FakeService:
 
     def turn_pages(self, direction: int) -> None:
         self.pages.append(direction)
+
+    def set_alert(self, mode: int) -> None:
+        self.alerts.append(mode)
 
     def request_collection(self) -> None:
         self.refreshes += 1
@@ -215,6 +231,21 @@ class ServiceControlTests(unittest.TestCase):
         self.assertIsNone(state["now_playing"])
         self.assertEqual(state["devices"], [])
         self.assertEqual(state["providers"], [])
+
+    def test_state_reports_the_alert_mode_and_setting_availability(self) -> None:
+        capable = FakeSession(
+            "reporting", capabilities=frozenset({ALERT_SET_CAPABILITY}), alert=1
+        )
+        silent = FakeSession("silent")
+        control = ServiceControl(FakeService([capable, silent]), version="1.2.1")
+
+        devices = control.state()["devices"]
+
+        self.assertEqual(devices[0]["alert"]["mode"], 1)
+        self.assertTrue(devices[0]["alert"]["set"]["available"])
+        self.assertIsNone(devices[1]["alert"]["mode"])
+        self.assertFalse(devices[1]["alert"]["set"]["available"])
+        self.assertEqual(devices[1]["alert"]["set"]["reason"], "missing_capability")
 
     def test_dispatch_reports_why_a_device_is_skipped(self) -> None:
         ready = FakeSession("ready")
@@ -384,6 +415,13 @@ class RouteTests(unittest.TestCase):
         self.assertNotIn("{{", body)
         self.assertTrue(response.content_type.startswith("text/html"))
 
+    def test_rendered_script_has_no_string_literal_broken_by_a_newline(self) -> None:
+        # A template escape survives as JS source: a real newline inside quotes
+        # would reach the browser as "Invalid or unexpected token".
+        body = self.routes().handle(self.get("/")).body.decode("utf-8")
+        script = body.split("<script>", 1)[1].split("</script>", 1)[0]
+        self.assertNotIn('"\n"', script)
+
     def test_page_requires_the_token(self) -> None:
         self.assertEqual(self.routes().handle(self.get("/", token=None)).status, 401)
 
@@ -415,6 +453,33 @@ class RouteTests(unittest.TestCase):
         )
         self.assertEqual((accepted.status, previous.status), (202, 202))
         self.assertEqual(service.pages, [1, -1])
+
+    def test_alert_command_reads_mode_from_body_or_query(self) -> None:
+        service = FakeService([
+            FakeSession("ready", capabilities=frozenset({ALERT_SET_CAPABILITY}))
+        ])
+        routes = self.routes(service=service)
+        body = json.dumps({"mode": 2}).encode()
+        accepted = routes.handle(self.get("/api/alert", method="POST", body=body))
+        from_query = routes.handle(self.get("/api/alert?mode=0", method="POST"))
+        self.assertEqual((accepted.status, from_query.status), (202, 202))
+        self.assertEqual(json.loads(accepted.body)["alert"], 2)
+        self.assertEqual(service.alerts, [2, 0])
+
+    def test_alert_command_rejects_a_missing_or_invalid_mode(self) -> None:
+        routes = self.routes()
+        self.assertEqual(routes.handle(self.get("/api/alert", method="POST")).status, 400)
+        for payload in ({"mode": 3}, {"mode": -1}, {"mode": "9"}, {"mode": True},
+                        {"mode": 2.5}, {"mode": []}):
+            with self.subTest(payload=payload):
+                response = routes.handle(
+                    self.get("/api/alert", method="POST", body=json.dumps(payload).encode())
+                )
+                self.assertEqual((response.status, json.loads(response.body)),
+                                 (400, {"error": "invalid_mode"}))
+        self.assertEqual(
+            self.routes().handle(self.get("/api/alert", method="GET")).status, 405
+        )
 
     def test_page_command_rejects_a_missing_or_unknown_direction(self) -> None:
         routes = self.routes()

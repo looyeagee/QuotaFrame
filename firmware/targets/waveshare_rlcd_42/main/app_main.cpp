@@ -55,6 +55,11 @@ const char *page_name(void *) {
     }
 }
 
+uint8_t alert_mode(void *) {
+    // Read from the BLE callback; a single byte is published without tearing.
+    return view.settings.alert;
+}
+
 void apply_ota(const OtaSnapshot &s) {
     view.ota.stage = static_cast<OtaStage>(s.phase);
     view.ota.offset = s.offset;
@@ -81,7 +86,8 @@ extern "C" void app_main() {
     // No OTA power source is registered: the board senses battery voltage only and cannot tell
     // whether USB power is present, so a voltage threshold would block updates on USB power.
     BleServiceConfig config{kAdvertisingPrefix, "Waveshare RLCD 4.2", "waveshare_rlcd_42", true,
-                            &ota, page_name, nullptr, true, true, true};
+                            &ota, page_name, nullptr, true, true, true,
+                            true, alert_mode, nullptr};
     ESP_ERROR_CHECK(ble.start(events, config));
 
     uint64_t next_poll = 0, next_frame = 0, reboot_at = 0;
@@ -150,8 +156,16 @@ extern "C" void app_main() {
                                     : Navigator::next(view.page, portrait, service_visible(view, 1));
                 }
                 break;
+            case AppEventType::AlertSet:
+                // Remote and local changes write the same persisted value; a failed
+                // NVS commit leaves the old mode in force and surfaces BOOT RETRY.
+                // Pairing does not block this: the mode only affects a later alert.
+                if (!ota.busy()) {
+                    view.settings.alert = event.alert_mode;
+                    view.save_error = !board.save(view.settings);
+                }
+                break;
             }
-            redraw = true;
         }
 
         {

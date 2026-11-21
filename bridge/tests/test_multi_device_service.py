@@ -338,6 +338,77 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             sessions[0].schedule_screen_page(0)
 
+    async def test_alert_set_targets_capable_sessions_and_persists_the_mode(self):
+        transports = [RecordingTransport(capabilities=frozenset(caps)) for caps in (
+            {"alert.set.v1"}, {"alert.set.v1"}, {"screen.toggle.v1"})]
+        sessions = tuple(DeviceSession(str(i), t) for i, t in enumerate(transports))
+        for session in sessions:
+            session._connected = True
+            session.transport.connected = True
+        sessions[1]._exclusive_active = True
+        service = MultiDeviceBridgeService(RecordingSource(), sessions)
+        service.set_alert(2)
+        await asyncio.gather(*(s._alert_command_task for s in sessions if s._alert_command_task))
+        # A session that cannot take the command is not scheduled at all.
+        self.assertEqual(
+            [s._alert_command_task is None for s in sessions], [False, True, True]
+        )
+        self.assertEqual(
+            json.loads(transports[0].sent[0][0]),
+            {"cmd": "alert_set", "v": "1", "seq": "0", "mode": "2"},
+        )
+        self.assertEqual(transports[1].sent, [])
+        self.assertEqual(transports[2].sent, [])
+        for mode in (3, -1, True, 2.0):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                sessions[0].schedule_alert_set(mode)
+        sessions[0].schedule_alert_set(0)
+        await sessions[0]._alert_command_task
+        self.assertEqual(json.loads(transports[0].sent[1][0])["mode"], "0")
+
+    async def test_alert_mode_reports_the_last_acknowledged_write(self):
+        transport = RecordingTransport(capabilities=frozenset({"alert.set.v1"}))
+        transport.device_status = DeviceStatus(
+            name="Panel",
+            secure=True,
+            protocol=1,
+            page="overview",
+            capabilities=frozenset({"alert.set.v1"}),
+            alert=1,
+        )
+        session = DeviceSession("WS", transport)
+        session._connected = True
+        session.transport.connected = True
+        self.assertEqual(session.alert_mode, 1)
+        session.schedule_alert_set(0)
+        await session._alert_command_task
+        self.assertEqual(session.alert_mode, 0)
+        # A reconnect drops the cached write so the fresh status is authoritative.
+        session._alert_mode = None
+        self.assertEqual(session.alert_mode, 1)
+
+    async def test_close_cancels_an_alert_set_waiting_for_transport(self) -> None:
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        class BlockedAlertTransport(RecordingTransport):
+            async def send_command(self, payload, command, sequence) -> None:
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+        transport = BlockedAlertTransport(capabilities=frozenset({"alert.set.v1"}))
+        session = DeviceSession("WS", transport)
+        session._connected = True
+        session.transport.connected = True
+        session.schedule_alert_set(1)
+        await started.wait()
+        await session.close()
+        self.assertTrue(cancelled.is_set())
+        self.assertFalse(session.connected)
+
     async def test_close_cancels_a_screen_toggle_waiting_for_transport(self) -> None:
         started = asyncio.Event()
         cancelled = asyncio.Event()

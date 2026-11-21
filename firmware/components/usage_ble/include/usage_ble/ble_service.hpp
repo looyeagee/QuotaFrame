@@ -16,6 +16,9 @@ namespace usage_panel {
 /** Returns the current public UI location, such as overview/codex/claude. */
 using UiLocationGetter = const char* (*)(void*);
 
+/** Returns the persisted alert mode (0 off, 1 alert page, 2 page and beep). */
+using AlertModeGetter = uint8_t (*)(void*);
+
 /** Configuration copied or retained by BleService::start(). */
 struct BleServiceConfig {
     // Identity strings are copied into fixed service-owned buffers during start.
@@ -30,6 +33,11 @@ struct BleServiceConfig {
     bool enable_screen_toggle = false;
     bool enable_screen_page = false;
     bool enable_now_playing = false;
+    // Advertises alert.set.v1; the getter reports the value saved by the device so
+    // status and the remote setting cannot drift apart.
+    bool enable_alert_set = false;
+    AlertModeGetter get_alert_mode = nullptr;
+    void* alert_context = nullptr;
 };
 
 /**
@@ -49,6 +57,14 @@ esp_desktop_buddy_command_extension_result_t route_screen_toggle_command(
 
 /** Queues a single relative page change; OTA prevents navigation. */
 esp_desktop_buddy_command_extension_result_t route_screen_page_command(
+    const esp_desktop_buddy_command_view_t* request,
+    bool enabled, bool ota_busy, AppEventQueue* queue);
+
+/**
+ * Validates alert_set mode 0..2 and queues it for the application loop.
+ * OTA owns the device while receiving, so a setting change is refused then.
+ */
+esp_desktop_buddy_command_extension_result_t route_alert_set_command(
     const esp_desktop_buddy_command_view_t* request,
     bool enabled, bool ota_busy, AppEventQueue* queue);
 
@@ -105,6 +121,8 @@ private:
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t screen_page_trampoline(
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
+    static esp_desktop_buddy_command_extension_result_t alert_set_trampoline(
+        void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t time_sync_trampoline(
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t folder_push_trampoline(
@@ -113,6 +131,8 @@ private:
         void*, esp_desktop_buddy_t*);
     static void transport_trampoline(
         void*, const esp_desktop_buddy_transport_ble_event_t*);
+    /** Current persisted alert mode for status, or -1 when the device reports none. */
+    int alert_mode_value() const;
     bool reset_folder_push();
 
     AppEventQueue* queue_ = nullptr;
@@ -132,6 +152,9 @@ private:
     bool enable_screen_toggle_ = false;
     bool enable_screen_page_ = false;
     bool enable_now_playing_ = false;
+    bool enable_alert_set_ = false;
+    AlertModeGetter get_alert_mode_ = nullptr;
+    void* alert_context_ = nullptr;
     NowPlayingMailbox now_playing_{};
     OtaSession* ota_ = nullptr;
     OtaCommandRouter ota_commands_{};

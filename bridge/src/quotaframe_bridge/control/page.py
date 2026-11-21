@@ -28,6 +28,10 @@ _DYNAMIC_KEYS = (
     "control_unavailable_exclusive",
     "control_unavailable_unsecured",
     "control_unavailable_missing_capability",
+    "alert_off",
+    "alert_page",
+    "alert_beep",
+    "control_alert_unknown",
 )
 
 _TEMPLATE = """<!DOCTYPE html>
@@ -68,6 +72,10 @@ _TEMPLATE = """<!DOCTYPE html>
     background: var(--card); color: var(--ink); cursor: pointer; min-height: 44px;
   }
   button.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  select {
+    font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); min-height: 44px;
+  }
   button:disabled { opacity: .45; cursor: not-allowed; }
   button:active:not(:disabled) { transform: translateY(1px); }
   .device { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
@@ -105,6 +113,19 @@ _TEMPLATE = """<!DOCTYPE html>
       <button id="refresh">{{refresh}}</button>
     </div>
     <p class="status" id="status" role="status"></p>
+  </section>
+
+  <section class="card">
+    <h2>{{control_alert}}</h2>
+    <div class="actions">
+      <select id="alert">
+        <option value="0">{{alert_off}}</option>
+        <option value="1">{{alert_page}}</option>
+        <option value="2">{{alert_beep}}</option>
+      </select>
+      <button class="primary" id="alert-apply">{{alert_apply}}</button>
+    </div>
+    <p class="status" id="alert-status" role="status"></p>
   </section>
 
   <section class="card">
@@ -293,9 +314,41 @@ function renderNowPlaying(state) {
     (track.playing ? "" : " · " + {{control_paused}})));
 }
 
+const ALERT_LABELS = { 0: LABELS.alert_off, 1: LABELS.alert_page, 2: LABELS.alert_beep };
+const alertSelect = document.getElementById("alert");
+const alertApply = document.getElementById("alert-apply");
+const alertStatus = document.getElementById("alert-status");
+// A poll must not overwrite a choice the person has not applied yet.
+let alertDirty = false;
+alertSelect.addEventListener("change", () => { alertDirty = true; });
+
+function renderAlert(state) {
+  const devices = state.devices || [];
+  const modes = devices.map((device) => (device.alert || {}).mode);
+  const reported = modes.filter((mode) => typeof mode === "number");
+  alertApply.disabled = !devices.some((device) => (device.alert || {}).set?.available);
+  // Follow the panels when they agree; a mixed fleet keeps the manual choice.
+  if (!alertDirty && reported.length &&
+      reported.every((mode) => mode === reported[0])) {
+    alertSelect.value = String(reported[0]);
+  }
+  const parts = devices.map((device) => {
+    const alert = device.alert || {};
+    const current = typeof alert.mode === "number"
+      ? ALERT_LABELS[alert.mode] : LABELS.control_alert_unknown;
+    const blocked = alert.set && alert.set.available === false && alert.set.reason
+      ? " · " + reasonText(alert.set.reason) : "";
+    return device.name + ": " + current + blocked;
+  });
+  alertStatus.textContent = parts.join("\\n");
+  alertStatus.style.whiteSpace = "pre-line";
+  alertStatus.className = "status";
+}
+
 function render(state) {
   renderMeta(state);
   renderDevices(state);
+  renderAlert(state);
   renderUsage(state);
   renderNowPlaying(state);
 }
@@ -347,6 +400,11 @@ document.getElementById("next").addEventListener("click", (event) =>
 document.getElementById("refresh").addEventListener("click", async (event) => {
   await command(event.currentTarget, "/api/refresh");
 });
+alertApply.addEventListener("click", async (event) => {
+  const mode = Number(alertSelect.value);
+  alertDirty = false;
+  await command(event.currentTarget, "/api/alert", { mode });
+});
 
 async function loop() {
   if (!document.hidden) await poll();
@@ -382,6 +440,11 @@ def render_page(*, token: str) -> str:
 _STATIC_KEYS = (
     "control_title",
     "control_actions",
+    "control_alert",
+    "alert_off",
+    "alert_page",
+    "alert_beep",
+    "alert_apply",
     "toggle_screen",
     "previous_page",
     "next_page",

@@ -72,6 +72,7 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 | page | 可选string | 1..31 ASCII字节，`[A-Za-z0-9._-]+`，设备自定义页面状态，不是官方枚举 |
 | ota | 声明OTA时必需object | 见第8节 |
 | boot_valid | 可选boolean | OTA完成必须观察到true；缺省不能当成功 |
+| alert | 可选JSON整数 | `alert.set.v1` 设备的当前告警档位：0关闭、1仅告警页、2告警页加提示音；缺省表示设备不报告 |
 
 名称不自动trim、截断、大小写折叠或由广播名补齐；正确JSON转义，UI按纯文本显示。长度按解码后码点和UTF-8字节计，编码后的完整帧另检查4096上限。
 
@@ -83,6 +84,7 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 | time.sync.v1 | 本地日历同步 |
 | screen.toggle.v1 | 设备本地屏保切换 |
 | screen.page.v1 | 设备本地上一页/下一页，不要求提供page |
+| alert.set.v1 | 接收alert_set远程设置告警档位并持久化；可选，无此能力时档位只能设备本地修改 |
 | nowplaying.v1 | 显示正在播放的歌曲与歌词窗口；可选 |
 | ota.folder.v1 | 应用OTA；必须有firmware_project、target、fw、ota |
 
@@ -124,10 +126,18 @@ ACK表示校验并接受到可处理状态，不等待慢速屏幕刷新。重�
 | time_sync | year 2024..2099、month 1..12、合法day、weekday 0..6（周日0）且与日期一致、hour 0..23、minute/second 0..59、utc_offset_min -840..840；均为规范十进制字符串 | 同步本地日历，设备负责本地计时 |
 | screen_page | previous="1"表示上一页，previous="0"表示下一页 | 设备决定页面集合、顺序和循环边界；无变化也可接受成功 |
 | screen_toggle | 无其他参数 | 切换设备自己的屏保/主视图 |
+| alert_set | mode="0" / "1" / "2"规范十进制字符串 | 0关闭、1仅全屏告警页、2告警页加提示音；写入设备持久存储，与设备本地设置页共用同一档位 |
 
 ```json
 {"cmd":"screen_page","v":"1","seq":"45","previous":"1"}
 {"ack":"screen_page","n":45,"ok":true}
+```
+
+alert_set只在设备声明 `alert.set.v1` 时可用；无此能力返回 `unsupported`。成功ACK表示档位已通过校验并交给设备应用，设备随后写入本地存储；写入失败由设备本地提示并在下一次保存时重试，不表示屏幕已重绘或下一次告警已经出现。三个取值与设备本地设置页的选项一一对应，任一入口修改后另一入口和status都反映同一状态，设备重启、断线重连和固件升级都不重置该档位。档位只改变告警的表现，不改变95%阈值、消警和重新武装的规则。
+
+```json
+{"cmd":"alert_set","v":"1","seq":"47","mode":"2"}
+{"ack":"alert_set","n":47,"ok":true}
 ```
 
 Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不驱动能力判断。没有对应能力则不发送。按键/手势在本地处理，屏幕操作不为离线设备排队，ACK丢失后不自动重放。OTA忙时按设备处理器规则返回ota_busy，status及ota_abort仍可用。
@@ -235,4 +245,4 @@ Buddy getter 调用前的原始输入校验与固定版本包装见[接入架构
 
 nowplaying 只放行歌曲名、歌手、进度、播放状态和歌词文本：这些正是面板要显示的内容。歌曲ID、文件路径、播放列表、账号信息和客户端本地数据库的其他内容都不进入线上帧；歌词文本在Bridge侧按行截断后才会发送。
 
-验收覆盖三种关联规则、迟到/旧transport响应、严格数值、重复键、UTF-8与4096边界、无target最小设备、无page翻页、项目检查、远程unpair无副作用及OTA中断。可执行样例位于 `protocol/examples/`，解析边界测试位于 Bridge 与固件协议测试工程。
+验收覆盖三种关联规则、迟到/旧transport响应、严格数值、重复键、UTF-8与4096边界、无target最小设备、无page翻页、alert_set档位边界与持久化、项目检查、远程unpair无副作用及OTA中断。可执行样例位于 `protocol/examples/`，解析边界测试位于 Bridge 与固件协议测试工程。

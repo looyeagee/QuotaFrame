@@ -68,11 +68,11 @@ bool make_status_json(
     const char* firmware_version, const char* target,
     const OtaSnapshot& ota, bool enable_time_sync,
     char* output, size_t output_size, bool enable_screen_toggle, bool boot_valid, bool enable_screen_page,
-    bool enable_now_playing)
+    bool enable_now_playing, bool enable_alert_set, int alert_mode)
 {
     if (!usage_name_valid(status_name) || !firmware_version || strlen(firmware_version) > 31 ||
         !usage_version_valid(firmware_version[0] == 'v' ? firmware_version + 1 : firmware_version) ||
-        !target || !output || !output_size) return false;
+        !target || !output || !output_size || alert_mode > 2) return false;
     if (!token_valid(target, true) || (ui_location && *ui_location && !token_valid(ui_location, false))) return false;
     const char* phase = phase_name(ota.phase);
     const char* error = error_name(ota.error);
@@ -91,11 +91,14 @@ bool make_status_json(
         if (enable_screen_toggle) cJSON_AddItemToArray(caps, cJSON_CreateString("screen.toggle.v1"));
         if (enable_screen_page) cJSON_AddItemToArray(caps, cJSON_CreateString("screen.page.v1"));
         if (enable_now_playing) cJSON_AddItemToArray(caps, cJSON_CreateString("nowplaying.v1"));
+        if (enable_alert_set) cJSON_AddItemToArray(caps, cJSON_CreateString("alert.set.v1"));
     }
     cJSON_AddStringToObject(root, "firmware_project", "quotaframe");
     cJSON_AddStringToObject(root, "fw", firmware_version);
     cJSON_AddStringToObject(root, "target", target);
     cJSON_AddBoolToObject(root, "boot_valid", boot_valid);
+    if (enable_alert_set && alert_mode >= 0)
+        cJSON_AddNumberToObject(root, "alert", alert_mode);
     cJSON* state = cJSON_AddObjectToObject(root, "ota");
     char offset[11], size[11];
     snprintf(offset, sizeof(offset), "%u", static_cast<unsigned>(ota.offset));

@@ -30,6 +30,7 @@ PAGE_PATH = "/"
 STATE_PATH = "/api/state"
 TOGGLE_PATH = "/api/screen/toggle"
 PAGE_COMMAND_PATH = "/api/screen/page"
+ALERT_PATH = "/api/alert"
 REFRESH_PATH = "/api/refresh"
 FAVICON_PATH = "/favicon.ico"
 # The page is the only client; anything else is a typo or a probe.
@@ -38,6 +39,7 @@ ALLOWED_METHODS = {
     STATE_PATH: ("GET",),
     TOGGLE_PATH: ("POST",),
     PAGE_COMMAND_PATH: ("POST",),
+    ALERT_PATH: ("POST",),
     REFRESH_PATH: ("POST",),
     FAVICON_PATH: ("GET",),
 }
@@ -109,6 +111,8 @@ class ControlRoutes:
             return _accepted(self._control.toggle_screen())
         if path == PAGE_COMMAND_PATH:
             return self._turn_page(request)
+        if path == ALERT_PATH:
+            return self._set_alert(request)
         if path == REFRESH_PATH:
             return _accepted(self._control.refresh())
         return _error(404, "not_found")
@@ -121,6 +125,15 @@ class ControlRoutes:
         if direction is None:
             return _error(400, "direction_required")
         return _accepted(self._control.turn_page(direction))
+
+    def _set_alert(self, request: Request) -> Response:
+        try:
+            mode = _alert_mode(request)
+        except ValueError as exc:
+            return _error(400, str(exc))
+        if mode is None:
+            return _error(400, "mode_required")
+        return _accepted(self._control.set_alert(mode))
 
     def _authorized(self, request: Request) -> bool:
         supplied = request.headers.get(TOKEN_HEADER)
@@ -162,6 +175,40 @@ def _direction(request: Request) -> int | None:
     if not isinstance(raw, str) or raw not in DIRECTIONS:
         raise ValueError("invalid_direction")
     return DIRECTIONS[raw]
+
+
+# The mode numbering is shared with the firmware settings page and status.alert.
+ALERT_MODES = {"0": 0, "1": 1, "2": 2}
+
+
+def _alert_mode(request: Request) -> int | None:
+    """Read `{"mode": 0|1|2}` from the body or `?mode=` from the URL."""
+
+    raw: object = None
+    if request.body:
+        try:
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError("invalid_json") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("invalid_json")
+        raw = payload.get("mode")
+    if raw is None:
+        values = request.query().get("mode")
+        raw = values[0] if values else None
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError("invalid_mode")
+    if isinstance(raw, int):
+        text = str(raw)
+    elif isinstance(raw, str):
+        text = raw
+    else:
+        raise ValueError("invalid_mode")
+    if text not in ALERT_MODES:
+        raise ValueError("invalid_mode")
+    return ALERT_MODES[text]
 
 
 def _is_loopback(host: str) -> bool:
