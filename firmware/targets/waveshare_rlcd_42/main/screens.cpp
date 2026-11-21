@@ -43,45 +43,43 @@ void format_balance(uint32_t cents, char *out, size_t size) {
 }
 
 /**
- * Segment height that keeps `digits` glyphs inside `max_width` at the 5:9 cell
- * ratio, never taller than `max_height`.
+ * Segment height that keeps the amount of `s` and its currency inside `max_width` at the
+ * 5:9 cell ratio, never taller than `max_height`.
  */
-int balance_height(const char *digits, int max_width, int max_height) {
+int balance_height(const ProviderSnapshot &s, int max_width, int max_height) {
+    char amount[24];
+    format_balance(s.balance_cents, amount, sizeof(amount));
+    const int cur_w = Canvas::text_width(s.currency, 2);
     for (int h : {68, 60, 52, 44, 36, 32, 28}) {
         if (h > max_height)
             continue;
         const int w = h * 5 / 9;
-        if (Canvas::segments_width(digits, w, std::max(3, h / 8)) <= max_width)
+        // The currency sits 6 px after the amount, so both have to fit.
+        if (Canvas::segments_width(amount, w, std::max(3, h / 8)) + 6 + cur_w <= max_width)
             return h;
     }
-    return 32;
+    return 28;
 }
 
-/** Draws the balance amount and returns its total width, or 0 when there is nothing to draw. */
-int draw_balance(Canvas &c, int x, int bottom, const ProviderSnapshot &s, int max_width,
+/**
+ * Draws the balance amount and its currency with the figure top at `top`.
+ *
+ * @return the figure height, so a caller can align the currency or a label with it.
+ */
+int draw_balance(Canvas &c, int x, int top, const ProviderSnapshot &s, int max_width,
                  int max_height = 68) {
     char amount[24];
     format_balance(s.balance_cents, amount, sizeof(amount));
-    const int h = balance_height(amount, max_width, max_height);
+    const int h = balance_height(s, max_width, max_height);
     const int w = h * 5 / 9, t = std::max(3, h / 8);
-    const int width = c.segments(x, bottom - h, amount, w, h, t);
+    const int width = c.segments(x, top, amount, w, h, t);
     const int cur_w = Canvas::text_width(s.currency, 2);
     if (width + 6 + cur_w <= max_width)
-        c.text(x + width + 6, bottom - 14, s.currency, 2);
-    return width;
+        c.text(x + width + 6, top + h - 14, s.currency, 2);
+    return h;
 }
 
 int round_px(float v) { return static_cast<int>(std::lround(v)); }
-
-/** Short-window value shown on compact rows: the short window, else the week window. */
-int compact_percent(const View &v, int i) {
-    const auto &s = v.model.snapshot(provider_of(i));
-    if (short_present(s, v.link.encrypted))
-        return s.short_window.used_percent;
-    if (week_present(s, v.link.encrypted))
-        return s.week_window.used_percent;
-    return -1;
-}
 
 /** Balance in cents for the balance service, or -1 when it has none to show. */
 long long compact_balance(const View &v, int i) {
@@ -284,15 +282,17 @@ int Screens::big_percent(int x, int top, int percent, int h, Ink ink) {
 void Screens::balance_row(const View &v, int top) {
     const auto &s = v.model.snapshot(provider_of(0));
     const int right = c_.width() - kLeft;
-    char b[32], amount[24];
+    char b[32];
     c_.text(kLeft, top, kNames[0], 2);
     if (!balance_present(s, v.link.encrypted)) {
         c_.text(kLeft, top + 44, empty_message(v), 2);
         return;
     }
     // Keep the amount and its currency code clear of the right edge; the row has no
-    // separate caption because a long amount would collide with it.
-    draw_balance(c_, kLeft, top + 90, s, right - kLeft);
+    // separate caption because a long amount would collide with it. The figure ends at the
+    // bottom of the row, so a shorter amount starts lower.
+    const int h = balance_height(s, right - kLeft, 68);
+    draw_balance(c_, kLeft, top + 90 - h, s, right - kLeft);
     if (age_label(v, 0, b, sizeof(b)))
         c_.text(kLeft, top + 94, b, 2);
 }
@@ -384,7 +384,9 @@ void Screens::focus(const View &v, int i) {
             c_.text(kLeft, 96, empty_message(v), 2);
             return;
         }
-        draw_balance(c_, kLeft, 168, s, right - kLeft);
+        // The figure ends at the same line as the amount caption above it.
+        const int h = balance_height(s, right - kLeft, 68);
+        draw_balance(c_, kLeft, 168 - h, s, right - kLeft);
         if (age_label(v, 0, b, sizeof(b)))
             c_.text(kLeft, 186, b, 2);
         c_.text(kLeft, 212, "CREDIT LEFT ON THE ACCOUNT", 2);
@@ -476,20 +478,55 @@ void Screens::alert(const View &v) {
                   2, Ink::White);
 }
 
+void Screens::room_readings(const View &v, int x, int limit, int preferred_gap, int min_gap) {
+    char t[16], h[16];
+    if (v.environment_valid) {
+        snprintf(t, sizeof(t), "%.1f°C", static_cast<double>(v.temperature));
+        snprintf(h, sizeof(h), "%.0f%%", static_cast<double>(v.humidity));
+    } else {
+        snprintf(t, sizeof(t), "--°C");
+        snprintf(h, sizeof(h), "--%%");
+    }
+    const int tw = Canvas::text_width(t, 2), hw = Canvas::text_width(h, 2);
+    const int space = limit - x;
+    // The readings keep one gap each: after the date and between the two values. The gap
+    // shrinks to `min_gap` when the status chip leaves little room, and the humidity is
+    // dropped when even the tightest spacing does not fit before `limit`.
+    if (space < tw + hw + 2 * min_gap) {
+        if (space >= tw + min_gap)
+            c_.text(x + std::min(preferred_gap, space - tw), 14, t, 2);
+        return;
+    }
+    const int gap = std::clamp((space - tw - hw) / 2, min_gap, preferred_gap);
+    c_.text(x + gap, 14, t, 2);
+    c_.text(x + gap + tw + gap, 14, h, 2);
+}
+
 void Screens::clock(const View &v) {
     const int right = c_.width() - kLeft;
     battery(v, right - 32);
-    if (!v.link.encrypted && !v.link.has_passkey) {
-        const int tw = Canvas::text_width("OFFLINE", 2);
-        chip(right - 32 - 8 - tw - kChipPad, 14, "OFFLINE");
-    }
+    const bool offline = !v.link.encrypted && !v.link.has_passkey;
+    const int chip_w = Canvas::text_width("OFFLINE", 2);
+    // The chip's left edge on the top row. In portrait the page is too narrow for the chip
+    // beside the date and the readings, so it moves to the bottom of the page.
+    const int chip_x0 = right - 32 - 8 - chip_w - 2 * kChipPad;
+
     char b[32];
     if (v.clock.valid)
         snprintf(b, sizeof(b), "%s %02u/%02u", kDays[v.clock.weekday % 7], v.clock.month,
                  v.clock.day);
     else
         snprintf(b, sizeof(b), "NO DATE");
-    c_.text(kLeft, 14, b, 2);
+    const int date_w = c_.text(kLeft, 14, b, 2);
+    // The readings share the date row and stop before the battery or the status chip.
+    const int limit = portrait_ ? right - 40 : (offline ? chip_x0 - 8 : right - 40);
+    room_readings(v, kLeft + date_w, limit, portrait_ ? 8 : 16, 8);
+    if (offline) {
+        if (portrait_)
+            chip(right - chip_w - kChipPad, 366, "OFFLINE");
+        else
+            chip(chip_x0 + kChipPad, 14, "OFFLINE");
+    }
 
     // Landscape: 116 px digits with seconds at the right; portrait: 112 px condensed digits.
     const int h = portrait_ ? 112 : 116, w = portrait_ ? 44 : 64, t = portrait_ ? 11 : 12;
@@ -505,57 +542,59 @@ void Screens::clock(const View &v) {
         c_.segments(kLeft + width + 10, top + h - sh, b, sh * 5 / 9, sh, std::max(3, sh / 8));
     }
 
-    // The second column starts where the second usage bar starts.
-    const int column = portrait_ ? 156 : kLeft + 193;
-    const int rule = top + h + (portrait_ ? 10 : 8);
+    // The quota band: the MiniMax rows on the left, the DeepSeek balance on the right.
+    const int rule = portrait_ ? 166 : 164;
+    const int label = portrait_ ? 174 : 172;
+    const int row5h = portrait_ ? 196 : 192;
+    const int bar5h = portrait_ ? 218 : 214;
+    const int rowweek = portrait_ ? 254 : 242;
+    const int barweek = portrait_ ? 276 : 264;
+    // The MiniMax column ends at the split in landscape and spans the page in portrait.
+    // The split leaves the DeepSeek column 186 px, enough for a five-glyph amount and its
+    // currency at the full figure height.
+    const int mid = portrait_ ? right : 188;
     c_.dotted(kLeft, rule, c_.width() - 2 * kLeft);
-    c_.text(kLeft, rule + 8, "ROOM", 2);
-    c_.text(column, rule + 8, "HUMIDITY", 2);
-    const int value = rule + 28;
-    if (v.environment_valid)
-        snprintf(b, sizeof(b), "%.1f", v.temperature);
-    else
-        snprintf(b, sizeof(b), "--");
-    int x = kLeft + c_.segments(kLeft, value, b, 22, 40, 5);
-    c_.text(x + 6, value, "°C", 2);
-    if (v.environment_valid)
-        snprintf(b, sizeof(b), "%.0f", v.humidity);
-    else
-        snprintf(b, sizeof(b), "--");
-    x = column + c_.segments(column, value, b, 22, 40, 5);
-    c_.text(x + 6, value, "%", 2);
 
-    const int lower = value + (portrait_ ? 46 : 40);
-    c_.dotted(kLeft, lower, c_.width() - 2 * kLeft);
-    // Retained values stay visible offline; the OFFLINE chip marks them as the last sample.
-    const int percent = compact_percent(v, 1);
-    const int by = lower + (portrait_ ? 10 : 6);
+    const auto &s = v.model.snapshot(provider_of(1));
+    const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
+    const Paces pace = paces(v, 1, sp, wp);
+    c_.text(kLeft, label, kNames[1], 2);
+    c_.text(kLeft, row5h, "5H", 2);
+    if (sp)
+        snprintf(b, sizeof(b), "%d%%", s.short_window.used_percent);
+    else
+        snprintf(b, sizeof(b), "--");
+    c_.text_right(mid, row5h, b, 2);
+    bar(kLeft, bar5h, mid - kLeft, 18, sp ? s.short_window.used_percent : -1,
+        marker(pace.short_pace));
+    c_.text(kLeft, rowweek, "WEEK", 2);
+    if (wp)
+        snprintf(b, sizeof(b), "%d%%", s.week_window.used_percent);
+    else
+        snprintf(b, sizeof(b), "--");
+    c_.text_right(mid, rowweek, b, 2);
+    bar(kLeft, barweek, mid - kLeft, 14, wp ? s.week_window.used_percent : -1,
+        marker(pace.week_pace));
+
+    // The balance sits in the right column in landscape and below the bars in portrait,
+    // where the page is too narrow for two columns.
+    const auto &d = v.model.snapshot(provider_of(0));
     if (portrait_) {
-        // Portrait has 400 px of height: stack the MiniMax bar above the balance.
-        c_.text(kLeft, by, kNames[1], 2);
-        if (percent >= 0)
-            snprintf(b, sizeof(b), "%d%%", percent);
-        else
-            snprintf(b, sizeof(b), "--");
-        c_.text_right(right, by, b, 2);
-        bar(kLeft, by + 18, right - kLeft, 20, percent);
-        c_.text(kLeft, by + 48, kNames[0], 2);
-        draw_balance(c_, kLeft + 92, by + 52 + 44, v.model.snapshot(provider_of(0)), 180);
-        return;
+        constexpr int kBalanceMaxH = 44, kBalanceBottom = 356;
+        const int balance_x = kLeft + 104;
+        const int h = balance_height(d, right - balance_x, kBalanceMaxH);
+        // The label sits level with the middle of the balance figure beside it.
+        c_.text(kLeft, kBalanceBottom - h + (h - kLine) / 2, kNames[0], 2);
+        draw_balance(c_, balance_x, kBalanceBottom - h, d, right - balance_x, kBalanceMaxH);
+    } else {
+        // The column is wide enough for a five-glyph amount and its currency at the full
+        // figure height, and the figure hangs from a fixed top so that a shorter amount
+        // keeps its top level with the MiniMax bars.
+        constexpr int kBalanceMaxH = 52, kBalanceTop = 209;
+        const int column = mid + 12;
+        c_.text(column, label, kNames[0], 2);
+        draw_balance(c_, column, kBalanceTop, d, right - column, kBalanceMaxH);
     }
-    // Landscape splits the band: the MiniMax bar on the left, the balance on the right.
-    const int mid = 196;
-    c_.text(kLeft, by, kNames[1], 2);
-    if (percent >= 0)
-        snprintf(b, sizeof(b), "%d%%", percent);
-    else
-        snprintf(b, sizeof(b), "--");
-    c_.text_right(mid, by, b, 2);
-    bar(kLeft, by + 18, mid - kLeft, 16, percent);
-
-    // The band is only ~56 px tall, so the amount is capped to a 32 px figure below its label.
-    c_.text(mid + 16, by, kNames[0], 2);
-    draw_balance(c_, mid + 16, by + 52, v.model.snapshot(provider_of(0)), right - mid - 16, 32);
 }
 
 void Screens::settings(const View &v) {

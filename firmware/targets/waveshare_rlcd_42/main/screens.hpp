@@ -40,6 +40,14 @@ class Screens {
     void home_portrait(const View &v);
     void focus(const View &v, int provider);
     void alert(const View &v);
+    /**
+     * Draws the room readings on the date row as one group after `x`.
+     *
+     * The temperature and the humidity keep one gap each, after the date and between the
+     * two values. The gap shrinks to `min_gap` when the status chip leaves little room, and
+     * the humidity is dropped when even the tightest spacing does not fit before `limit`.
+     */
+    void room_readings(const View &v, int x, int limit, int preferred_gap, int min_gap);
     void clock(const View &v);
     void settings(const View &v);
     void pairing(const View &v);

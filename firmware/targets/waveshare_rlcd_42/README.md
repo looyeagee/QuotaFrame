@@ -33,7 +33,7 @@ so it stays ahead of the scan instead of leaving a vertical seam.
 At 120 PPI one pixel is about 0.21 mm and stays visible, so the screens follow the look of a
 printed segment LCD instead of smoothing vector type:
 
-- Figures (usage, clock, room readings, pairing code, OTA progress) are seven-segment digits.
+- Figures (usage, clock, pairing code, OTA progress) are seven-segment digits.
   As on a printed segment LCD, every digit has a fixed cell and a `1` lights the right half of
   its cell. Percentages use a fixed field of a hundreds half digit and two right-aligned cells,
   with the percent sign a third of a digit after it.
@@ -53,7 +53,7 @@ The display labels the short window `5H` for MiniMax and used-percentage meaning
 | Home | DEEPSEEK row with the account balance in 68 px segment digits and its currency; MINIMAX row with the 5H bar (used percentage, reset countdown, pace marker) and the WEEK bar |
 | Deepseek | Balance in 96 px segment digits with the currency and the sample age |
 | Minimax | One service: the 5H window in 80 px figures with its RESET countdown, then the 5H and WEEK sections each with a usage bar, elapsed-time marker and elapsed time. OVER +N% marks usage at least 5 percentage points above the elapsed fraction of the window |
-| Clock | Time with seconds, date, SHTC3 temperature and humidity, one MiniMax bar and the DeepSeek balance |
+| Clock | Time with seconds; the date, the SHTC3 temperature and the humidity share the top row; the quota band keeps the MiniMax 5H and WEEK bars with their pace markers on the left and the DeepSeek balance on the right |
 | Settings | Auto cycle, alert mode, seconds, rotation |
 | Alert | Full-screen inverted page once the MiniMax 5H window reaches 95 %; NEAR LIMIT below 100 %, EXHAUSTED at 100 % |
 
@@ -74,6 +74,12 @@ window collapses to NO DATA (offline) or WAITING FOR DATA (linked). Pace and tim
 assume fixed windows of five hours and seven days because usage.v1 carries only reset times,
 which matches the MiniMax intervals. The DeepSeek row has no window and no pace marker. They are omitted offline, for missing windows, or when
 the remaining time does not fit the assumed window.
+
+The Clock page has no header rule: the date, the temperature and the humidity share its top
+row, the temperature and the humidity in 2x text so the reading stays compact. The readings
+shrink their gaps when the OFFLINE chip takes the top-right corner, and the humidity is
+dropped when even the tightest spacing does not fit. In portrait the chip moves to the bottom
+of the page, because the narrow width leaves the top row to the date and the readings.
 
 Rotation is manual (the board has no accelerometer): LAND, PORT (landscape turned 90 degrees
 clockwise) or FLIP. Portrait provides Home, Clock and Settings; the other pages exist in

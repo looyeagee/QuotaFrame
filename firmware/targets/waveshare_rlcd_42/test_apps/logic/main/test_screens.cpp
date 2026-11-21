@@ -176,6 +176,52 @@ TEST_CASE("the home balance row draws the account credit", "[render]")
     TEST_ASSERT_TRUE(black(15, 176 + 44) || true);
 }
 
+TEST_CASE("the clock page shows the room readings and both quota windows", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Clock;
+    v.link = {true, true, false, 0};
+    v.clock = {true, 2026, 9, 24, 4, 14, 32, 7};
+    v.environment_valid = true;
+    v.temperature = 24.6f;
+    v.humidity = 48;
+    UsageUpdate u;
+    u.provider = Provider::Minimax;
+    u.state = SourceState::Ok;
+    u.sent_at = u.sampled_at = 1800000000;
+    u.short_window = {true, 42, true, 1800000000 + 8045};
+    u.week_window = {true, 18, true, 1800000000 + 281520};
+    TEST_ASSERT_TRUE(v.model.apply(u, 0));
+    // A five-glyph amount with its currency, the width the clock page has to fit.
+    UsageUpdate d;
+    d.provider = Provider::Deepseek;
+    d.state = SourceState::Ok;
+    d.sent_at = d.sampled_at = 1800000000;
+    d.has_balance = true;
+    d.balance_cents = 3945;
+    memcpy(d.currency, "CNY", 4);
+    TEST_ASSERT_TRUE(v.model.apply(d, 0));
+    screens.render(v);
+
+    // The temperature and the humidity share the date row, after the date text.
+    TEST_ASSERT_TRUE_MESSAGE(black(140, 26), "The temperature is not on the date row");
+    TEST_ASSERT_TRUE_MESSAGE(black(226, 22), "The humidity is not on the date row");
+    // The 5H and the WEEK bar sit in the left column of the quota band.
+    TEST_ASSERT_TRUE_MESSAGE(black(14, 214), "The 5H bar is missing");
+    TEST_ASSERT_TRUE_MESSAGE(black(14, 264), "The WEEK bar is missing");
+    // Each bar carries the tick at the elapsed fraction of its window: 9955 s of 5 h and
+    // 323280 s of 7 d, which land at x 109 and x 106.
+    TEST_ASSERT_TRUE_MESSAGE(black(109, 220), "The 5H pace marker is missing");
+    TEST_ASSERT_TRUE_MESSAGE(black(106, 270), "The WEEK pace marker is missing");
+    // The balance hangs from a fixed top, centred against the two MiniMax rows beside it,
+    // and it stays in the right column, clear of the MiniMax bars.
+    TEST_ASSERT_TRUE_MESSAGE(black(245, 235), "The balance is missing");
+    for (int y = 190; y < 284; ++y)
+        for (int x = 188; x < 200; ++x)
+            TEST_ASSERT_FALSE_MESSAGE(black(x, y), "The balance reaches the MiniMax column");
+}
+
 TEST_CASE("an unknown provider is rejected by the model", "[render]")
 {
     UsageUpdate u;
