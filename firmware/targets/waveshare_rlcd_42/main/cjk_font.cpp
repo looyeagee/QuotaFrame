@@ -18,8 +18,10 @@ constexpr int kAsciiRows = 7;
 /** Reads the next UTF-8 character; an invalid sequence becomes U+FFFD. */
 uint32_t next_codepoint(const unsigned char *&p) {
     const unsigned char first = *p++;
+    // The built-in font has only the uppercase letters, so a lowercase letter folds to the
+    // glyph the font does have instead of advancing by nothing.
     if (first < 0x80)
-        return first;
+        return first >= 'a' && first <= 'z' ? first - ('a' - 'A') : first;
     int extra = 0;
     uint32_t codepoint = first;
     if ((first & 0xE0) == 0xC0) {
@@ -42,7 +44,7 @@ uint32_t next_codepoint(const unsigned char *&p) {
     return codepoint;
 }
 
-/** Advance of one ASCII character, or zero when the built-in font has no glyph. */
+/** Advance of one uppercase ASCII character, or zero when the built-in font has no glyph. */
 int ascii_advance(uint32_t codepoint, int scale) {
     if ((codepoint >= 32 && codepoint < 96) || codepoint == 0xB0)
         return kAsciiCell * scale;

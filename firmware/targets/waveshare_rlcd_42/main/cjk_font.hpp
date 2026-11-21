@@ -13,7 +13,8 @@ namespace usage_panel::rlcd {
  * The panel's built-in font only has ASCII glyphs, so the music page draws
  * its titles and its lyric lines with a 12 x 12 bitmap font. Latin characters
  * keep using the built-in font and are aligned to the bottom of the line, so a
- * line that mixes scripts reads like one line.
+ * line that mixes scripts reads like one line. That font draws ASCII letters in
+ * uppercase only, so lowercase letters arrive as their uppercase glyphs.
  */
 class CjkText {
   public:
