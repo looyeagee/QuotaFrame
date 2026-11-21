@@ -60,7 +60,7 @@ The display labels the short window `5H` for MiniMax and used-percentage meaning
 | Deepseek | Balance in 96 px segment digits with the currency and the sample age |
 | Minimax | One service: the 5H window in 80 px figures with its RESET countdown, then the 5H and WEEK sections each with a usage bar, elapsed-time marker and elapsed time. OVER +N% marks usage at least 5 percentage points above the elapsed fraction of the window |
 | Music | The song and its artist in 24 px CJK text, the playhead with elapsed and total time, then the line being sung inverted above the next four lines; PAUSED marks a stopped player |
-| Clock | Time with seconds; the date, the SHTC3 temperature and the humidity share the top row; the quota band keeps the MiniMax 5H and WEEK bars with their pace markers on the left and the DeepSeek balance on the right |
+| Clock | Time with seconds; the date, the SHTC3 temperature and the humidity share the top row. Below the dotted rule the MiniMax 5H and WEEK bars keep the left column, and the right column carries the DEEPSEEK caption with its balance on the same row, then the song being played above the line being sung and the line after it |
 | Settings | Auto cycle, alert mode, seconds, rotation |
 | Alert | Full-screen inverted page once the MiniMax 5H window reaches 95 %; NEAR LIMIT below 100 %, EXHAUSTED at 100 % |
 
@@ -98,6 +98,13 @@ from the NetEase Cloud Music client on the computer and sends the line being sun
 next four, so the panel shows lyrics without holding a whole song. A device that never received
 a song shows WAITING FOR DATA (linked) or NO MUSIC (offline); a song with no lyrics keeps the
 title, the artist and the playhead and shows NO LYRICS below the rule.
+
+The Clock page shows the same song in a summary block: the balance shares the DeepSeek caption
+row so the space below it carries the title and artist on one row, then the line being sung
+inverted above the line after it. Two lyric rows at the music scale are all the block holds, so
+a lyric line is fitted to nine glyphs in landscape and eleven in portrait; PAUSED marks a
+stopped player in the label scale, which keeps six of those glyphs for the song. The block falls
+back to NO MUSIC, WAITING FOR DATA or NO LYRICS on the same rows.
 
 ## Controls
 

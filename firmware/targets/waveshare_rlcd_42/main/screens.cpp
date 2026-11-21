@@ -31,6 +31,12 @@ constexpr int kMusicRule = 128;
 constexpr int kMusicLyricsTop = 140, kMusicLyricPitch = 28, kMusicLyricRows = 5;
 // Inverted lyric rows bleed this far past the text margin, like the status chips.
 constexpr int kMusicTextInset = 4;
+// Clock page summary block: the song row below the provider caption, then a rule and the lyric
+// window at the music scale. Two lyric rows are enough here because the panel is not the
+// dedicated music page, so the block can afford the taller glyphs.
+constexpr int kSummarySongRow = 20;
+constexpr int kSummaryRule = 30, kSummaryLyricTop = 36, kSummaryLyricPitch = 32;
+constexpr int kSummaryLyricRows = 2;
 
 Provider provider_of(int i) { return provider_for(i); }
 
@@ -91,6 +97,24 @@ int draw_balance(Canvas &c, int x, int top, const ProviderSnapshot &s, int max_w
 }
 
 int round_px(float v) { return static_cast<int>(std::lround(v)); }
+
+/**
+ * Draws the balance in the pixel font at (`x`, `top`) with its currency 6 px after the amount.
+ *
+ * The amount keeps the label's line height, so the provider name and its balance read as one
+ * caption row. The currency drops to the small scale when a six-glyph amount would otherwise
+ * not fit before `max_width`; it is then bottom-aligned with the label's line box.
+ */
+void draw_inline_balance(Canvas &c, int x, int top, const ProviderSnapshot &s, int max_width) {
+    char amount[24];
+    format_balance(s.balance_cents, amount, sizeof(amount));
+    const int width = c.text(x, top, amount, 2);
+    const int currency_x = x + width + 6;
+    if (width + 6 + Canvas::text_width(s.currency, 2) <= max_width)
+        c.text(currency_x, top, s.currency, 2);
+    else
+        c.text(currency_x, top + kLine - 7, s.currency, 1);
+}
 
 /** Playhead as "1:05 / 4:35", or with an hours field for long tracks. */
 void format_playhead(uint32_t position, uint32_t duration, char *out, size_t size) {
@@ -583,14 +607,14 @@ void Screens::clock(const View &v) {
     // The quota band: the MiniMax rows on the left, the DeepSeek balance on the right.
     const int rule = portrait_ ? 166 : 164;
     const int label = portrait_ ? 174 : 172;
-    const int row5h = portrait_ ? 196 : 192;
-    const int bar5h = portrait_ ? 218 : 214;
-    const int rowweek = portrait_ ? 254 : 242;
-    const int barweek = portrait_ ? 276 : 264;
-    // The MiniMax column ends at the split in landscape and spans the page in portrait.
-    // The split leaves the DeepSeek column 186 px, enough for a five-glyph amount and its
-    // currency at the full figure height.
-    const int mid = portrait_ ? right : 188;
+    const int row5h = portrait_ ? 190 : 192;
+    const int bar5h = portrait_ ? 208 : 214;
+    const int rowweek = portrait_ ? 234 : 242;
+    const int barweek = portrait_ ? 252 : 264;
+    // The MiniMax column ends at the split in landscape and spans the page in portrait. The
+    // split leaves the right column 228 px, nine glyphs of the music scale, for the provider
+    // caption and the song block.
+    const int mid = portrait_ ? right : 152;
     c_.dotted(kLeft, rule, c_.width() - 2 * kLeft);
 
     const auto &s = v.model.snapshot(provider_of(1));
@@ -614,24 +638,65 @@ void Screens::clock(const View &v) {
     bar(kLeft, barweek, mid - kLeft, 14, wp ? s.week_window.used_percent : -1,
         marker(pace.week_pace));
 
-    // The balance sits in the right column in landscape and below the bars in portrait,
-    // where the page is too narrow for two columns.
+    // The balance shares its provider label row, so the space below the caption carries the
+    // song being played: the song row and the line being sung with the one after it.
     const auto &d = v.model.snapshot(provider_of(0));
     if (portrait_) {
-        constexpr int kBalanceMaxH = 44, kBalanceBottom = 356;
-        const int balance_x = kLeft + 104;
-        const int h = balance_height(d, right - balance_x, kBalanceMaxH);
-        // The label sits level with the middle of the balance figure beside it.
-        c_.text(kLeft, kBalanceBottom - h + (h - kLine) / 2, kNames[0], 2);
-        draw_balance(c_, balance_x, kBalanceBottom - h, d, right - balance_x, kBalanceMaxH);
+        constexpr int kBalanceRow = 272;
+        c_.text(kLeft, kBalanceRow, kNames[0], 2);
+        const int balance_x = kLeft + Canvas::text_width(kNames[0], 2) + 8;
+        draw_inline_balance(c_, balance_x, kBalanceRow, d, right - balance_x);
+        now_playing_summary(v, kLeft, kBalanceRow + kSummarySongRow, right - kLeft,
+                            kSummaryLyricRows);
     } else {
-        // The column is wide enough for a five-glyph amount and its currency at the full
-        // figure height, and the figure hangs from a fixed top so that a shorter amount
-        // keeps its top level with the MiniMax bars.
-        constexpr int kBalanceMaxH = 52, kBalanceTop = 209;
-        const int column = mid + 12;
+        // The caption row holds the provider name and its balance at the label line height.
+        const int column = mid + 10;
         c_.text(column, label, kNames[0], 2);
-        draw_balance(c_, column, kBalanceTop, d, right - column, kBalanceMaxH);
+        const int balance_x = column + Canvas::text_width(kNames[0], 2) + 8;
+        draw_inline_balance(c_, balance_x, label, d, right - balance_x);
+        now_playing_summary(v, column, label + kSummarySongRow, right - column, kSummaryLyricRows);
+    }
+}
+
+void Screens::now_playing_summary(const View &v, int x, int top, int width, int rows) {
+    if (!v.music_valid) {
+        c_.text(x, top + 2, v.link.encrypted ? "WAITING FOR DATA" : "NO MUSIC", 2);
+        return;
+    }
+    const auto &m = v.music;
+    // The longest head joins a 47-byte title and a 47-byte artist around the separator.
+    char head[112], fitted[112];
+    if (m.artist[0])
+        snprintf(head, sizeof(head), "%s\u30fb%s", m.title, m.artist);
+    else
+        snprintf(head, sizeof(head), "%s", m.title);
+    // The paused marker ends the row at the label scale, which leaves the song six glyphs
+    // beside it instead of five.
+    const int paused_width = m.playing ? 0 : Canvas::text_width("PAUSED", 1) + 8;
+    CjkText::fit(fitted, sizeof(fitted), head, width - paused_width, kMusicScale);
+    CjkText::draw(c_, x, top, fitted, kMusicScale);
+    if (!m.playing)
+        c_.text_right(x + width, top + CjkText::line_height(kMusicScale) - 7, "PAUSED", 1);
+    c_.fill(x, top + kSummaryRule, width, 2);
+    if (m.line_count == 0) {
+        c_.text(x, top + kSummaryLyricTop, "NO LYRICS", 2);
+        return;
+    }
+    for (int row = 0; row < rows; ++row) {
+        const int index = m.current_line + row;
+        if (index >= m.line_count)
+            break;
+        CjkText::fit(fitted, sizeof(fitted), m.lines[index], width - 2 * kMusicTextInset,
+                     kMusicScale);
+        const int row_top = top + kSummaryLyricTop + row * kSummaryLyricPitch;
+        if (row == 0) {
+            // The line being sung is inverted, like the lyric window on the music page.
+            c_.fill(x - kMusicTextInset, row_top - 2, width + 2 * kMusicTextInset,
+                    CjkText::line_height(kMusicScale) + 4);
+            CjkText::draw(c_, x, row_top, fitted, kMusicScale, Ink::White);
+        } else {
+            CjkText::draw(c_, x, row_top, fitted, kMusicScale);
+        }
     }
 }
 

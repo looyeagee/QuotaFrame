@@ -53,6 +53,13 @@ class Screens {
      */
     void room_readings(const View &v, int x, int limit, int preferred_gap, int min_gap);
     void clock(const View &v);
+    /**
+     * Draws the song being played, the lyric line being sung, and up to `rows` lines from it.
+     *
+     * The song and its artist share one row at `top` so the lyric rows below fit a narrow
+     * column. The line being sung is inverted, like the lyric window on the music page.
+     */
+    void now_playing_summary(const View &v, int x, int top, int width, int rows);
     /** Music page: the song, its artist, the playhead and the lyric window. */
     void music(const View &v);
     void settings(const View &v);

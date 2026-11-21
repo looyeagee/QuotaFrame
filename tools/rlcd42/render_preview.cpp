@@ -42,6 +42,21 @@ void apply_deepseek(View &v, uint32_t balance_cents, const char *currency, uint3
     v.model.apply(u, 0);
 }
 
+/** Merges one now-playing publication: the song, its playhead and the lyric window. */
+void apply_now_playing(View &v, const char *title, const char *artist, uint32_t position,
+                       uint32_t duration, const char *const *lines, int line_count) {
+    v.music_valid = true;
+    snprintf(v.music.title, sizeof(v.music.title), "%s", title);
+    snprintf(v.music.artist, sizeof(v.music.artist), "%s", artist);
+    v.music.position_seconds = position;
+    v.music.duration_seconds = duration;
+    v.music.playing = true;
+    v.music.current_line = 0;
+    v.music.line_count = static_cast<uint8_t>(line_count);
+    for (int i = 0; i < line_count && i < kMaxLyricLines; ++i)
+        snprintf(v.music.lines[i], sizeof(v.music.lines[i]), "%s", lines[i]);
+}
+
 View design_view() {
     View v;
     v.link = {true, true, false, 0};
@@ -54,6 +69,11 @@ View design_view() {
     // The values a live panel shows: a five-glyph balance and two quota windows.
     apply_deepseek(v, 3945, "CNY", 0);
     apply_minimax(v, 69, 13140, 57, 145152, 120);
+    // A song on every page that shows one: the clock page prints the same block in its right
+    // column, so the two pages stay consistent in the previews.
+    static const char *const kLyrics[] = {"被当作乱放电的诱惑", "我双鱼 为什么天蝎要恨我",
+                                          "难道都是我的错", "我该生气还难过"};
+    apply_now_playing(v, "证据", "杨乃文", 54, 275, kLyrics, 4);
     v.warning = {0, 1};
     return v;
 }
@@ -220,5 +240,11 @@ int main(int argc, char **argv) {
     render(song, "31_music_paused");
     song.music.line_count = 0;
     render(song, "32_music_no_lyrics");
+
+    // The clock page with nothing playing: the right column falls back to a message.
+    View idle = design_view();
+    idle.page = Page::Clock;
+    idle.music_valid = false;
+    render(idle, "33_clock_no_music");
     return 0;
 }
