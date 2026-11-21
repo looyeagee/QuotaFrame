@@ -37,6 +37,31 @@ class UsageWindow:
 
 
 @dataclass(frozen=True, slots=True)
+class NowPlayingPublication:
+    """Sanitized now-playing state for a panel's music page.
+
+    The panel shows the song title, its artists, the playhead and a window of
+    lyric lines around the one being sung. Only display text is carried; the
+    catalog identifier of the track stays on the computer.
+    """
+
+    title: str
+    artist: str
+    album: str
+    position_seconds: int
+    duration_seconds: int
+    playing: bool
+    lines: tuple[str, ...] = ()
+    current_line: int = 0
+
+    def __post_init__(self) -> None:
+        if self.position_seconds < 0 or self.duration_seconds < 0:
+            raise ValueError("now-playing times must not be negative")
+        if self.lines and not 0 <= self.current_line < len(self.lines):
+            raise ValueError("current_line must address one of the lines")
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderUsage:
     """Sanitized provider state; deliberately contains no identity metadata.
 

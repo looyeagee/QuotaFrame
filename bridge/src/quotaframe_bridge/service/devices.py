@@ -25,7 +25,7 @@ from quotaframe_bridge.service.ownership import (
     display_name,
     normalize_address,
 )
-from quotaframe_bridge.sources.base import UsageSource
+from quotaframe_bridge.sources.base import NowPlayingSource, UsageSource
 from quotaframe_bridge.transports.bleak_nus import BleakNusTransport
 
 LOGGER = logging.getLogger(__name__)
@@ -211,12 +211,15 @@ def build_tray_graph(
     usage_source_factory: Callable[[], UsageSource],
     pairer_factory: Callable[[], PairerT],
     store: OwnershipStore | None = None,
+    music_source: NowPlayingSource | None = None,
 ) -> TrayServiceGraph[PairerT]:
     """Build the shared BLE session graph from platform-specific factories."""
 
     ownership = OwnershipStore() if store is None else store
     graph = TrayServiceGraph(
-        service=MultiDeviceBridgeService(usage_source_factory(), ()),
+        service=MultiDeviceBridgeService(
+            usage_source_factory(), (), music_source=music_source
+        ),
         store=ownership,
         pairer_factory=pairer_factory,
     )

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from quotaframe_bridge.config import read_deepseek_settings, read_minimax_settings
-from quotaframe_bridge.sources.base import UsageSource
+from quotaframe_bridge.sources.base import NowPlayingSource, UsageSource
 from quotaframe_bridge.sources.combined import CombinedUsageSource
 
 
@@ -57,3 +57,17 @@ def create_usage_source(
     if len(sources) == 1:
         return sources[0]
     return CombinedUsageSource(sources)
+
+
+def create_now_playing_source() -> NowPlayingSource | None:
+    """Return the music source this host can read, if any.
+
+    The NetEase Cloud Music client is a macOS application, so other hosts have
+    no now-playing source at all.
+    """
+
+    if sys.platform != "darwin":
+        return None
+    from quotaframe_bridge.sources.netease_music import LyricCache, NeteaseMusicSource
+
+    return NeteaseMusicSource(cache=LyricCache())

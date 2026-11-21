@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
-from quotaframe_bridge.domain.models import Provider, ProviderUsage
+from quotaframe_bridge.domain.models import (
+    NowPlayingPublication,
+    Provider,
+    ProviderUsage,
+)
 
 UsageUpdate = Callable[[ProviderUsage], None]
 
@@ -25,3 +29,11 @@ class ProgressiveUsageSource(UsageSource, Protocol):
         self, attempted_at: int | None, *, on_update: UsageUpdate,
     ) -> dict[Provider, ProviderUsage]:
         """Report early provider results and return the complete collection."""
+
+
+@runtime_checkable
+class NowPlayingSource(Protocol):
+    """Collects the track a music client is playing."""
+
+    async def collect(self) -> NowPlayingPublication | None:
+        """Return the current song, or None when nothing is playing."""

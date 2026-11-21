@@ -10,7 +10,7 @@ from typing import Any, Mapping
 from quotaframe_bridge.versioning import SemVer, VersionError
 
 from quotaframe_bridge.protocol.validation import validate_name, validate_identifier, validate_token
-from quotaframe_bridge.domain.models import Provider, ProviderUsage
+from quotaframe_bridge.domain.models import Provider, ProviderUsage, NowPlayingPublication
 from quotaframe_bridge.protocol.ota_messages import OtaMessageError, OtaStatus, parse_ota_status
 
 PROTOCOL_VERSION = 1
@@ -18,6 +18,12 @@ MAX_U32 = 0xFFFFFFFF
 # The firmware enforces the same bound as `kMaxInverseClockSkewSeconds`
 # in usage_core/usage_state.hpp; the two must stay equal.
 MAX_INVERSE_CLOCK_SKEW_SECONDS = 300
+# Capability a device declares when it renders the now-playing command.
+NOW_PLAYING_CAPABILITY = "nowplaying.v1"
+# Display text bounds; the whole frame must stay inside the 4096 byte limit.
+MAX_TITLE_BYTES = 192
+MAX_LINES = 8
+MAX_LINE_BYTES = 192
 
 
 
@@ -188,6 +194,53 @@ def encode_screen_page(seq: int, previous: bool) -> bytes:
 
     return _json_line({"cmd": "screen_page", "v": "1", "seq": _u32_text(seq, "seq"),
                        "previous": "1" if previous else "0"})
+
+
+def _truncate_utf8(text: str, limit: int) -> str:
+    """Cut `text` to at most `limit` bytes without splitting a character."""
+
+    encoded = text.encode("utf-8")
+    if len(encoded) <= limit:
+        return text
+    return encoded[:limit].decode("utf-8", "ignore")
+
+
+def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
+    """Encode one now-playing publication for a panel's music page.
+
+    The lyric lines travel as one string with newline separators: the command
+    view of the device reads strings, and a window of lines stays far below the
+    4096 byte frame limit that a whole song would exceed.
+    """
+
+    sequence = _u32(seq, "seq")
+    lines = publication.lines[:MAX_LINES]
+    payload: dict[str, object] = {
+        "cmd": "now_playing",
+        "v": "1",
+        "seq": _u32_text(sequence, "seq"),
+        "title": _truncate_utf8(publication.title, MAX_TITLE_BYTES),
+        "artist": _truncate_utf8(publication.artist, MAX_TITLE_BYTES),
+        "album": _truncate_utf8(publication.album, MAX_TITLE_BYTES),
+        "position": _u32_text(publication.position_seconds, "position"),
+        "duration": _u32_text(publication.duration_seconds, "duration"),
+        "state": "playing" if publication.playing else "paused",
+    }
+    if lines:
+        payload["current"] = _u32_text(publication.current_line, "current")
+        payload["lines"] = "\n".join(
+            _truncate_utf8(line, MAX_LINE_BYTES) for line in lines
+        )
+    return (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
 
 
 def encode_status_query() -> bytes:

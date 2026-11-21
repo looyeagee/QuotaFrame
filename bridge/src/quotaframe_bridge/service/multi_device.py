@@ -10,10 +10,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TypeVar
 
-from quotaframe_bridge.domain.models import Provider, ProviderUsage, SourceState
+from quotaframe_bridge.domain.models import (
+    NowPlayingPublication,
+    Provider,
+    ProviderUsage,
+    SourceState,
+)
 from quotaframe_bridge.protocol.messages import (
     MAX_INVERSE_CLOCK_SKEW_SECONDS,
+    NOW_PLAYING_CAPABILITY,
     Sequence,
+    encode_now_playing,
     encode_screen_toggle,
     encode_screen_page,
     encode_usage,
@@ -21,7 +28,11 @@ from quotaframe_bridge.protocol.messages import (
 from quotaframe_bridge.service.device_manager import ReconnectBackoff
 from quotaframe_bridge.service.state import UsageStateStore
 from quotaframe_bridge.service.time_sync import TimeSyncScheduler
-from quotaframe_bridge.sources.base import ProgressiveUsageSource, UsageSource
+from quotaframe_bridge.sources.base import (
+    NowPlayingSource,
+    ProgressiveUsageSource,
+    UsageSource,
+)
 from quotaframe_bridge.transports.base import (
     TransportCleanupError,
     TransportReset,
@@ -186,6 +197,41 @@ class DeviceSession:
         self._offered_revision += 1
         self._wake.set()
         return self._offered_revision
+
+    async def publish_now_playing(self, publication: NowPlayingPublication) -> bool:
+        """Send one now-playing publication to a device that renders it.
+
+        Devices without the capability are left alone, and a link that drops
+        while the command is in flight is reported as a failed publication
+        instead of ending the session.
+        """
+
+        status = device_status(self.transport)
+        if (
+            not self.connected
+            or self.exclusive_active
+            or status is None
+            or not status.secure
+            or NOW_PLAYING_CAPABILITY not in status.capabilities
+        ):
+            return False
+        try:
+            async with self._exclusive_lock:
+                if not self.connected or self.exclusive_active:
+                    return False
+                sequence = self._sequence.next()
+                payload = encode_now_playing(publication, sequence)
+                await self.transport.send_command(payload, "now_playing", sequence)
+        except TransportReset:
+            LOGGER.warning("%s now_playing outcome unknown; not replayed", self.label)
+            return False
+        except Exception as exc:
+            LOGGER.warning(
+                "%s now_playing failed: %s", self.label, type(exc).__name__
+            )
+            return False
+        LOGGER.debug("%s now_playing sent: %s", self.label, publication.title)
+        return True
 
     async def wait_delivered(self, revision: int) -> None:
         """Wait until this session has delivered at least the requested revision."""
@@ -353,6 +399,8 @@ class MultiDeviceBridgeService:
         clock: Callable[[], int] = lambda: int(time.time()),
         monotonic: Callable[[], float] = time.monotonic,
         store: UsageStateStore | None = None,
+        music_source: NowPlayingSource | None = None,
+        music_interval: float = 1.0,
     ) -> None:
         # Zero sessions is a legitimate steady state, not a misconfiguration:
         # a user who has not adopted a board yet still gets usage collection
@@ -362,6 +410,8 @@ class MultiDeviceBridgeService:
             raise ValueError(
                 "interval must be non-negative and publish interval positive"
             )
+        if music_interval <= 0:
+            raise ValueError("music interval must be positive")
         self.source = source
         self.sessions = sessions
         self.interval = interval
@@ -369,6 +419,8 @@ class MultiDeviceBridgeService:
         self.clock = clock
         self.monotonic = monotonic
         self.store = UsageStateStore() if store is None else store
+        self.music_source = music_source
+        self.music_interval = music_interval
         declared = getattr(source, "providers", None)
         if declared is not None:
             self.store.restrict_to(declared)
@@ -579,6 +631,7 @@ class MultiDeviceBridgeService:
     async def _run_live(self) -> None:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(self._publish_periodically())
+            tasks.create_task(self._publish_music_periodically())
             while True:
                 self._collect_now.clear()
                 await self.collect()
@@ -592,6 +645,36 @@ class MultiDeviceBridgeService:
         while True:
             await asyncio.sleep(self.publish_interval)
             self._offer_current()
+
+    async def _publish_music_periodically(self) -> None:
+        """Push the current song to every device that renders it.
+
+        The music page follows the song, so this runs on its own short cadence
+        instead of the usage cadence: a lyric line has to arrive while it is
+        being sung. Ticks are aligned to a monotonic deadline so the collection
+        and acknowledgement cost of one tick does not lengthen the cadence.
+        """
+
+        if self.music_source is None:
+            return
+        deadline = self.monotonic()
+        while True:
+            deadline += self.music_interval
+            delay = deadline - self.monotonic()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            else:
+                # A slow lyric fetch overran the tick; resume from the current time.
+                deadline = self.monotonic()
+            try:
+                publication = await self.music_source.collect()
+            except Exception as exc:
+                LOGGER.debug("now-playing collection failed: %s", type(exc).__name__)
+                continue
+            if publication is None:
+                continue
+            for session in self.sessions:
+                await session.publish_now_playing(publication)
 
     @staticmethod
     def _snapshot(providers: Mapping[Provider, ProviderUsage]) -> UsageSnapshot:

@@ -45,7 +45,7 @@ from quotaframe_bridge.service.update import (
     UpdateState,
 )
 from quotaframe_bridge.sources.product_release import ProductReleaseSource
-from quotaframe_bridge.sources.selection import create_usage_source
+from quotaframe_bridge.sources.selection import create_now_playing_source, create_usage_source
 from quotaframe_bridge.ui import (
     TrayServiceGraph,
     build_tray_graph,
@@ -286,6 +286,7 @@ class MenuBarApplication(FirmwareUpdateActions):
             # DarwinPairer delegates pairing dialogs to macOS and therefore
             # does not require a cross-device ceremony lock.
             pairer_factory=DarwinPairer,
+            music_source=create_now_playing_source(),
         )
         self._graph = graph
         return graph.service
