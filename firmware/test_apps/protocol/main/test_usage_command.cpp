@@ -74,7 +74,7 @@ TEST_CASE("valid usage command routes and acknowledges sequence", "[protocol]")
     feed_line(kUsageOk, capture, reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
-    TEST_ASSERT_EQUAL(int(Provider::Codex), int(capture.update.provider));
+    TEST_ASSERT_EQUAL(int(Provider::Minimax), int(capture.update.provider));
     TEST_ASSERT_EQUAL_UINT8(36, capture.update.short_window.used_percent);
     TEST_ASSERT_NOT_NULL(strstr(reply, "\"ack\":\"usage\""));
     TEST_ASSERT_NOT_NULL(strstr(reply, "\"ok\":true"));

@@ -3,10 +3,13 @@
 
 using namespace usage_panel;
 
-static UsageUpdate valid_update()
+namespace {
+
+/** MiniMax publication: the five-hour and weekly windows. */
+UsageUpdate valid_update()
 {
     UsageUpdate update{};
-    update.provider = Provider::Codex;
+    update.provider = Provider::Minimax;
     update.state = SourceState::Ok;
     update.sampled_at = 1000;
     update.sent_at = 1002;
@@ -15,13 +18,15 @@ static UsageUpdate valid_update()
     return update;
 }
 
+}  // namespace
+
 TEST_CASE("offline retains the last valid values", "[usage]")
 {
     UsageModel model;
     TEST_ASSERT_TRUE(model.apply(valid_update(), 1000));
-    TEST_ASSERT_EQUAL_UINT8(36, model.snapshot(Provider::Codex).short_window.used_percent);
+    TEST_ASSERT_EQUAL_UINT8(36, model.snapshot(Provider::Minimax).short_window.used_percent);
     TEST_ASSERT_EQUAL(int(DisplayState::Offline),
-                      int(model.display_state(Provider::Codex, false)));
+                      int(model.display_state(Provider::Minimax, false)));
 }
 
 TEST_CASE("unavailable preserves the complete valid sample and normal display", "[usage]")
@@ -29,18 +34,18 @@ TEST_CASE("unavailable preserves the complete valid sample and normal display", 
     UsageModel model;
     TEST_ASSERT_TRUE(model.apply(valid_update(), 1000));
     UsageUpdate error{};
-    error.provider = Provider::Codex;
+    error.provider = Provider::Minimax;
     error.state = SourceState::Unavailable;
     error.sampled_at = 1100;
     error.sent_at = 1100;
     TEST_ASSERT_TRUE(model.apply(error, 2000));
-    TEST_ASSERT_EQUAL_UINT8(36, model.snapshot(Provider::Codex).short_window.used_percent);
-    TEST_ASSERT_EQUAL_UINT32(1000, model.snapshot(Provider::Codex).sampled_at);
-    TEST_ASSERT_TRUE(model.snapshot(Provider::Codex).latest_short_present);
-    TEST_ASSERT_TRUE(model.snapshot(Provider::Codex).latest_week_present);
-    TEST_ASSERT_EQUAL_UINT32(1105, model.estimated_epoch(Provider::Codex, 7000));
+    TEST_ASSERT_EQUAL_UINT8(36, model.snapshot(Provider::Minimax).short_window.used_percent);
+    TEST_ASSERT_EQUAL_UINT32(1000, model.snapshot(Provider::Minimax).sampled_at);
+    TEST_ASSERT_TRUE(model.snapshot(Provider::Minimax).latest_short_present);
+    TEST_ASSERT_TRUE(model.snapshot(Provider::Minimax).latest_week_present);
+    TEST_ASSERT_EQUAL_UINT32(1105, model.estimated_epoch(Provider::Minimax, 7000));
     TEST_ASSERT_EQUAL(int(DisplayState::Online),
-                      int(model.display_state(Provider::Codex, true)));
+                      int(model.display_state(Provider::Minimax, true)));
 }
 
 TEST_CASE("sample age does not invalidate connected data", "[usage]")
@@ -51,7 +56,7 @@ TEST_CASE("sample age does not invalidate connected data", "[usage]")
     update.sent_at = 1190;
     TEST_ASSERT_TRUE(model.apply(update, 5000));
     TEST_ASSERT_EQUAL(int(DisplayState::Online),
-                      int(model.display_state(Provider::Codex, true)));
+                      int(model.display_state(Provider::Minimax, true)));
 }
 
 TEST_CASE("clock skew validation does not wrap near uint32 max", "[usage]")
@@ -64,34 +69,41 @@ TEST_CASE("clock skew validation does not wrap near uint32 max", "[usage]")
     TEST_ASSERT_TRUE(model.apply(update, 5000));
 }
 
-TEST_CASE("countdown formatting covers all ranges", "[usage]")
+TEST_CASE("the balance of one provider is merged independently", "[usage]")
 {
-    char text[16]{};
-    format_countdown(false, 0, 0, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("--", text);
-    format_countdown(true, 100, 100, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("WAIT", text);
-    format_countdown(true, 42 * 60, 0, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("42m", text);
-    format_countdown(true, 18480, 0, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("5h 08m", text);
-    format_countdown(true, 284400, 0, text, sizeof(text));
-    TEST_ASSERT_EQUAL_STRING("3d 07h", text);
+    UsageModel model;
+    TEST_ASSERT_TRUE(model.apply(valid_update(), 0));
+    UsageUpdate balance{};
+    balance.provider = Provider::Deepseek;
+    balance.state = SourceState::Ok;
+    balance.sampled_at = 1010;
+    balance.sent_at = 1010;
+    balance.has_balance = true;
+    balance.balance_cents = 884;
+    balance.currency[0] = 'C';
+    balance.currency[1] = 'N';
+    balance.currency[2] = 'Y';
+    TEST_ASSERT_TRUE(model.apply(balance, 0));
+    TEST_ASSERT_EQUAL_UINT32(884, model.snapshot(Provider::Deepseek).balance_cents);
+    TEST_ASSERT_EQUAL_UINT8(36, model.snapshot(Provider::Minimax).short_window.used_percent);
+    // A balance-only service carries no quota window, so only MiniMax has one to draw.
+    TEST_ASSERT_FALSE(model.snapshot(Provider::Deepseek).short_window.present);
 }
 
 TEST_CASE("initial failure stays empty and partial failures preserve window selection", "[usage]")
 {
     UsageModel model;
-    TEST_ASSERT_EQUAL_UINT32(0, model.estimated_epoch(Provider::Codex, 5000));
-    TEST_ASSERT_EQUAL_UINT32(0, model.estimated_epoch(Provider::Claude, 5000));
+    TEST_ASSERT_EQUAL_UINT32(0, model.estimated_epoch(Provider::Minimax, 5000));
+    TEST_ASSERT_EQUAL_UINT32(0, model.estimated_epoch(Provider::Deepseek, 5000));
     UsageUpdate unavailable{};
+    unavailable.provider = Provider::Minimax;
     unavailable.sent_at = 1000;
     unavailable.sampled_at = 1000;
     TEST_ASSERT_TRUE(model.apply(unavailable, 0));
-    TEST_ASSERT_EQUAL_UINT32(1005, model.estimated_epoch(Provider::Codex, 5000));
-    TEST_ASSERT_EQUAL_UINT32(0, model.estimated_epoch(Provider::Claude, 5000));
+    TEST_ASSERT_EQUAL_UINT32(1005, model.estimated_epoch(Provider::Minimax, 5000));
+    TEST_ASSERT_EQUAL_UINT32(0, model.estimated_epoch(Provider::Deepseek, 5000));
     TEST_ASSERT_EQUAL(int(DisplayState::NoData),
-                      int(model.display_state(Provider::Codex, true)));
+                      int(model.display_state(Provider::Minimax, true)));
 
     TEST_ASSERT_TRUE(model.apply(valid_update(), 0));
     auto partial = valid_update();
@@ -99,14 +111,14 @@ TEST_CASE("initial failure stays empty and partial failures preserve window sele
     partial.short_window = {};
     TEST_ASSERT_TRUE(model.apply(partial, 0));
     TEST_ASSERT_TRUE(model.apply(unavailable, 0));
-    const auto& snapshot = model.snapshot(Provider::Codex);
+    const auto& snapshot = model.snapshot(Provider::Minimax);
     TEST_ASSERT_FALSE(snapshot.latest_short_present);
     TEST_ASSERT_TRUE(snapshot.latest_week_present);
     TEST_ASSERT_EQUAL(int(DisplayState::Partial),
-                      int(model.display_state(Provider::Codex, true)));
+                      int(model.display_state(Provider::Minimax, true)));
     TEST_ASSERT_EQUAL(int(DisplayState::Offline),
-                      int(model.display_state(Provider::Codex, false)));
+                      int(model.display_state(Provider::Minimax, false)));
     TEST_ASSERT_TRUE(model.apply(valid_update(), 86400000));
     TEST_ASSERT_EQUAL(int(DisplayState::Online),
-                      int(model.display_state(Provider::Codex, true)));
+                      int(model.display_state(Provider::Minimax, true)));
 }

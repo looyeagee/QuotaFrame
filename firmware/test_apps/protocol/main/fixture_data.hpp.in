@@ -8,3 +8,7 @@ inline constexpr char kUsageInvalidNumeric[] =
     R"fixture(@USAGE_INVALID_NUMERIC_JSON@)fixture" "\n";
 inline constexpr char kUsageInvalidOrphanReset[] =
     R"fixture(@USAGE_INVALID_ORPHAN_RESET_JSON@)fixture" "\n";
+inline constexpr char kNowPlaying[] =
+    R"fixture(@NOW_PLAYING_JSON@)fixture" "\n";
+inline constexpr char kNowPlayingInvalid[] =
+    R"fixture(@NOW_PLAYING_INVALID_JSON@)fixture" "\n";

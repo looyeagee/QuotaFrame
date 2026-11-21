@@ -71,6 +71,25 @@ TEST_CASE("Waveshare BLE identity uses the exact OTA target", "[ble_identity]")
         status, "\"caps\":[\"usage.v1\",\"ota.folder.v1\",\"time.sync.v1\",\"screen.toggle.v1\"]"));
 }
 
+TEST_CASE("BLE status declares the now-playing capability", "[ble_identity]")
+{
+    char status[1024]{};
+    OtaSnapshot ota{};
+    TEST_ASSERT_TRUE(make_status_json(
+        "Waveshare RLCD 4.2", true, "music", "0.5.0", "waveshare_rlcd_42",
+        ota, true, status, sizeof(status), true, true, true, true));
+    TEST_ASSERT_NOT_NULL(strstr(
+        status,
+        "\"caps\":[\"usage.v1\",\"ota.folder.v1\",\"time.sync.v1\","
+        "\"screen.toggle.v1\",\"screen.page.v1\",\"nowplaying.v1\"]"));
+
+    // A device that does not render the music page must not advertise it.
+    TEST_ASSERT_TRUE(make_status_json(
+        "Waveshare RLCD 4.2", true, "overview", "0.5.0", "waveshare_rlcd_42",
+        ota, true, status, sizeof(status), true, true, true, false));
+    TEST_ASSERT_NULL(strstr(status, "nowplaying.v1"));
+}
+
 TEST_CASE("BLE status reports active OTA progress and error", "[ble_identity]")
 {
     char status[1024]{};
