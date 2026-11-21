@@ -16,7 +16,10 @@ class Board {
     /** Reads the clock every call, the battery every 10 s and the environment every 60 s. */
     void poll(View &view);
     bool sync(const LocalCalendarTime &time);
-    /** Debounced KEY (GPIO18) and BOOT (GPIO0); holding KEY for 800 ms yields KeyHold. */
+    /**
+     * Debounced KEY (GPIO18) and BOOT (GPIO0). A press of the left key is Back, the right key
+     * Forward, both keys together Home, and a key held for 800 ms is Hold.
+     */
     Input key(uint64_t now_ms);
     bool save(const Settings &settings);
     Settings load();

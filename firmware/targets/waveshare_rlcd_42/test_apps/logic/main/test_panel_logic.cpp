@@ -106,15 +106,18 @@ TEST_CASE("the landscape ring and the portrait ring cycle in both directions", "
     TEST_ASSERT_EQUAL_INT(-1, ring_index(Page::Settings));
 }
 
-TEST_CASE("KEY steps to the previous page and BOOT to the next", "[nav]")
+TEST_CASE("the left key steps back, the right key forward and the chord goes home", "[nav]")
 {
     Navigator nav;
     View v = linked_view();
-    nav.input(Input::Key, v, 0);
+    nav.input(Input::Back, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(v.page));
-    nav.input(Input::Boot, v, 0);
-    nav.input(Input::Boot, v, 0);
+    nav.input(Input::Forward, v, 0);
+    nav.input(Input::Forward, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(v.page));
+    // The chord of both keys stands in for the middle button and returns to the home page.
+    nav.input(Input::Home, v, 0);
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(v.page));
 }
 
 TEST_CASE("settings open on hold, cycle values and return to the previous page", "[nav]")
@@ -122,39 +125,59 @@ TEST_CASE("settings open on hold, cycle values and return to the previous page",
     Navigator nav;
     View v = linked_view();
     v.page = Page::Minimax;
-    nav.input(Input::KeyHold, v, 0);
+    nav.input(Input::Hold, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Settings), uint8_t(v.page));
     TEST_ASSERT_EQUAL_INT(0, v.focus);
     publish(v, Provider::Deepseek, 96);
-    v.warning = {2, 0};
+    // Only the MiniMax slot carries a quota warning, so the alert belongs to slot 1.
+    v.warning = {0, 2};
     TEST_ASSERT_TRUE(nav.update_alert(v));
-    TEST_ASSERT_TRUE(nav.input(Input::Boot, v, 0).save);
+    TEST_ASSERT_EQUAL_INT(1, v.alert);
+    // The right key steps the value of the focused row.
+    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
-    nav.input(Input::Key, v, 0);
-    nav.input(Input::Key, v, 0);
+    // The chord moves the focus to the next row.
+    nav.input(Input::Home, v, 0);
+    nav.input(Input::Home, v, 0);
     TEST_ASSERT_EQUAL_INT(2, v.focus);
-    nav.input(Input::Boot, v, 0);
+    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(0, v.settings.seconds);
-    nav.input(Input::Key, v, 0);
-    nav.input(Input::Boot, v, 0);
+    nav.input(Input::Home, v, 0);
+    TEST_ASSERT_EQUAL_INT(3, v.focus);
+    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Rotation::Portrait), v.settings.rotation);
-    nav.input(Input::KeyHold, v, 0);
+    nav.input(Input::Hold, v, 0);
     // Claude has no portrait page, so leaving Settings in portrait lands on Home.
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(v.page));
-    TEST_ASSERT_EQUAL_INT(0, v.alert);
-    nav.input(Input::Key, v, 0);
+    // The alert still stands on the page behind the settings and a key dismisses it.
+    TEST_ASSERT_EQUAL_INT(1, v.alert);
+    nav.input(Input::Forward, v, 0);
     TEST_ASSERT_EQUAL_INT(-1, v.alert);
+}
+
+TEST_CASE("the left key steps a setting back through its options", "[nav]")
+{
+    Navigator nav;
+    View v = linked_view();
+    nav.input(Input::Hold, v, 0);
+    nav.input(Input::Forward, v, 0);
+    TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
+    TEST_ASSERT_TRUE(nav.input(Input::Back, v, 0).save);
+    TEST_ASSERT_EQUAL_UINT8(0, v.settings.cycle);
+    // The first option wraps around to the last one.
+    TEST_ASSERT_TRUE(nav.input(Input::Back, v, 0).save);
+    TEST_ASSERT_EQUAL_UINT8(3, v.settings.cycle);
 }
 
 TEST_CASE("settings retry a failed save without changing the value", "[nav]")
 {
     Navigator nav;
     View v = linked_view();
-    nav.input(Input::KeyHold, v, 0);
-    nav.input(Input::Boot, v, 0);
+    nav.input(Input::Hold, v, 0);
+    nav.input(Input::Forward, v, 0);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
     v.save_error = true;
-    TEST_ASSERT_TRUE(nav.input(Input::Boot, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
 }
 
@@ -174,7 +197,7 @@ TEST_CASE("alert raises once, dismisses and re-arms below the threshold", "[aler
     v.link.encrypted = true;
     TEST_ASSERT_FALSE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
-    nav.input(Input::Key, v, 0);
+    nav.input(Input::Forward, v, 0);
     TEST_ASSERT_FALSE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(-1, v.alert);
     // Dropping below level 2 re-arms the next raise.
@@ -183,6 +206,20 @@ TEST_CASE("alert raises once, dismisses and re-arms below the threshold", "[aler
     v.warning = {0, 2};
     TEST_ASSERT_TRUE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
+}
+
+TEST_CASE("a hold keeps the alert on screen", "[alert]")
+{
+    Navigator nav;
+    View v = linked_view();
+    publish(v, Provider::Minimax, 96);
+    v.warning = {0, 2};
+    nav.update_alert(v);
+    TEST_ASSERT_EQUAL_INT(1, v.alert);
+    // The hold is the settings gesture, so it leaves the alert standing.
+    nav.input(Input::Hold, v, 0);
+    TEST_ASSERT_EQUAL_INT(1, v.alert);
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(v.page));
 }
 
 TEST_CASE("alert stays off when disabled or unlinked", "[alert]")

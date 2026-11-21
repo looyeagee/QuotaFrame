@@ -9,13 +9,19 @@ eim run "idf.py -C firmware/targets/waveshare_rlcd_42 -p <PORT> flash" v6.1
 ```
 
 Evidence level: **partial hardware**. The firmware, `test_apps/logic` and the protocol test
-app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xd2860 bytes with 79 % of the app partition
+app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xd3ec0 bytes with 79 % of the app partition
 free. On one board, the landscape Home and detail pages rendered live usage from a bonded
 Bridge, which reconnected with an encrypted link after flashing. The music page has so far been
 verified only in the host preview and by the unit tests that compose its frame: a device has not
 drawn a published song, and the Chinese glyphs have not been read on the panel. Portrait and
-flipped layouts, button debounce, sensors, audio, first-time pairing and OTA have not been
+flipped layouts, the key handling, sensors, audio, first-time pairing and OTA have not been
 exercised on hardware.
+
+The board's three buttons are KEY (GPIO18), PWR and BOOT (GPIO0). PWR switches the power
+circuit and reaches no GPIO, so the firmware reads two keys: KEY on the left, BOOT on the right.
+A press of KEY steps back, a press of BOOT steps forward, the chord of both keys stands in for
+the middle button, and a key held for 800 ms opens the settings page. The logic test image runs
+the whole board logic suite on the chip: 42 cases, all passing.
 
 The device advertises as `QF-WS-S3-R42-` followed by the final two Bluetooth MAC bytes and
 reports `waveshare_rlcd_42` in the authenticated status. Usage publication, RTC
@@ -143,14 +149,17 @@ always has one line of context above the highlight and four below it.
 
 ## Controls
 
-- BOOT (GPIO0): next page, HOME → DEEPSEEK → MINIMAX → MUSIC → CLOCK (portrait: HOME ↔ CLOCK).
-- KEY (GPIO18): previous page.
-- Hold KEY 800 ms: open Settings; hold again to leave.
-- PWR switches the board's power circuit and is not readable by the firmware.
-- Settings: KEY moves the focus, BOOT changes the value and saves it to NVS.
-- Alert: KEY dismisses; it returns after usage drops below 93 % and reaches 95 % again.
-- Pairing: KEY or BOOT requests a new code.
-- OTA confirmation: KEY confirms, hold KEY denies. Navigation is blocked during OTA.
+- KEY (GPIO18), left of the case: previous page.
+- BOOT (GPIO0), right of the case: next page, HOME → DEEPSEEK → MINIMAX → MUSIC → CLOCK (portrait: HOME ↔ CLOCK).
+- Both keys together: the home page, and the next settings row while the settings page is open. The
+  PWR button between them switches the power circuit and reaches no GPIO, so the chord of the two
+  keys takes over the action of the middle button.
+- Hold either key for 800 ms: open Settings; hold again to leave.
+- Settings: the left and right keys change the value of the focused row and save it to NVS, the
+  chord of both keys moves the focus to the next row.
+- Alert: any key dismisses it; it returns after usage drops below 93 % and reaches 95 % again.
+- Pairing: any key requests a new code.
+- OTA confirmation: any key confirms, holding a key denies. Navigation is blocked during OTA.
 
 Auto cycle advances the ring every 30 s, 1 min or 5 min; any key press restarts the interval.
 The Bridge screen-toggle command switches to and from Clock; page commands step the ring.
@@ -174,7 +183,7 @@ are recorded in [UPSTREAM.md](UPSTREAM.md).
 | --- | --- |
 | ST7305 (SPI3) | MOSI 12, SCLK 11, DC 5, CS 40, RESET 41, TE 6 |
 | I2C | SDA 13, SCL 14: PCF85063 0x51, SHTC3 0x70, ES8311 0x18 |
-| Keys | KEY 18, BOOT 0, active low |
+| Keys | KEY 18, BOOT 0, active low; PWR switches the power circuit and reaches no GPIO |
 | Battery | GPIO4 / ADC1 channel 3 through a 1:3 divider |
 | Speaker | I2S MCLK 16, BCLK 9, WS 45, DOUT 8; amplifier enable 46 |
 
@@ -193,7 +202,7 @@ so the display would sometimes contradict the LED.
 ## Hardware verification checklist
 
 - Panel orientation and pixel order (text reads correctly in LAND, PORT and FLIP).
-- KEY / BOOT debounce and the 800 ms hold.
+- KEY / BOOT debounce, the chord of both keys and the 800 ms hold.
 - SHTC3 readings against a reference; Waveshare's example subtracts 4 °C for board
   self-heating, which this firmware does not apply until measured.
 - Battery percentage on battery and on USB power.

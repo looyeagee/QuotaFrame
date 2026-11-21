@@ -534,7 +534,7 @@ void Screens::alert(const View &v) {
     c_.text(kLeft + 72, reset, b, 3, Ink::White);
     const int rule = h - 38;
     c_.fill(kLeft, rule, w - 2 * kLeft, 2, Ink::White);
-    c_.text(kLeft, rule + 10, "KEY DISMISS", 2, Ink::White);
+    c_.text(kLeft, rule + 10, "ANY KEY DISMISS", 2, Ink::White);
     c_.text_right(right, rule + 10,
                   v.settings.alert == static_cast<uint8_t>(AlertMode::Beep) ? "BEEP ON" : "BEEP OFF",
                   2, Ink::White);
@@ -829,14 +829,15 @@ void Screens::settings(const View &v) {
     const int rule = portrait_ ? kPortraitFooterRule : kFooterRule;
     c_.fill(kLeft, rule, right - kLeft, 2);
     if (portrait_) {
-        c_.text(kLeft, rule + 10, v.save_error ? "SAVE FAILED" : "KEY NEXT", 2);
-        c_.text_right(right, rule + 10, v.save_error ? "" : "BOOT SET", 2);
-        c_.text(kLeft, rule + 30, v.save_error ? "BOOT RETRY" : "HOLD EXIT", 2);
+        c_.text(kLeft, rule + 10, v.save_error ? "SAVE FAILED" : "L/R VALUE", 2);
+        c_.text_right(right, rule + 10, v.save_error ? "" : "BOTH ROW", 2);
+        c_.text(kLeft, rule + 30, v.save_error ? "ANY KEY RETRY" : "HOLD EXIT", 2);
     } else if (v.save_error) {
-        c_.text(kLeft, rule + 10, "SAVE FAILED / BOOT RETRY", 2);
+        c_.text(kLeft, rule + 10, "SAVE FAILED / RETRY", 2);
     } else {
-        c_.text(kLeft, rule + 10, "KEY NEXT", 2);
-        c_.text((c_.width() - Canvas::text_width("BOOT SET", 2)) / 2, rule + 10, "BOOT SET", 2);
+        // The left and right keys change the value, the chord of both moves the focus row.
+        c_.text(kLeft, rule + 10, "L/R VALUE", 2);
+        c_.text((c_.width() - Canvas::text_width("BOTH ROW", 2)) / 2, rule + 10, "BOTH ROW", 2);
         c_.text_right(right, rule + 10, "HOLD EXIT", 2);
     }
 }
@@ -858,12 +859,12 @@ void Screens::pairing(const View &v) {
     if (portrait_) {
         c_.fill(kLeft, kPortraitFooterRule, right - kLeft, 2);
         c_.text(kLeft, kPortraitFooterRule + 10, v.device_name, 2);
-        c_.text(kLeft, kPortraitFooterRule + 30, "KEY NEW CODE", 2);
+        c_.text(kLeft, kPortraitFooterRule + 30, "ANY KEY NEW CODE", 2);
         return;
     }
     c_.fill(kLeft, kFooterRule, right - kLeft, 2);
     c_.text(kLeft, kFooterRule + 10, v.device_name, 2);
-    c_.text_right(right, kFooterRule + 10, "KEY NEW CODE", 2);
+    c_.text_right(right, kFooterRule + 10, "ANY KEY NEW CODE", 2);
 }
 
 void Screens::ota(const View &v) {
@@ -893,13 +894,14 @@ void Screens::ota(const View &v) {
     const bool confirming = v.ota.stage == OtaStage::Confirming;
     if (portrait_) {
         c_.fill(kLeft, kPortraitFooterRule, right - kLeft, 2);
-        c_.text(kLeft, kPortraitFooterRule + 10, confirming ? "KEY CONFIRM" : "DO NOT UNPLUG", 2);
+        c_.text(kLeft, kPortraitFooterRule + 10, confirming ? "ANY KEY CONFIRM" : "DO NOT UNPLUG",
+                2);
         c_.text(kLeft, kPortraitFooterRule + 30, confirming ? "HOLD DENY" : "OR POWER OFF", 2);
         return;
     }
     c_.fill(kLeft, kFooterRule, right - kLeft, 2);
     c_.text(kLeft, kFooterRule + 10,
-            confirming ? "KEY CONFIRM / HOLD DENY" : "DO NOT UNPLUG OR POWER OFF", 2);
+            confirming ? "ANY KEY CONFIRM / HOLD DENY" : "DO NOT UNPLUG OR POWER OFF", 2);
 }
 
 void Screens::render(const View &v) {

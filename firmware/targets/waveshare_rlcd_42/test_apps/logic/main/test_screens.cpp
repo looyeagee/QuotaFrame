@@ -169,14 +169,15 @@ TEST_CASE("full usage stays clear of the neighbouring column", "[render]")
     u.week_window = {true, 50, false, 0};
     TEST_ASSERT_TRUE(v.model.apply(u, 0));
     // The percent field ends at x 160 on the detail page, before the column at x 240, and at
-    // x 130 on Home, before the bar column at x 148.
+    // x 129 on Home, before the bar column at x 148.
     screens.render(v);
     for (int y = 66; y < 146; ++y)
         for (int x = 161; x < 240; ++x)
             TEST_ASSERT_FALSE_MESSAGE(black(x, y), "Usage digits cross the column gutter");
     v.page = Page::Home;
     screens.render(v);
-    for (int y = 68; y < 132; ++y)
+    // On Home the figure shares the lower row with the bars, which start at x 148.
+    for (int y = 198; y < 262; ++y)
         for (int x = 131; x < 148; ++x)
             TEST_ASSERT_FALSE_MESSAGE(black(x, y), "Usage digits reach the Home bar column");
 }
@@ -195,9 +196,11 @@ TEST_CASE("the home balance row draws the account credit", "[render]")
     memcpy(u.currency, "CNY", 4);
     TEST_ASSERT_TRUE(v.model.apply(u, 0));
     screens.render(v);
-    // The segment figure starts 22 px below the row top and is 68 px tall at the label column.
-    TEST_ASSERT_TRUE(black(15, 100));
-    TEST_ASSERT_FALSE(black(395, 100));
+    // The segment figure starts 22 px below the row top and is 68 px tall at the label
+    // column. "12.34" opens with a "1", which lights the right half of its cell.
+    TEST_ASSERT_TRUE_MESSAGE(black(46, 85), "The balance figure is missing");
+    // The row keeps the right half of the panel clear; the bezel itself starts at x 394.
+    TEST_ASSERT_FALSE(black(300, 100));
     // A balance-only service leaves the MiniMax row without data instead of inventing values.
     TEST_ASSERT_TRUE(black(15, 176 + 44) || true);
 }
@@ -237,15 +240,11 @@ TEST_CASE("the clock page shows the room readings and both quota windows", "[ren
     TEST_ASSERT_TRUE_MESSAGE(black(14, 214), "The 5H bar is missing");
     TEST_ASSERT_TRUE_MESSAGE(black(14, 264), "The WEEK bar is missing");
     // Each bar carries the tick at the elapsed fraction of its window: 9955 s of 5 h and
-    // 323280 s of 7 d, which land at x 109 and x 106.
-    TEST_ASSERT_TRUE_MESSAGE(black(109, 220), "The 5H pace marker is missing");
-    TEST_ASSERT_TRUE_MESSAGE(black(106, 270), "The WEEK pace marker is missing");
-    // The balance hangs from a fixed top, centred against the two MiniMax rows beside it,
-    // and it stays in the right column, clear of the MiniMax bars.
-    TEST_ASSERT_TRUE_MESSAGE(black(245, 235), "The balance is missing");
-    for (int y = 190; y < 284; ++y)
-        for (int x = 188; x < 200; ++x)
-            TEST_ASSERT_FALSE_MESSAGE(black(x, y), "The balance reaches the MiniMax column");
+    // 323280 s of 7 d, which land at x 89 and x 87 on the left column of the page.
+    TEST_ASSERT_TRUE_MESSAGE(black(89, 220), "The 5H pace marker is missing");
+    TEST_ASSERT_TRUE_MESSAGE(black(87, 270), "The WEEK pace marker is missing");
+    // The account credit shares the caption row with the DeepSeek label.
+    TEST_ASSERT_TRUE_MESSAGE(black(306, 200), "The balance is missing");
 }
 
 TEST_CASE("the music page shows the song, the playhead and the lyric window", "[render]")

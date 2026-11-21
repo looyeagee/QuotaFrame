@@ -141,7 +141,20 @@ bool short_present(const ProviderSnapshot &s, bool encrypted);
 /** Whether the week window of a provider has a value that may be displayed. */
 bool week_present(const ProviderSnapshot &s, bool encrypted);
 
-enum class Input : uint8_t { None, Key, KeyHold, Boot };
+/**
+ * Panel input.
+ *
+ * The board's KEY button (GPIO18) sits left of the case and its BOOT button (GPIO0) right
+ * of it. The PWR button between them switches the power circuit and reaches no GPIO, so
+ * the action of the middle button is taken from the chord of both keys.
+ */
+enum class Input : uint8_t {
+    None,
+    Back,    // Left key (KEY, GPIO18).
+    Forward, // Right key (BOOT, GPIO0).
+    Home,    // Both keys together, the stand-in for the middle button.
+    Hold,    // Either key held for 800 ms.
+};
 
 /** Effects of one navigation step that the application loop must carry out. */
 struct NavResult {
@@ -149,7 +162,7 @@ struct NavResult {
     bool save = false; // Settings changed and must be persisted.
 };
 
-/** Page ring, alert dismissal and auto cycling for the KEY / BOOT button pair. */
+/** Page ring, alert dismissal and auto cycling for the two-key panel. */
 class Navigator {
   public:
     /**

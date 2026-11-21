@@ -314,42 +314,50 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
     r.redraw = true;
     const bool portrait = v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
     if (v.alert >= 0 && v.page != Page::Settings) {
-        if (in == Input::Key) {
+        // The alert covers the panel, so a key dismisses it instead of changing the page.
+        if (in != Input::Hold) {
             dismissed_ = true;
             v.alert = -1;
         }
         return r;
     }
     if (v.page == Page::Settings) {
-        if (in == Input::Key)
-            v.focus = (v.focus + 1) % kSettingRows;
-        else if (in == Input::KeyHold) {
+        if (in == Input::Hold) {
             v.page = return_page_;
             normalize(v);
-        } else if (v.save_error) {
-            // Retries the rejected value; the footer shows BOOT RETRY in this state.
-            r.save = true;
-        } else {
-            auto &s = v.settings;
-            uint8_t *values[kSettingRows] = {&s.cycle, &s.alert, &s.seconds, &s.rotation};
-            uint8_t &value = *values[v.focus];
-            // SECONDS lists ON before OFF, so its option index is the inverse of the flag.
-            if (v.focus == 2)
-                value = value ? 0 : 1;
-            else
-                value = static_cast<uint8_t>((value + 1) % setting_options(v.focus));
-            r.save = true;
+        } else if (in == Input::Home) {
+            // The chord moves the focus to the next row.
+            v.focus = (v.focus + 1) % kSettingRows;
+        } else if (in == Input::Forward || in == Input::Back) {
+            if (v.save_error) {
+                // Retries the rejected value; the footer shows RETRY in this state.
+                r.save = true;
+            } else {
+                auto &s = v.settings;
+                uint8_t *values[kSettingRows] = {&s.cycle, &s.alert, &s.seconds, &s.rotation};
+                const int options = setting_options(v.focus);
+                // SECONDS lists ON before OFF, so its option index is the inverse of the flag.
+                int index = v.focus == 2 ? (s.seconds ? 0 : 1) : *values[v.focus];
+                index = (index + (in == Input::Forward ? 1 : options - 1)) % options;
+                if (v.focus == 2)
+                    s.seconds = index == 0 ? 1 : 0;
+                else
+                    *values[v.focus] = static_cast<uint8_t>(index);
+                r.save = true;
+            }
         }
         return r;
     }
-    if (in == Input::KeyHold) {
+    if (in == Input::Hold) {
         return_page_ = v.page;
         v.page = Page::Settings;
         v.focus = 0;
-    } else if (in == Input::Key)
-        v.page = previous(v.page, portrait);
-    else
+    } else if (in == Input::Forward)
         v.page = next(v.page, portrait);
+    else if (in == Input::Back)
+        v.page = previous(v.page, portrait);
+    else if (in == Input::Home)
+        v.page = Page::Home;
     return r;
 }
 

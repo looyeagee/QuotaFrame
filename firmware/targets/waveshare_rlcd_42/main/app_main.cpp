@@ -158,7 +158,7 @@ extern "C" void app_main() {
                 break;
             case AppEventType::AlertSet:
                 // Remote and local changes write the same persisted value; a failed
-                // NVS commit leaves the old mode in force and surfaces BOOT RETRY.
+                // NVS commit leaves the old mode in force and surfaces RETRY.
                 // Pairing does not block this: the mode only affects a later alert.
                 if (!ota.busy()) {
                     view.settings.alert = event.alert_mode;
@@ -186,13 +186,14 @@ extern "C" void app_main() {
         if (input != Input::None) {
             redraw = true;
             if (snapshot.phase == OtaPhase::Confirming) {
-                if (input == Input::Key)
-                    ota.confirm(view.now_ms);
-                else if (input == Input::KeyHold)
+                // Any key confirms the update; holding a key denies it.
+                if (input == Input::Hold)
                     ota.deny();
+                else
+                    ota.confirm(view.now_ms);
             } else if (ota.busy()) {
             } else if (view.link.has_passkey) {
-                if (input == Input::Key || input == Input::Boot)
+                if (input != Input::Hold)
                     ble.reset_pairing();
             } else {
                 const NavResult r = nav.input(input, view, view.now_ms);

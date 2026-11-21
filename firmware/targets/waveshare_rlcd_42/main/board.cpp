@@ -13,9 +13,11 @@ namespace usage_panel::rlcd {
 namespace {
 constexpr char kTag[] = "rlcd42";
 constexpr gpio_num_t kSda = GPIO_NUM_13, kScl = GPIO_NUM_14;
-constexpr gpio_num_t kKey = GPIO_NUM_18, kBoot = GPIO_NUM_0;
+// KEY sits left of the case and BOOT right of it; the PWR button between them switches the
+// power circuit and reaches no GPIO, so its action comes from the chord of both keys.
+constexpr gpio_num_t kKeyLeft = GPIO_NUM_18, kKeyRight = GPIO_NUM_0;
 constexpr uint8_t kShtc3Address = 0x70;
-constexpr uint32_t kDebounceMs = 30, kHoldMs = 800;
+constexpr uint32_t kDebounceMs = 30, kHoldMs = 800, kChordMs = 100;
 // The battery is sensed on GPIO4 (ADC1 channel 3) through a 1:3 divider.
 constexpr adc_channel_t kBatteryChannel = ADC_CHANNEL_3;
 constexpr float kBatteryDivider = 3.f;
@@ -52,7 +54,7 @@ bool Board::begin() {
     gpio_config_t keys{};
     keys.mode = GPIO_MODE_INPUT;
     keys.pull_up_en = GPIO_PULLUP_ENABLE;
-    keys.pin_bit_mask = (1ULL << kKey) | (1ULL << kBoot);
+    keys.pin_bit_mask = (1ULL << kKeyLeft) | (1ULL << kKeyRight);
     ESP_ERROR_CHECK(gpio_config(&keys));
 
     adc_oneshot_unit_init_cfg_t unit{};
@@ -128,10 +130,10 @@ bool Board::sync(const LocalCalendarTime &t) { return rtc_ready_ && rtc_.write(t
 Input Board::key(uint64_t now) {
     struct Key {
         gpio_num_t pin;
-        bool raw = false, down = false, held = false;
+        bool raw = false, down = false, held = false, consumed = false;
         uint64_t changed = 0, start = 0;
     };
-    static Key keys[] = {{kKey}, {kBoot}};
+    static Key keys[] = {{kKeyLeft}, {kKeyRight}};
     for (int i = 0; i < 2; ++i) {
         auto &k = keys[i];
         const bool down = !gpio_get_level(k.pin);
@@ -144,12 +146,25 @@ Input Board::key(uint64_t now) {
             if (k.down) {
                 k.start = now;
                 k.held = false;
-            } else if (!k.held)
-                return i ? Input::Boot : Input::Key;
+                k.consumed = false;
+                // Both keys pressed together stand in for the middle button, which reaches no
+                // GPIO; the chord swallows the two presses so neither key steps a page.
+                auto &other = keys[1 - i];
+                if (other.down && now - other.start <= kChordMs) {
+                    k.consumed = true;
+                    other.consumed = true;
+                    ESP_LOGI(kTag, "chord");
+                    return Input::Home;
+                }
+            } else if (!k.held && !k.consumed) {
+                ESP_LOGI(kTag, "key %s", i == 0 ? "left" : "right");
+                return i == 0 ? Input::Back : Input::Forward;
+            }
         }
-        if (i == 0 && k.down && !k.held && now - k.start >= kHoldMs) {
+        if (k.down && !k.held && !k.consumed && now - k.start >= kHoldMs) {
             k.held = true;
-            return Input::KeyHold;
+            ESP_LOGI(kTag, "hold %s", i == 0 ? "left" : "right");
+            return Input::Hold;
         }
     }
     return Input::None;
