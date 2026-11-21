@@ -13,6 +13,8 @@ macOS 的 M5 配对、加密连接、用量和菜单操作已有验证；当前�
 
 RLCD 4.2 已验证一块开发板的横屏主页、详情页用量显示和已绑定 Bridge 的加密重连；首次配对、OTA、竖屏/翻转、按键、传感器、音频及 microSD 卡仍待实机验证。详见[目标说明](../firmware/targets/waveshare_rlcd_42/README.md)。
 
+ZLTech 1.54 TFT 已在一台板上整片烧录并启动：v6.1 引导、新分区表（`ota_0` = 7 MB @ 0x20000）、8 MB PSRAM、ADC 校准、ST7789 240 × 240 面板初始化和 `QF-ZLT-154-FE16` 广播均从串口日志确认。Bridge 已与该板建立 Secure Connections 连接（`target=zltech_154tft`），`usage.v1` 数据到达面板并渲染出 DeepSeek 余额、MiniMax 5 小时与周配额；串口日志确认顶部三键（GPIO39 / GPIO0 / GPIO40）都会上报按键事件。屏幕观感由用户实拍照片核对：分带刷新导致的顶部截断与底部重影已消除，时钟改为本地时间，页码点与边框分离。OTA `ota.folder.v1`、电量标定与按键长按仍待专项验证。详见[目标说明](../firmware/targets/zltech_154tft/README.md)。
+
 
 ## 性能与显示参考
 

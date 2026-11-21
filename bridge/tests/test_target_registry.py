@@ -27,11 +27,19 @@ class TargetRegistryTests(unittest.TestCase):
                 "ws_rlcd_42_full.bin",
                 "waveshare-esp32-s3-rlcd-42",
             ),
+            "zltech_154tft": (
+                "ZLTech 1.54 TFT",
+                "firmware/targets/zltech_154tft",
+                "6.1",
+                "zltech_154tft.bin",
+                "zltech_154tft_full.bin",
+                "zltech-esp32-s3-154tft",
+            ),
         }
         self.assertEqual(set(expected), set(TARGETS_BY_ID))
         self.assertEqual(
             {target.id: target.image_chip_id for target in TARGETS},
-            {"waveshare_rlcd_42": 9},
+            {"waveshare_rlcd_42": 9, "zltech_154tft": 9},
         )
         for target_id, contract in expected.items():
             target = TARGETS_BY_ID[target_id]

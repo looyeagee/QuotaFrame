@@ -4,10 +4,9 @@ import re
 import unittest
 from pathlib import Path
 
-from quotaframe_bridge.targets import TARGETS_BY_ID
+from quotaframe_bridge.targets import TARGETS
 
 ROOT = Path(__file__).resolve().parents[2]
-PROJECT = ROOT / TARGETS_BY_ID["waveshare_rlcd_42"].firmware_project
 
 
 def parse_defaults(path: Path) -> dict[str, str]:
@@ -26,8 +25,12 @@ def parse_defaults(path: Path) -> dict[str, str]:
 
 class FirmwareConfigurationTests(unittest.TestCase):
     def test_target_memory_and_nimble_roles_are_pinned(self) -> None:
-        config = parse_defaults(PROJECT / "sdkconfig.defaults")
+        for target in TARGETS:
+            config = parse_defaults(ROOT / target.firmware_project / "sdkconfig.defaults")
+            with self.subTest(target=target.id):
+                self._assert_pinned(config, target.ota_transfer_bytes)
 
+    def _assert_pinned(self, config: dict[str, str], transfer_bytes: int) -> None:
         expected = {
             "CONFIG_IDF_TARGET": '"esp32s3"',
             "CONFIG_ESPTOOLPY_FLASHSIZE_16MB": "y",
@@ -46,7 +49,7 @@ class FirmwareConfigurationTests(unittest.TestCase):
             "CONFIG_ESP_DESKTOP_BUDDY_RX_INBOX_DEPTH": "32",
             "CONFIG_ESP_DESKTOP_BUDDY_FOLDER_PUSH_MAX_RAW_CHUNK": "4096",
             "CONFIG_ESP_DESKTOP_BUDDY_FOLDER_PUSH_MAX_DECODED_CHUNK": "2880",
-            "CONFIG_ESP_DESKTOP_BUDDY_FOLDER_PUSH_MAX_TRANSFER_BYTES": "4194816",
+            "CONFIG_ESP_DESKTOP_BUDDY_FOLDER_PUSH_MAX_TRANSFER_BYTES": str(transfer_bytes),
             "CONFIG_ESP_DESKTOP_BUDDY_FOLDER_PUSH_FLAT_PATHS_ONLY": "y",
         }
         self.assertEqual(

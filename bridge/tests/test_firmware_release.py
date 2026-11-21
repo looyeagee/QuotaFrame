@@ -7,6 +7,7 @@ import os
 from unittest.mock import patch
 
 from quotaframe_bridge.sources.firmware_release import (
+    MAX_IMAGE_BYTES,
     FirmwareReleaseError,
     FirmwareReleaseSource,
 )
@@ -113,7 +114,7 @@ class FirmwareReleaseTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(FirmwareReleaseError):
             await source.download_image(manifest.for_target("waveshare_rlcd_42"))
 
-        too_large = json.loads(self.manifest(size=5 * 1024 * 1024))
+        too_large = json.loads(self.manifest(size=MAX_IMAGE_BYTES + 1))
         source = FirmwareReleaseSource(
             fetcher=lambda _url, _limit: json.dumps(too_large).encode()
         )

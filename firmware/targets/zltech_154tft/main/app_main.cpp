@@ -1,0 +1,227 @@
+#include "beeper.hpp"
+#include "board.hpp"
+#include "canvas.hpp"
+#include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "nvs_flash.h"
+#include "panel_logic.hpp"
+#include "screens.hpp"
+#include "st7789.hpp"
+#include "usage_ble/ble_service.hpp"
+#include "usage_ota/backend.hpp"
+#include "usage_ota/presentation.hpp"
+#include <atomic>
+#include <cstdio>
+using namespace usage_panel;
+using namespace usage_panel::zltech;
+namespace {
+constexpr char kTag[] = "zltech154";
+constexpr char kAdvertisingPrefix[] = "QF-ZLT-154-";
+constexpr uint64_t kFrameIntervalMs = 250;
+constexpr uint64_t kOtaErrorVisibleMs = 15000;
+static_assert(static_cast<int>(OtaPhase::Rebooting) == static_cast<int>(OtaStage::Rebooting));
+static_assert(warning_level(0, 80) == 1 && warning_level(1, 78) == 1 && warning_level(1, 77) == 0);
+static_assert(warning_level(0, 95) == 2 && warning_level(2, 93) == 2 && warning_level(2, 92) == 1);
+
+AppEventQueue events;
+BleService ble;
+EspOtaBackend backend("zltech_154tft");
+OtaSession ota(backend);
+Board board;
+Beeper beeper;
+St7789 panel;
+Canvas canvas;
+Screens screens(canvas);
+Navigator nav;
+View view;
+std::atomic<Page> location{Page::Home};
+
+const char *page_name(void *) {
+    switch (location.load()) {
+    case Page::Deepseek:
+        return "deepseek";
+    case Page::Minimax:
+        return "minimax";
+    case Page::Music:
+        return "music";
+    case Page::Clock:
+        return "clock";
+    case Page::Settings:
+        return "settings";
+    default:
+        return "overview";
+    }
+}
+
+uint8_t alert_mode(void *) {
+    // Read from the BLE callback; a single byte is published without tearing.
+    return view.settings.alert;
+}
+
+void apply_ota(const OtaSnapshot &s) {
+    view.ota.stage = static_cast<OtaStage>(s.phase);
+    view.ota.offset = s.offset;
+    view.ota.size = s.size;
+    snprintf(view.ota.version, sizeof(view.ota.version), "%s", s.version.c_str());
+}
+} // namespace
+
+extern "C" void app_main() {
+    // Preserve NVS on initialization failures; recovery must not silently erase bonds.
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(board.begin() ? ESP_OK : ESP_FAIL);
+    view.settings = board.load();
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_BT);
+    snprintf(view.device_name, sizeof(view.device_name), "%s%02X%02X", kAdvertisingPrefix, mac[4],
+             mac[5]);
+    view.now_ms = esp_timer_get_time() / 1000;
+    board.poll(view);
+    ESP_ERROR_CHECK(panel.begin() ? ESP_OK : ESP_FAIL);
+    // This board has no codec or amplifier wired up in this target; the alert stays silent.
+    if (!beeper.begin())
+        ESP_LOGW(kTag, "no audio path; alerts stay silent");
+    ESP_ERROR_CHECK(events.begin(32) ? ESP_OK : ESP_ERR_NO_MEM);
+    // No OTA power source is registered: the board senses battery voltage only and cannot tell
+    // whether USB power is present, so a voltage threshold would block updates on USB power.
+    BleServiceConfig config{kAdvertisingPrefix, "ZLTech 1.54 TFT", "zltech_154tft", true, &ota,
+                            page_name, nullptr, true, true, true, true, alert_mode, nullptr};
+    ESP_ERROR_CHECK(ble.start(events, config));
+
+    uint64_t next_poll = 0, next_frame = 0, reboot_at = 0;
+    RetainedOtaFailure shown_failure;
+    Page clock_return = Page::Home;
+    while (true) {
+        view.now_ms = esp_timer_get_time() / 1000;
+        bool redraw = false;
+        ota.tick(view.now_ms);
+        const OtaSnapshot snapshot = ota.snapshot();
+        apply_ota(snapshot);
+        if (retain_ota_failure(snapshot, shown_failure, view.now_ms))
+            redraw = true;
+        view.ota.error = shown_failure.error != OtaError::None &&
+                                 view.now_ms - shown_failure.started_ms < kOtaErrorVisibleMs
+                             ? ota_error_presentation(shown_failure.error).title
+                             : nullptr;
+        if (snapshot.phase == OtaPhase::Rebooting) {
+            // Leave the RESTARTING frame on the panel briefly before the reset.
+            if (!reboot_at)
+                reboot_at = view.now_ms + 1000;
+            else if (view.now_ms >= reboot_at)
+                esp_restart();
+        }
+
+        // The now-playing publication is a snapshot: the newest one replaces the last.
+        NowPlayingUpdate music;
+        if (ble.take_now_playing(music)) {
+            apply_now_playing(view, music, view.now_ms);
+            redraw = true;
+        }
+
+        AppEvent event{};
+        while (events.receive(event)) {
+            switch (event.type) {
+            case AppEventType::Usage:
+                view.model.apply(event.usage, view.now_ms);
+                break;
+            case AppEventType::Link:
+                view.link = {event.link.connected, event.link.encrypted, event.link.has_passkey,
+                             event.link.passkey};
+                break;
+            case AppEventType::TimeSync:
+                if (!board.sync(event.time_sync.calendar))
+                    ESP_LOGW(kTag, "clock sync rejected");
+                next_poll = 0;
+                break;
+            case AppEventType::ScreenToggle:
+                if (!ota.busy() && !view.link.has_passkey) {
+                    if (view.page == Page::Clock)
+                        view.page = clock_return;
+                    else {
+                        clock_return = view.page == Page::Settings ? Page::Home : view.page;
+                        view.page = Page::Clock;
+                    }
+                    Navigator::normalize(view);
+                }
+                break;
+            case AppEventType::ScreenPage:
+                if (!ota.busy() && !view.link.has_passkey && view.page != Page::Settings) {
+                    const bool portrait =
+                        view.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
+                    view.page = event.previous_page
+                                    ? Navigator::previous(view.page, portrait,
+                                                          service_visible(view, 1))
+                                    : Navigator::next(view.page, portrait, service_visible(view, 1));
+                }
+                break;
+            case AppEventType::AlertSet:
+                // Remote and local changes write the same persisted value; a failed
+                // NVS commit leaves the old mode in force and surfaces BOOT RETRY.
+                // Pairing does not block this: the mode only affects a later alert.
+                if (!ota.busy()) {
+                    view.settings.alert = event.alert_mode;
+                    view.save_error = !board.save(view.settings);
+                }
+                break;
+            }
+        }
+
+        {
+            // Only MiniMax publishes a quota window, so only it raises an alert.
+            const auto &s = view.model.snapshot(Provider::Minimax);
+            view.warning[1] = short_present(s, view.link.encrypted)
+                                  ? warning_level(view.warning[1], s.short_window.used_percent)
+                                  : 0;
+            view.warning[0] = 0;
+        }
+        const int previous_alert = view.alert;
+        if (nav.update_alert(view) &&
+            view.settings.alert == static_cast<uint8_t>(AlertMode::Beep))
+            beeper.alert();
+        redraw = redraw || previous_alert != view.alert;
+
+        const Input input = board.key(view.now_ms);
+        if (input != Input::None) {
+            redraw = true;
+            if (snapshot.phase == OtaPhase::Confirming) {
+                // Any key confirms the update; holding a key denies it.
+                if (input == Input::Hold)
+                    ota.deny();
+                else
+                    ota.confirm(view.now_ms);
+            } else if (ota.busy()) {
+            } else if (view.link.has_passkey) {
+                if (input != Input::Hold)
+                    ble.reset_pairing();
+            } else {
+                const NavResult r = nav.input(input, view, view.now_ms);
+                if (r.save)
+                    view.save_error = !board.save(view.settings);
+            }
+        }
+        if (!ota.busy() && !view.link.has_passkey)
+            redraw = nav.auto_cycle(view, view.now_ms) || redraw;
+
+        if (view.now_ms >= next_poll) {
+            next_poll = view.now_ms + 1000;
+            board.poll(view);
+            redraw = true;
+        }
+        location = view.page;
+        // The song reaches its next line between two publications; compose the frame then,
+        // instead of waiting for the quarter-second frame boundary that only paces countdowns.
+        redraw = redraw || music_line_moved(view, view.now_ms);
+        // Frames are composed at a fixed cadence so countdowns tick; unchanged frames are not sent.
+        if (redraw || view.now_ms >= next_frame) {
+            view.music_line_shown = music_current_line(view, view.now_ms);
+            screens.render(view);
+            panel.show(canvas);
+            next_frame = view.now_ms + kFrameIntervalMs;
+        }
+        // BLE startup is asynchronous; verification retries until the service is ready.
+        ble.verify_boot();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}

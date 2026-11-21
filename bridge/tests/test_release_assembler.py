@@ -49,7 +49,7 @@ class ReleaseAssemblerTests(unittest.TestCase):
             project = Path(target.ota_image).stem.encode("ascii")
             image[80:80 + len(project)] = project
             ota = bytes(image)
-            full = b"\xff" * 0x10000 + ota
+            full = b"\xff" * self._ota_offset(target) + ota
             (artifact / target.ota_image).write_bytes(ota)
             (artifact / target.full_image).write_bytes(full)
             self._write_description(target.id, VERSION)
@@ -57,6 +57,15 @@ class ReleaseAssemblerTests(unittest.TestCase):
 
     def _artifact(self, target_id: str) -> Path:
         return self.firmware_root / f"firmware-{target_id}"
+
+    def _ota_offset(self, target) -> int:
+        """Offset of the first OTA slot, read from the target's own partition table."""
+        table = ROOT / target.firmware_project / "partitions.csv"
+        for line in table.read_text(encoding="utf-8").splitlines():
+            fields = [field.strip() for field in line.split(",")]
+            if len(fields) >= 5 and fields[0] == "ota_0":
+                return int(fields[3], 16)
+        raise AssertionError(f"{table} has no ota_0 partition")
 
     def _write_description(self, target_id: str, version: str) -> None:
         (self._artifact(target_id) / "project_description.json").write_text(
@@ -192,7 +201,7 @@ class ReleaseAssemblerTests(unittest.TestCase):
                 sources = {"ota": artifact / target.ota_image,
                            "full": artifact / target.full_image}
                 sources["ota"].write_bytes(image)
-                sources["full"].write_bytes(b"\xff" * 0x10000 + image)
+                sources["full"].write_bytes(b"\xff" * self._ota_offset(target) + image)
                 _validate_firmware(target, sources, VERSION)
                 sources["ota"].write_bytes(image + b"x")
                 with self.assertRaisesRegex(AssemblyError, "does not fit both OTA partitions"):
@@ -206,7 +215,7 @@ class ReleaseAssemblerTests(unittest.TestCase):
                 image = bytearray(original)
                 struct.pack_into("<H", image, 12, 9 if target.image_chip_id == 32 else 32)
                 (artifact / target.ota_image).write_bytes(image)
-                (artifact / target.full_image).write_bytes(full[:0x10000] + image)
+                (artifact / target.full_image).write_bytes(full[:self._ota_offset(target)] + image)
                 result = self._run()
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("OTA image header is invalid", result.stderr)

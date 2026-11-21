@@ -58,6 +58,17 @@ TARGETS: tuple[TargetDefinition, ...] = (
             asset="assets/devices/waveshare_rlcd_42.jpg",
         ),
     ),
+    TargetDefinition(
+        id="zltech_154tft",
+        label="ZLTech 1.54 TFT",
+        firmware_project="firmware/targets/zltech_154tft",
+        idf_version="6.1",
+        ota_image="zltech_154tft.bin",
+        full_image="zltech_154tft_full.bin",
+        release_stem="zltech-esp32-s3-154tft",
+        image_chip_id=9,
+        ota_partition_bytes=7 * 1024 * 1024,
+    ),
 )
 
 IDF_IMAGES: Mapping[str, str] = MappingProxyType(
