@@ -59,6 +59,7 @@ dist_dir="$root/dist"
 work_dir="$root/build"
 src_dir="$root/src"
 asset_dir="$repository_root/assets/tray"
+media_control_dir="$repository_root/assets/media-control"
 entry_script="$src_dir/quotaframe_bridge/ui/macos/app.py"
 icon_source="$asset_dir/app-icon-256.png"
 iconset="$work_dir/QuotaFrame Bridge.iconset"
@@ -114,6 +115,7 @@ printf '{"repository":"%s"}\n' "$release_repository" >"$release_channel"
     --icon "$icon_file" \
     --hidden-import UserNotifications \
     --add-data "$asset_dir:tray" \
+    --add-data "$media_control_dir:media-control" \
     --add-data "$release_channel:quotaframe_bridge" \
     -p "$src_dir" "$entry_script"
 

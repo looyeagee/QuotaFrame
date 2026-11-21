@@ -30,6 +30,7 @@ from quotaframe_bridge.service.multi_device import (
     DeviceSession,
     MultiDeviceBridgeService,
 )
+from quotaframe_bridge.sources.macos_nowplaying import NowPlayingState
 from quotaframe_bridge.sources.netease_music import (
     BUNDLE_ID,
     CACHE_VERSION,
@@ -46,6 +47,12 @@ from quotaframe_bridge.sources.netease_music import (
     read_current_track,
     select_window,
 )
+
+def no_mirror():
+    """Keep the system now-playing mirror out of these tests."""
+
+    return None
+
 
 TRACK_JSON = {
     "id": "3455592377",
@@ -199,6 +206,7 @@ class SourceTest(unittest.TestCase):
             ]),
             clock=lambda: 1_700_000_042.0,
             audio_probe=lambda: probe,
+            now_playing=no_mirror,
             urlopen=lambda _request, timeout: FakeResponse({
                 "lrc": {"lyric": "[00:00.00]a\n[00:40.00]b\n[00:50.00]c\n",
                         "tlyric": {"lyric": ""}},
@@ -248,6 +256,7 @@ class SourceTest(unittest.TestCase):
                 ]),
                 clock=lambda: 1_700_000_010.0,
                 audio_probe=lambda: frozenset({BUNDLE_ID}),
+                now_playing=no_mirror,
                 urlopen=urlopen,
             )
             source.read()
@@ -271,6 +280,7 @@ class LyricCacheTest(unittest.TestCase):
             database=database,
             clock=lambda: 1_700_000_010.0,
             audio_probe=lambda: frozenset({BUNDLE_ID}),
+            now_playing=no_mirror,
             urlopen=urlopen,
             cache=cache,
         )
@@ -303,6 +313,7 @@ class LyricCacheTest(unittest.TestCase):
                 ]),
                 clock=lambda: 1_700_000_010.0,
                 audio_probe=lambda: frozenset({BUNDLE_ID}),
+                now_playing=no_mirror,
                 urlopen=urlopen,
                 cache=LyricCache(root / "lyrics"),
             )
@@ -331,6 +342,7 @@ class LyricCacheTest(unittest.TestCase):
                     database=database,
                     clock=lambda: 1_700_000_010.0,
                     audio_probe=lambda: frozenset({BUNDLE_ID}),
+                    now_playing=no_mirror,
                     urlopen=urlopen,
                     cache=cache,
                 ).read()
@@ -571,6 +583,109 @@ class EncodingTest(unittest.TestCase):
             tuple("词" * 100 for _ in range(MAX_LINES)), 0,
         )
         self.assertLessEqual(len(encode_now_playing(publication, 1)), 4096)
+
+
+class NeteaseMirrorTest(unittest.TestCase):
+    """The system mirror supplies what the database cannot: pause and seeks."""
+
+    def _source(
+        self,
+        directory: Path,
+        state: NowPlayingState | None,
+        *,
+        record: dict[str, object] | None = None,
+        probe=frozenset({BUNDLE_ID}),
+    ) -> NeteaseMusicSource:
+        return NeteaseMusicSource(
+            database=make_database(directory, [
+                ("3455592377", 1_700_000_000_000, json.dumps(record or TRACK_JSON)),
+            ]),
+            clock=lambda: 1_700_000_042.0,
+            audio_probe=lambda: probe,
+            now_playing=lambda: state,
+            urlopen=lambda _request, timeout: FakeResponse({
+                "lrc": {"lyric": "[00:00.00]a\n[00:40.00]b\n[00:50.00]c\n",
+                        "tlyric": {"lyric": ""}},
+            }),
+        )
+
+    def _state(self, **overrides: object) -> NowPlayingState:
+        fields: dict[str, object] = {
+            "bundle_id": BUNDLE_ID,
+            "process_id": 90106,
+            "title": "后会友期",
+            "artist": "许飞",
+            "album": "后会友期 主题曲",
+            "duration_seconds": 231.435,
+            "elapsed_seconds": 42.0,
+            "anchor_epoch": 1_700_000_042.0,
+            "playback_rate": 1.0,
+            "playing": True,
+            "received_at": 1_700_000_000.0,
+        }
+        fields.update(overrides)
+        return NowPlayingState(**fields)  # type: ignore[arg-type]
+
+    def test_a_pause_is_reported_at_the_anchored_position(self) -> None:
+        state = self._state(
+            playing=False, playback_rate=0.0, elapsed_seconds=120.65,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(Path(directory), state).read()
+        assert publication is not None
+        # The database clock alone would say 42 s and "playing".
+        self.assertFalse(publication.playing)
+        self.assertEqual(publication.position_seconds, 120)
+
+    def test_a_seek_moves_the_playhead_without_a_new_track(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(Path(directory), self._state()).read()
+        assert publication is not None
+        self.assertEqual(publication.position_seconds, 42)
+        self.assertTrue(publication.playing)
+
+    def test_the_mirror_of_another_client_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(
+                Path(directory),
+                self._state(bundle_id="com.apple.Music", elapsed_seconds=120.0),
+                probe=frozenset(),
+            ).read()
+        assert publication is not None
+        self.assertEqual(publication.position_seconds, 42)
+        self.assertFalse(publication.playing)
+
+    def test_the_mirror_of_another_song_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(
+                Path(directory), self._state(title="另一首歌", elapsed_seconds=120.0)
+            ).read()
+        assert publication is not None
+        self.assertEqual(publication.position_seconds, 42)
+
+    def test_an_edition_suffix_still_names_the_same_song(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(
+                Path(directory), self._state(title="后会友期 (Live)")
+            ).read()
+        assert publication is not None
+        self.assertEqual(publication.position_seconds, 42)
+
+    def test_a_row_without_a_duration_takes_the_mirror_duration(self) -> None:
+        record = dict(TRACK_JSON, duration=0)
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(
+                Path(directory), self._state(), record=record
+            ).read()
+        assert publication is not None
+        self.assertEqual(publication.duration_seconds, 231)
+
+    def test_without_a_mirror_the_database_clock_still_answers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            publication = self._source(Path(directory), None).read()
+        assert publication is not None
+        self.assertEqual(publication.position_seconds, 42)
+        self.assertTrue(publication.playing)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,22 @@ def tray_assets() -> Path:
     return Path(__file__).resolve().parents[3] / "assets" / "tray"
 
 
+def media_control_directory() -> Path:
+    """Return the directory holding the vendored media-control payload.
+
+    The tree is the upstream layout (`bin/media-control`,
+    `lib/media-control/mediaremote-adapter.pl`,
+    `Frameworks/MediaRemoteAdapter.framework`), so the adapter resolves its own
+    relative paths unchanged. Bundling and checkout resolution mirror
+    `tray_assets`; see `assets/media-control/UPSTREAM.md`.
+    """
+
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled is not None:
+        return Path(bundled) / "media-control"
+    return Path(__file__).resolve().parents[3] / "assets" / "media-control"
+
+
 def _home(environ: Mapping[str, str]) -> Path | None:
     home = environ.get("HOME")
     return Path(home) if home else None

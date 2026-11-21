@@ -6,6 +6,14 @@ artists, the album, the duration and the millisecond timestamp the track
 started at, which is enough to name the song and to place the playhead
 without asking the application for anything.
 
+The database alone cannot answer two things the panel needs: it never records
+the pause state, and it never records a seek, so a computed playhead drifts
+until the next track. Both come from the system now-playing mirror instead
+(`macos_nowplaying`), which the client feeds through `MPNowPlayingInfoCenter`.
+The database stays the source of the song identity and of the lyric lookup key;
+the mirror only overrides the playhead and the playing flag, and only while it
+reports this same song.
+
 Lyrics are read from the public song endpoints the same client uses for its
 own lyric panel. They are anonymous requests: no cookie, no account and no
 credential leaves the computer, and the response is cached per song so a
@@ -32,8 +40,12 @@ import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from quotaframe_bridge.domain.models import NowPlayingPublication
+
+if TYPE_CHECKING:  # pragma: no cover - annotation only, never imported to run
+    from quotaframe_bridge.sources.macos_nowplaying import NowPlayingState
 
 LOGGER = logging.getLogger(__name__)
 
@@ -123,6 +135,27 @@ def _artists(track: Mapping[str, object]) -> str:
             if isinstance(name, str) and name:
                 names.append(name)
     return " / ".join(names)
+
+
+_TITLE_SEPARATOR = re.compile(r"[\s\u3000]+")
+
+
+def _comparable_title(text: str) -> str:
+    return _TITLE_SEPARATOR.sub("", text).casefold()
+
+
+def _same_title(mirrored: str, recorded: str) -> bool:
+    """Whether the mirror names the song the history row names.
+
+    The client publishes the title it shows; the row keeps the name it stored.
+    Edition suffixes ("(Live)") and spacing differ between the two, so a shared
+    prefix counts as the same song.
+    """
+
+    left, right = _comparable_title(mirrored), _comparable_title(recorded)
+    if not left or not right:
+        return False
+    return left == right or left.startswith(right) or right.startswith(left)
 
 
 def _album(track: Mapping[str, object]) -> str:
@@ -411,6 +444,15 @@ class LyricCache:
                 continue
 
 
+@dataclass(frozen=True, slots=True)
+class _MirrorPlayhead:
+    """What the system mirror contributes to one publication."""
+
+    position_seconds: int
+    playing: bool
+    duration_seconds: int
+
+
 class NeteaseMusicSource:
     """Publish the track and lyric lines the NetEase client is playing."""
 
@@ -425,6 +467,7 @@ class NeteaseMusicSource:
         urlopen: Callable[..., object] = urllib.request.urlopen,
         audio_probe: Callable[[], frozenset[str]] | None = None,
         cache: LyricCache | None = None,
+        now_playing: Callable[[], NowPlayingState | None] | None = None,
     ) -> None:
         self.database = database or default_database()
         self.timeout = timeout
@@ -432,6 +475,7 @@ class NeteaseMusicSource:
         self._urlopen = urlopen
         self._audio_probe = audio_probe
         self._cache = cache
+        self._now_playing = now_playing
         self._lyrics: dict[str, tuple[LyricLine, ...]] = {}
         self._lyrics_song_id: str | None = None
 
@@ -447,6 +491,36 @@ class NeteaseMusicSource:
         from quotaframe_bridge.sources.macos_audio import playing_bundle_ids
 
         return playing_bundle_ids()
+
+    def _mirror_state(self) -> NowPlayingState | None:
+        """The system now-playing mirror, or None when it has nothing to say."""
+
+        if self._now_playing is not None:
+            return self._now_playing()
+        from quotaframe_bridge.sources.macos_nowplaying import current_state
+
+        return current_state()
+
+    def _mirror_for(self, track: Track, now: float) -> _MirrorPlayhead | None:
+        """Playhead and playing flag from the mirror for this track, if it has them.
+
+        The mirror only speaks for whichever client the system considers active,
+        and a track change may reach it before the client writes its history
+        row. A mismatch means the two are not describing the same song, so the
+        caller keeps its own timing rather than mixing the two.
+        """
+
+        state = self._mirror_state()
+        if state is None or state.bundle_id != BUNDLE_ID:
+            return None
+        if not _same_title(state.title, track.title):
+            LOGGER.debug("now-playing mirror describes a different song")
+            return None
+        return _MirrorPlayhead(
+            position_seconds=int(state.position_seconds(now)),
+            playing=state.playing,
+            duration_seconds=int(round(state.duration_seconds)),
+        )
 
     def _lyrics_for(self, song_id: str) -> tuple[LyricLine, ...]:
         if self._lyrics_song_id == song_id:
@@ -483,20 +557,27 @@ class NeteaseMusicSource:
             return None
         if track is None:
             return None
-        now_ms = int(self._clock() * 1000)
+        now = self._clock()
+        now_ms = int(now * 1000)
         elapsed = max(0, (now_ms - track.started_at_ms) // 1000)
+        mirrored = self._mirror_for(track, now)
+        duration = track.duration_seconds
+        if mirrored is not None:
+            position = mirrored.position_seconds
+            playing = mirrored.playing
+            if duration <= 0:
+                duration = mirrored.duration_seconds
+        else:
+            # Without the mirror the playhead is the distance from the moment
+            # the client wrote the row, so a pause reads as playing until the
+            # audio output stream tears down.
+            position = elapsed
+            ended = duration > 0 and elapsed > duration + ENDED_GRACE_SECONDS
+            playing = not ended and BUNDLE_ID in self._playing_bundle_ids()
         # A track that has run out keeps the playhead at its end instead of
         # running past the duration while the client sits paused.
-        position = (
-            min(elapsed, track.duration_seconds)
-            if track.duration_seconds > 0
-            else elapsed
-        )
-        ended = (
-            track.duration_seconds > 0
-            and elapsed > track.duration_seconds + ENDED_GRACE_SECONDS
-        )
-        playing = not ended and BUNDLE_ID in self._playing_bundle_ids()
+        if duration > 0:
+            position = min(position, duration)
         window = select_window(self._lyrics_for(track.song_id), position)
         current = current_index(window, position)
         return NowPlayingPublication(
@@ -504,7 +585,7 @@ class NeteaseMusicSource:
             artist=track.artist,
             album=track.album,
             position_seconds=position,
-            duration_seconds=track.duration_seconds,
+            duration_seconds=duration,
             playing=playing,
             lines=tuple(line.text for line in window),
             current_line=current,
