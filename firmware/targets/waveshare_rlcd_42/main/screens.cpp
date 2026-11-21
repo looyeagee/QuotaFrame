@@ -146,12 +146,16 @@ const char *link_status(const View &v) {
     return v.link.encrypted ? "LINKED" : "OFFLINE";
 }
 
-void Screens::battery(const View &v, int x, Ink ink) {
-    c_.frame(x, 12, 28, 18, 2, ink);
-    c_.fill(x + 28, 17, 4, 8, ink);
-    const int segments = v.battery < 0 ? 0 : std::clamp((v.battery * 3 + 99) / 100, 0, 3);
-    for (int i = 0; i < segments; ++i)
-        c_.fill(x + 4 + 6 * i, 16, 4, 10, ink);
+int Screens::battery(const View &v, int right, Ink ink) {
+    char pct[8];
+    if (v.battery < 0)
+        snprintf(pct, sizeof(pct), "--%%");
+    else
+        snprintf(pct, sizeof(pct), "%d%%", std::clamp(v.battery, 0, 100));
+    const int tw = Canvas::text_width(pct, 2);
+    const int x = right - tw;
+    c_.text(x, 14, pct, 2, ink);
+    return x;
 }
 
 int Screens::chip(int x, int top, const char *s, Ink ink) {
@@ -176,8 +180,7 @@ void Screens::header(const View &v, const char *title, int page) {
     char time[8];
     snprintf(time, sizeof(time), "%02u:%02u", v.clock.hour, v.clock.minute);
     c_.text(kLeft, 14, title ? title : v.clock.valid ? time : "--:--", 2);
-    int edge = c_.width() - kLeft - 32;
-    battery(v, edge);
+    int edge = battery(v, c_.width() - kLeft);
     const char *status = link_status(v);
     // LINKED is the normal state and is not shown; every other state gets a chip.
     if (v.link.has_passkey || v.ota.stage != OtaStage::Idle || !v.link.encrypted) {
@@ -504,12 +507,12 @@ void Screens::room_readings(const View &v, int x, int limit, int preferred_gap, 
 
 void Screens::clock(const View &v) {
     const int right = c_.width() - kLeft;
-    battery(v, right - 32);
+    const int level_x = battery(v, right);
     const bool offline = !v.link.encrypted && !v.link.has_passkey;
     const int chip_w = Canvas::text_width("OFFLINE", 2);
     // The chip's left edge on the top row. In portrait the page is too narrow for the chip
     // beside the date and the readings, so it moves to the bottom of the page.
-    const int chip_x0 = right - 32 - 8 - chip_w - 2 * kChipPad;
+    const int chip_x0 = level_x - 8 - chip_w - 2 * kChipPad;
 
     char b[32];
     if (v.clock.valid)
@@ -518,8 +521,8 @@ void Screens::clock(const View &v) {
     else
         snprintf(b, sizeof(b), "NO DATE");
     const int date_w = c_.text(kLeft, 14, b, 2);
-    // The readings share the date row and stop before the battery or the status chip.
-    const int limit = portrait_ ? right - 40 : (offline ? chip_x0 - 8 : right - 40);
+    // The readings share the date row and stop before the level or the status chip.
+    const int limit = offline && !portrait_ ? chip_x0 - 8 : level_x - 8;
     room_readings(v, kLeft + date_w, limit, portrait_ ? 8 : 16, 8);
     if (offline) {
         if (portrait_)

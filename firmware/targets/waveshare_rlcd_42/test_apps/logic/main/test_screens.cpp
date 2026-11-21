@@ -22,14 +22,13 @@ int black_pixels() {
 }
 } // namespace
 
-TEST_CASE("bezel, header rule and battery outline land on the design coordinates", "[render]")
+TEST_CASE("bezel and header rule land on the design coordinates", "[render]")
 {
     Screens screens(canvas);
     View v;
     v.link = {true, true, false, 0};
     screens.render(v);
-    // 2 px bezel from 4 px inside the edge; 2 px rule at y 34-35 from x 14 to 385;
-    // 28 x 18 battery frame from x 354, y 12.
+    // 2 px bezel from 4 px inside the edge; 2 px rule at y 34-35 from x 14 to 385.
     TEST_ASSERT_TRUE(black(4, 4));
     TEST_ASSERT_TRUE(black(395, 295));
     TEST_ASSERT_FALSE(black(3, 3));
@@ -37,8 +36,32 @@ TEST_CASE("bezel, header rule and battery outline land on the design coordinates
     TEST_ASSERT_TRUE(black(385, 35));
     TEST_ASSERT_FALSE(black(13, 34));
     TEST_ASSERT_FALSE(black(386, 34));
-    TEST_ASSERT_TRUE(black(354, 12));
-    TEST_ASSERT_TRUE(black(381, 29));
+}
+
+TEST_CASE("the battery level is 2x text ending at the content margin", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.link = {true, true, false, 0};
+    v.battery = 75;
+    screens.render(v);
+    // "75%" is 34 px wide and ends 14 px from the panel edge.
+    TEST_ASSERT_TRUE(black(352, 14));
+    TEST_ASSERT_FALSE(black(351, 14));
+    TEST_ASSERT_TRUE(black(385, 16));
+    TEST_ASSERT_FALSE(black(386, 16));
+
+    // A three-glyph level is one cell wider, so the field starts 12 px further left.
+    v.battery = 100;
+    screens.render(v);
+    TEST_ASSERT_TRUE(black(344, 14));
+    TEST_ASSERT_FALSE(black(343, 14));
+
+    // An unknown level keeps the meter in place with a placeholder instead of a number.
+    v.battery = -1;
+    screens.render(v);
+    TEST_ASSERT_TRUE(black(352, 20));
+    TEST_ASSERT_FALSE(black(351, 20));
 }
 
 TEST_CASE("alert inverts the whole frame", "[render]")

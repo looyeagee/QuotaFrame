@@ -194,5 +194,10 @@ int main(int argc, char **argv) {
     nos.page = Page::Clock;
     nos.environment_valid = false;
     render(nos, "28_clock_no_readings");
+
+    // An unknown battery level: the meter shows a placeholder at the usual position.
+    View nobat = design_view();
+    nobat.battery = -1;
+    render(nobat, "29_home_no_battery");
     return 0;
 }

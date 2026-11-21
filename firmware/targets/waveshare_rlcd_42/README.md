@@ -65,7 +65,8 @@ below the header rule, rows and footers are separated by 10 px, and inverted chi
 their text so it stays on the same left edge as plain labels. Home uses 64 px figures level with
 the top of the 5H bar and the bottom of the WEEK bar; detail uses 80 px figures. On Home the countdown sits to the right of its window
 label without a RESET prefix; the detail page labels it RESET. The header shows a chip only for
-OFFLINE, PAIRING and UPDATING; LINKED is the normal state and is not shown.
+OFFLINE, PAIRING and UPDATING; LINKED is the normal state and is not shown. Battery level is
+2x text at the right end of the top row, such as `75%`, and `--%` while the level is unknown.
 
 Offline pages retain the last values at full contrast with their sample age and the OFFLINE
 header chip, but show RESET -- rather than a live countdown. Missing windows also show --;
@@ -122,8 +123,14 @@ are recorded in [UPSTREAM.md](UPSTREAM.md).
 The ST7305 initialization sequence and pixel layout come from the Waveshare
 ESP32-S3-RLCD-4.2 factory program; see [driver provenance](UPSTREAM.md).
 The battery percentage is a linear voltage proxy between
-3.0 V and 4.12 V; the board has no fuel gauge or charger status, so the OTA battery gate is
+3.0 V and 4.12 V; the board has no fuel gauge, so the OTA battery gate is
 not registered (the voltage cannot distinguish battery from USB power).
+
+The firmware shows no charging state. The ETA6098 `STAT` pin drives the CHG LED only and `VBUS`
+does not reach the MCU, so no GPIO or PMIC register exposes "charging"; the green CHG LED is the
+only accurate indication and it goes dark when the charge terminates. Software inference was
+rejected: a voltage trend lags by the sampling window and cannot tell a charger from USB power,
+so the display would sometimes contradict the LED.
 
 ## Hardware verification checklist
 
@@ -132,6 +139,7 @@ not registered (the voltage cannot distinguish battery from USB power).
 - SHTC3 readings against a reference; Waveshare's example subtracts 4 °C for board
   self-heating, which this firmware does not apply until measured.
 - Battery percentage on battery and on USB power.
+- The CHG LED against a real charger: it should light during the charge and go dark at full.
 - ES8311 tone level and amplifier noise.
 - Pairing, reconnect, usage rendering with a real Bridge, and OTA with physical confirmation.
 

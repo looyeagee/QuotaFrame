@@ -12,9 +12,13 @@ class Screens {
   private:
     Canvas &c_;
     bool portrait_ = false;
-    /** Page title (or the time), link status chip, page position and battery above a rule. */
+    /** Page title (or the time), link status chip, page position and battery level above a rule. */
     void header(const View &v, const char *title, int page = -1);
-    void battery(const View &v, int x, Ink ink = Ink::Black);
+    /**
+     * Draws the battery level as a percentage right-aligned at `right`. @return the left edge of
+     * the text, so a caller can stack another element beside it.
+     */
+    int battery(const View &v, int right, Ink ink = Ink::Black);
     /**
      * Inverted pixel-font label with rounded corners. The text is placed at (`x`, `top`) and
      * the chip extends 4 px around it. @return text width.
