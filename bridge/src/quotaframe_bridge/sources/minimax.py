@@ -1,10 +1,12 @@
 """MiniMax quota-window source.
 
-MiniMax exposes the platform's own rate windows through the console endpoint
-``GET /backend/account/token_plan/remains_percent``: a five-hour interval and a
-weekly interval, each with a used percentage and an end time. The endpoint is
-authenticated by the console session cookie, so the Bridge forwards exactly the
-cookie the user configured and nothing else.
+MiniMax publishes the coding plan's rate windows through
+``GET /v1/token_plan/remains``: a five-hour interval and a weekly interval per
+model. Both arrive as *remaining* percentages, so the panel value is the
+complement (``100 - remaining``). The weekly window is normalised to 100 % and no
+longer reports the 150 % boost that the older console endpoint carried. The
+endpoint authenticates with the plan's API key, so the Bridge forwards exactly
+the key the user configured as a bearer token.
 """
 
 from __future__ import annotations
@@ -25,10 +27,10 @@ from quotaframe_bridge.domain.models import (
     UsageWindow,
 )
 
-DEFAULT_API_BASE = "https://www.minimax.cn"
+DEFAULT_API_BASE = "https://www.minimaxi.com"
 DEFAULT_TIMEOUT_SECONDS = 15.0
 MAX_RESPONSE_BYTES = 64 * 1024
-# The console reports one plan per model; "general" is the account-wide default.
+# The endpoint reports one plan per model; "general" is the account-wide default.
 PREFERRED_PLAN = "general"
 
 
@@ -40,13 +42,13 @@ class MinimaxFormatError(RuntimeError):
 class MinimaxSettings:
     """Bridge-side configuration for the MiniMax source."""
 
-    cookie: str
+    api_key: str
     api_base: str = DEFAULT_API_BASE
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
 
     def __post_init__(self) -> None:
-        if not self.cookie or not self.cookie.strip():
-            raise ValueError("MiniMax cookie must not be empty")
+        if not self.api_key or not self.api_key.strip():
+            raise ValueError("MiniMax API key must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +61,7 @@ class QuotaReading:
 
 
 def _percent(value: object, field: str) -> int:
-    """Decode the console's percentage strings such as ``54%``."""
+    """Decode a percentage field into a whole number clamped to 0-100."""
 
     if isinstance(value, bool):
         raise MinimaxFormatError(f"{field} must be a percentage")
@@ -77,8 +79,14 @@ def _percent(value: object, field: str) -> int:
         raise MinimaxFormatError(f"{field} must be a percentage")
     if not number.is_finite():
         raise MinimaxFormatError(f"{field} is not finite")
-    # A plan can report slightly over 100 % after overspend; the protocol caps at 100.
+    # A plan can report slightly beyond the normal range; the protocol caps at 100.
     return max(0, min(100, int(number.to_integral_value(rounding="ROUND_HALF_UP"))))
+
+
+def _used_percent(plan: Mapping[str, object], field: str) -> int:
+    """Convert the endpoint's remaining percentage into the panel's used value."""
+
+    return 100 - _percent(plan.get(field), field)
 
 
 def _epoch_seconds(milliseconds: object, field: str) -> int:
@@ -90,9 +98,25 @@ def _epoch_seconds(milliseconds: object, field: str) -> int:
     return seconds
 
 
+def _check_status(payload: object) -> None:
+    """Reject a transport-level success that carries an API error code."""
+
+    if not isinstance(payload, Mapping):
+        return
+    response = payload.get("base_resp")
+    if not isinstance(response, Mapping):
+        return
+    code = response.get("status_code")
+    if isinstance(code, bool) or not isinstance(code, int) or code == 0:
+        return
+    message = response.get("status_msg")
+    detail = message.strip() if isinstance(message, str) and message.strip() else "unknown error"
+    raise MinimaxFormatError(f"quota request failed: {code} {detail}")
+
+
 def _pick_plan(payload: object) -> Mapping[str, object]:
     if isinstance(payload, Mapping):
-        # The console wraps every plan in a single ``model_remains`` array.
+        # The endpoint wraps every plan in a single ``model_remains`` array.
         plans = payload.get("model_remains")
         if isinstance(plans, list):
             return _pick_plan(plans)
@@ -108,20 +132,18 @@ def _pick_plan(payload: object) -> Mapping[str, object]:
 
 
 def parse_quota(payload: object) -> QuotaReading:
-    """Decode one ``remains_percent`` payload into the two panel windows."""
+    """Decode one ``token_plan/remains`` payload into the two panel windows."""
 
+    _check_status(payload)
     plan = _pick_plan(payload)
     return QuotaReading(
         plan=str(plan.get("model_name") or PREFERRED_PLAN),
         short=UsageWindow(
-            used_percent=_percent(plan.get("current_interval_used_percent"),
-                                  "current_interval_used_percent"),
-            reset_at=_epoch_seconds(plan.get("end_time") or plan.get("current_interval_end_time"),
-                                    "end_time"),
+            used_percent=_used_percent(plan, "current_interval_remaining_percent"),
+            reset_at=_epoch_seconds(plan.get("end_time"), "end_time"),
         ),
         week=UsageWindow(
-            used_percent=_percent(plan.get("current_weekly_used_percent"),
-                                  "current_weekly_used_percent"),
+            used_percent=_used_percent(plan, "current_weekly_remaining_percent"),
             reset_at=_epoch_seconds(plan.get("weekly_end_time"), "weekly_end_time"),
         ),
     )
@@ -135,13 +157,11 @@ def fetch_quota(
     """Read the quota endpoint once; blocking, so callers run it in a thread."""
 
     request = urllib.request.Request(
-        settings.api_base.rstrip("/") + "/backend/account/token_plan/remains_percent",
+        settings.api_base.rstrip("/") + "/v1/token_plan/remains",
         headers={
             "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Cookie": settings.cookie.strip(),
-            "Origin": settings.api_base.rstrip("/"),
-            "Referer": settings.api_base.rstrip("/") + "/",
+            "Authorization": f"Bearer {settings.api_key.strip()}",
+            "Content-Type": "application/json",
             "User-Agent": "QuotaFrame-Bridge/1.0",
         },
         method="GET",
@@ -165,7 +185,7 @@ class MinimaxUsageSource:
     """Publish MiniMax's five-hour and weekly windows."""
 
     providers = (Provider.MINIMAX,)
-    label = "the MiniMax console"
+    label = "the MiniMax API"
 
     def __init__(
         self,

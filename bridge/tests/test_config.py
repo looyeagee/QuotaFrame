@@ -119,20 +119,25 @@ class ConfigTests(unittest.TestCase):
                 read_deepseek_settings(self._environ(root, MACOS), platform=MACOS)
             )
 
-    def test_minimax_cookie_or_token_is_accepted(self) -> None:
+    def test_minimax_key_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            self._write(root, MACOS, '[minimax]\ntoken = "jwt"\n')
+            self._write(root, MACOS, '[minimax]\nkey = "sk-cp-file"\n')
             environ = self._environ(root, MACOS)
             settings = read_minimax_settings(environ, platform=MACOS)
             assert settings is not None
-            self.assertEqual(settings.cookie, "_token=jwt")
+            self.assertEqual(settings.api_key, "sk-cp-file")
 
-            self._write(root, MACOS, '[minimax]\ncookie = "_token=abc; acw_tc=1"\n')
+            self._write(root, MACOS, '[minimax]\napi_key = "sk-cp-alias"\n')
             settings = read_minimax_settings(environ, platform=MACOS)
             assert settings is not None
-            self.assertEqual(settings.cookie, "_token=abc; acw_tc=1")
+            self.assertEqual(settings.api_key, "sk-cp-alias")
 
-    def test_minimax_settings_absent_without_a_cookie(self) -> None:
+            environ = dict(environ, MINIMAX_API_KEY="sk-cp-env")
+            settings = read_minimax_settings(environ, platform=MACOS)
+            assert settings is not None
+            self.assertEqual(settings.api_key, "sk-cp-env")
+
+    def test_minimax_settings_absent_without_a_key(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             self._write(root, MACOS, 'log_level = "INFO"\n')
             self.assertIsNone(

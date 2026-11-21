@@ -12,12 +12,12 @@ from quotaframe_bridge.sources.combined import CombinedUsageSource
 
 
 class NoSourceConfiguredError(RuntimeError):
-    """Neither a DeepSeek key nor a MiniMax cookie is configured."""
+    """Neither a DeepSeek key nor a MiniMax key is configured."""
 
     def __init__(self) -> None:
         super().__init__(
             "no usage source is configured; set [deepseek] api_key or "
-            "[minimax] cookie in config.toml"
+            "[minimax] key in config.toml"
         )
 
 
@@ -32,7 +32,7 @@ def create_usage_source(
 ) -> UsageSource:
     """Return a source covering every service this host can read.
 
-    DeepSeek needs an API key and MiniMax needs a console cookie; whichever is
+    DeepSeek needs an API key and MiniMax needs a plan API key; whichever is
     configured takes part, and both are collected as one panel publication.
     """
 

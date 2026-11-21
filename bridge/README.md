@@ -13,7 +13,7 @@ Bridge 仅同步用量百分比、重置时间和采样时间，不向设备发�
 | 系统 | Windows 10/11 | macOS 14 或更新 |
 | Python（仅源码运行） | 3.11 或更新 | 3.11 或更新 |
 | 形态 | 托盘常驻 + 控制台 | 菜单栏常驻 + 控制台 |
-| 数据源 | DeepSeek 余额接口 / MiniMax 控制台接口（HTTPS） | 同左 |
+| 数据源 | DeepSeek 余额接口 / MiniMax 额度接口（HTTPS） | 同左 |
 | 配对 | Bridge 主动发起 WinRT PIN 配对 | 由 macOS 自己弹窗，Bridge 不参与 |
 | 解除配对 | `--repair-pairing` | 只能去「系统设置 > 蓝牙 > 忘记此设备」 |
 
@@ -83,9 +83,9 @@ Bridge 不在后台下载、自行替换或执行自己的安装包。
 | 服务 | 来源 | 发布内容 |
 | --- | --- | --- |
 | DeepSeek | `GET https://api.deepseek.com/user/balance`（Bearer API key） | 余额 `balance_cents` + `currency` |
-| MiniMax | `GET https://www.minimax.cn/backend/account/token_plan/remains_percent`（控制台 Cookie） | 5 小时与周额度的已用百分比 + 重置时间 |
+| MiniMax | `GET https://www.minimaxi.com/v1/token_plan/remains`（Bearer API Key） | 5 小时与周额度的已用百分比 + 重置时间 |
 
-DeepSeek 没有用量或限流窗口接口，只公开余额，所以面板直接显示余额本身，不再换算成百分比。MiniMax 返回的是平台自己的额度窗口（`current_interval_used_percent` / `current_weekly_used_percent`）与 `end_time` / `weekly_end_time`。
+DeepSeek 没有用量或限流窗口接口，只公开余额，所以面板直接显示余额本身，不再换算成百分比。MiniMax 返回的是平台自己的额度窗口，但字段是**剩余**百分比（`current_interval_remaining_percent` / `current_weekly_remaining_percent`），Bridge 取补值（`100 - 剩余`）再发布，重置时间取 `end_time` / `weekly_end_time`；响应里多个模型中只取 `model_name` 为 `general` 的那条。周额度现在归一为 100%，不再使用旧接口的 150% 上限，`weekly_boost_permille` 不参与换算。
 
 ```toml
 # macOS: ~/Library/Application Support/quotaframe/config.toml
@@ -95,11 +95,10 @@ api_key = "sk-..."      # 也可用环境变量 DEEPSEEK_API_KEY，环境变量�
 currency = "CNY"        # 默认 CNY
 
 [minimax]
-# 控制台登录后的 Cookie；token 简写等价于 cookie = "_token=<jwt>"
-cookie = "_token=...; acw_tc=...; cdn_sec_tc=..."
+key = "sk-cp-..."        # 额度接口的 API Key；也可用环境变量 MINIMAX_API_KEY，环境变量优先
 ```
 
-任一服务缺失配置时该服务不参与发布，面板显示 `--`；两者都缺失时 Bridge 启动报错。MiniMax 的 Cookie 会过期，过期后该服务变为 `unavailable`，重新登录平台复制新 Cookie 即可。采集间隔由 `--interval`（默认 60 秒）决定，两个请求并发执行，任一失败不影响另一个。
+任一服务缺失配置时该服务不参与发布，面板显示 `--`；两者都缺失时 Bridge 启动报错。MiniMax 的 Key 失效或被吊销时接口返回非零 `base_resp.status_code`，该服务变为 `unavailable`，换一把有效 Key 即可恢复。采集间隔由 `--interval`（默认 60 秒）决定，两个请求并发执行，任一失败不影响另一个。
 
 ## 配置文件
 

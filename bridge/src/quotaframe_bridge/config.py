@@ -25,6 +25,7 @@ __all__ = [
     "CONFIG_DIRECTORY",
     "CONFIG_FILENAME",
     "DEFAULT_LOG_LEVEL",
+    "MINIMAX_API_KEY_ENV",
     "VALID_LOG_LEVELS",
     "config_path",
     "load_config",
@@ -131,16 +132,20 @@ def read_deepseek_settings(
     return DeepSeekSettings(api_key=api_key, currency=currency)
 
 
+MINIMAX_API_KEY_ENV = "MINIMAX_API_KEY"
+
+
 def read_minimax_settings(
     environ: Mapping[str, str] | None = None,
     *,
     platform: str = sys.platform,
 ):
-    """Return MiniMax settings, or None when no console cookie is configured.
+    """Return MiniMax settings, or None when no plan API key is configured.
 
-    The console authenticates with its own session cookie, so the Bridge forwards
-    the ``[minimax] cookie`` string verbatim; ``token`` is accepted as a shortcut
-    for ``_token=<jwt>``.
+    ``GET /v1/token_plan/remains`` authenticates with the coding plan's API key,
+    so the Bridge forwards the ``[minimax] key`` string verbatim; ``api_key`` is
+    accepted as an alias and ``MINIMAX_API_KEY`` wins so a shell can override the
+    file.
     """
 
     from quotaframe_bridge.sources.minimax import MinimaxSettings
@@ -149,12 +154,13 @@ def read_minimax_settings(
     section = load_config(environ, platform=platform).get("minimax")
     section = section if isinstance(section, Mapping) else {}
 
-    cookie = section.get("cookie")
-    cookie = cookie.strip() if isinstance(cookie, str) else ""
-    token = section.get("token")
-    if not cookie and isinstance(token, str) and token.strip():
-        cookie = f"_token={token.strip()}"
-    cookie = source.get("MINIMAX_COOKIE", "").strip() or cookie
-    if not cookie:
+    key = ""
+    for name in ("key", "api_key"):
+        value = section.get(name)
+        if isinstance(value, str) and value.strip():
+            key = value.strip()
+            break
+    key = source.get(MINIMAX_API_KEY_ENV, "").strip() or key
+    if not key:
         return None
-    return MinimaxSettings(cookie=cookie)
+    return MinimaxSettings(api_key=key)
