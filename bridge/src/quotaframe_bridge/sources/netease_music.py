@@ -66,7 +66,7 @@ ENDED_GRACE_SECONDS = 5
 CACHE_DIR_RELATIVE = Path("Library/Caches/quotaframe/lyrics")
 # A cached document is only reused by the parser version that wrote it, so an
 # entry turns stale instead of outliving a change to parsing or filtering.
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 # Small text files per song; the ceiling keeps a long listening history from
 # growing without bound.
 MAX_CACHE_ENTRIES = 512
@@ -78,14 +78,29 @@ CREDIT_ROLES = (
     "作词", "作曲", "编曲", "制作人", "出品", "发行", "监制", "录音", "混音", "母带",
     "统筹", "吉他", "贝斯", "鼓", "键盘", "和声", "弦乐", "演唱", "原唱", "翻唱",
     "策划", "企划", "宣传", "后期", "人声", "封面", "美术", "总监", "乐队", "钢琴",
-    "古筝", "二胡", "琵琶", "童声", "伴唱", "导演", "编剧", "词", "曲", "OP", "SP",
+    "古筝", "二胡", "琵琶", "童声", "伴唱", "导演", "编剧", "词", "曲",
+    # Players and sections named on their own line.
+    "大提琴", "小提琴", "中提琴", "低音提琴", "单簧管", "双簧管", "萨克斯", "长笛",
+    "短笛", "小号", "长号", "圆号", "大号", "竖琴", "合成器", "架子鼓", "打击乐",
+    "手风琴", "口琴", "曼陀林", "演奏", "念白",
+    # Production credits that appear beside them.
+    "合音", "合声", "和音", "艺术顾问", "对唱设计", "推广营销", "音乐工程",
+    "制作协力", "制作团队",
+)
+# Roles the client writes in Latin script, either alone or after the Chinese name.
+CREDIT_LATIN_ROLES = (
+    "op", "sp", "cello", "violin", "viola", "piano", "guitar", "bass", "drums",
+    "strings", "synth", "sax", "flute", "harp", "trumpet", "trombone", "sitar",
+    "clarinet", "oboe", "mandolin", "accordion",
 )
 CREDIT_MARKERS = (
     "本歌曲来自", "业务联系", "现金激励", "流量扶持", "未经许可", "侵权必究",
     "版权", "http", "@",
 )
 # Roles arrive bare ("混音：…") and with an English gloss ("录音师（Recording Engineer）: …").
-_CREDIT_PREFIX = re.compile(r"^\s*([^：:]{1,32})[：:]")
+_CREDIT_PREFIX = re.compile(r"^\s*([^：:]{1,48})[：:]")
+# The Latin part a role may carry: a gloss after the Chinese name.
+_CREDIT_LATIN = re.compile(r"[A-Za-z0-9\s]+")
 _CREDIT_GLOSS = re.compile(r"[（(][^）)]*[）)]")
 
 
@@ -238,6 +253,29 @@ def read_current_track(database: Path) -> Track | None:
     return parse_track(song_id, playtime, decoded)
 
 
+def _names_a_credit(prefix: str) -> bool:
+    """Whether the text before a colon names a role rather than a sung word.
+
+    The Latin part is optional in both directions: a Chinese role can carry an
+    English gloss ("和声编写 BACKGROUND VOCAL ARRANGEMENT"), and an English role
+    can stand on its own ("Cello"). Roles are matched from the start so that a
+    sung line may mention an instrument without being taken for a credit, and a
+    one-character role only counts when it is the whole prefix.
+    """
+
+    written = prefix.casefold()
+    leading = _CREDIT_LATIN.sub("", prefix).strip().casefold()
+    for role in CREDIT_ROLES:
+        if len(role) == 1:
+            if leading == role:
+                return True
+            continue
+        # A compound role such as "混音/母带" still names the credit.
+        if leading.startswith(role) or written.startswith(role):
+            return True
+    return written in CREDIT_LATIN_ROLES
+
+
 def is_credit_line(text: str) -> bool:
     """Whether a lyric line is a credit or a promotion rather than a sung line.
 
@@ -254,13 +292,10 @@ def is_credit_line(text: str) -> bool:
     match = _CREDIT_PREFIX.match(stripped)
     if not match:
         return False
-    # Drop the gloss so that "录音师（Recording Engineer）" reduces to the role itself.
+    # Drop the bracketed gloss so that "录音师（Recording Engineer）" reduces to the
+    # role itself; `_names_a_credit` then drops the unbracketed one.
     prefix = _CREDIT_GLOSS.sub("", match.group(1)).strip()
-    for role in CREDIT_ROLES:
-        # A compound role such as "混音/母带" still names the credit.
-        if prefix == role if len(role) == 1 else role in prefix:
-            return True
-    return False
+    return _names_a_credit(prefix)
 
 
 def parse_lrc(text: str) -> tuple[LyricLine, ...]:

@@ -546,6 +546,9 @@ class CreditFilterTest(unittest.TestCase):
         "[03:02.17]本歌曲来自〖飓风计划〗\n"
         "[03:03.57]10亿现金激励，千亿流量扶持！\n"
         "[03:04.92]业务联系：jf399@vip.163.com\n"
+        "[03:05.10]大提琴：张平\n"
+        "[03:05.60]和声编写 BACKGROUND VOCAL ARRANGEMENT: Billy Koh\n"
+        "[03:06.00]女：你不是喜欢亚比啦\n"
     )
 
     def test_roles_and_promotions_are_credits(self) -> None:
@@ -561,13 +564,36 @@ class CreditFilterTest(unittest.TestCase):
         self.assertTrue(is_credit_line("母带工程师（Mastering Engineer） : 全相彦"))
         self.assertFalse(is_credit_line("时间（Time）：谁在等"))
 
+    def test_the_players_named_on_their_own_line_are_credits(self) -> None:
+        self.assertTrue(is_credit_line("大提琴 : 张平"))
+        self.assertTrue(is_credit_line("单簧管：吴乐"))
+        self.assertTrue(is_credit_line("萨克斯：李世海"))
+        self.assertTrue(is_credit_line("合成器：Terence Teo"))
+        self.assertTrue(is_credit_line("Cello: 张平"))
+
+    def test_a_role_that_carries_an_english_gloss_is_a_credit(self) -> None:
+        self.assertTrue(is_credit_line("和声编写 BACKGROUND VOCAL ARRANGEMENT: Billy Koh"))
+        self.assertTrue(is_credit_line("制作协力 PRODUCTION ASSISTANCE: 黄冠龙"))
+        self.assertTrue(is_credit_line("制作团队Producer  Studio: 某某"))
+        self.assertTrue(is_credit_line("词Lyrics: 某某"))
+        self.assertTrue(is_credit_line("Rap词: 某某"))
+
+    def test_a_sung_line_that_mentions_a_role_is_not_a_credit(self) -> None:
+        # Only the start of the line names a role; the instrument is in the words.
+        self.assertFalse(is_credit_line("我听见大提琴的声音：远了"))
+        self.assertFalse(is_credit_line("女：你不是喜欢亚比啦，喊我出来干嘛哦"))
+        self.assertFalse(is_credit_line("男：我觉得你蛮亚的啊"))
+
     def test_only_sung_lines_survive_the_fetch(self) -> None:
         def urlopen(_request, timeout):  # noqa: ARG001
             return FakeResponse({"lrc": {"lyric": self.LRC}})
 
         self.assertEqual(
             fetch_lyrics("42", urlopen=urlopen),
-            (LyricLine(0, "看晨曦吻大地  看落日寻天际"),),
+            (
+                LyricLine(0, "看晨曦吻大地  看落日寻天际"),
+                LyricLine(186, "女:你不是喜欢亚比啦"),
+            ),
         )
 
 
