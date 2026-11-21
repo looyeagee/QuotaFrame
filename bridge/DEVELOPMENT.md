@@ -41,6 +41,27 @@ python -m quotaframe_bridge.ui.macos.app
 
 `--mock --dry-run` 不访问蓝牙，不需要蓝牙权限。
 
+### macOS 源码运行的登录自启
+
+[`scripts/quotaframe_launch_agent.sh`](scripts/quotaframe_launch_agent.sh) 把控制台形态注册为登录项，重启后自动接管面板：
+
+```bash
+bridge/scripts/quotaframe_launch_agent.sh install    # 生成 plist 并立即启动
+bridge/scripts/quotaframe_launch_agent.sh status     # agent 状态、进程、日志大小
+bridge/scripts/quotaframe_launch_agent.sh logs       # tail -f
+bridge/scripts/quotaframe_launch_agent.sh restart
+bridge/scripts/quotaframe_launch_agent.sh stop       # bootout，不是发信号
+bridge/scripts/quotaframe_launch_agent.sh uninstall
+```
+
+生成的是 `~/Library/LaunchAgents/com.quotaframe.bridge.plist`，脚本自身的绝对路径写入其中，仓库里不保存机器相关路径。agent 以同一脚本的 `run` 子命令启动：先修剪日志再 `exec` 解释器，因此 launchd 跟踪的就是 Bridge 进程本身，信号和退出码都不经过中间层。
+
+日志在 `~/Library/Logs/quotaframe/bridge-console.log`，与菜单栏形态的 `bridge.log` 同目录但不同文件名——后者由 `RotatingFileHandler` 轮转，若两者共用一个文件，轮转会把 launchd 仍持有的描述符改走。默认 `INFO`；需要协议级细节时 `QUOTAFRAME_LOG_LEVEL=DEBUG bridge/scripts/quotaframe_launch_agent.sh install` 重装即可。launchd 长期持有该描述符，所以每次启动在超过 8 MiB 时把它改名为 `bridge-console.log.1`，不做运行中轮转。
+
+`KeepAlive` 只在非零退出后重启（`ThrottleInterval` 10 s），因此 `kill` 会自愈，而 `stop` 必须走 `bootout`。已加载 agent 时手工运行 `python -m quotaframe_bridge` 会因实例锁直接退出并提示另一个实例在运行，先 `stop` 再手工运行。进程被信号终止时无法执行清理，启动步骤会回收上一轮遗留的 MediaRemote 适配器子进程。
+
+launchd 实例与终端实例使用同一个解释器，已授予该解释器的蓝牙权限继续有效。
+
 ## Mock 测试
 
 无账户、无设备、无 BLE：
