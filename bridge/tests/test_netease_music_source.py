@@ -458,6 +458,38 @@ class LyricCacheTest(unittest.TestCase):
         self.assertEqual(len(stored), MAX_CACHE_ENTRIES)
 
 
+class PlayerRevisionTest(unittest.TestCase):
+    """The publisher watches the player, so a seek does not wait for a tick."""
+
+    def _source(self, directory: Path, holder: list) -> NeteaseMusicSource:
+        return NeteaseMusicSource(
+            database=make_database(directory, [
+                ("3455592377", 1_700_000_000_000, json.dumps(TRACK_JSON)),
+            ]),
+            clock=lambda: 1_700_000_042.0,
+            audio_probe=lambda: frozenset({BUNDLE_ID}),
+            now_playing=lambda: holder[0],
+            urlopen=lambda _request, timeout: FakeResponse({"lrc": {"lyric": ""}}),
+        )
+
+    def test_only_a_new_player_report_advances_the_revision(self) -> None:
+        holder = [NeteaseMirrorTest()._state()]
+        with tempfile.TemporaryDirectory() as directory:
+            source = self._source(Path(directory), holder)
+            first = source.revision()
+            # The mirror keeps handing out the same payload: nothing happened.
+            self.assertEqual(first, source.revision())
+            # The client seeked, so the payload it publishes changed.
+            holder[0] = NeteaseMirrorTest()._state(elapsed_seconds=30.0)
+            self.assertEqual(first + 1, source.revision())
+
+    def test_a_missing_payload_leaves_the_revision_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = self._source(Path(directory), [None])
+            self.assertEqual(0, source.revision())
+            self.assertEqual(0, source.revision())
+
+
 class StubUsageSource:
     """Minimal usage source so the service loop has its usual publication."""
 
@@ -486,6 +518,18 @@ class StubMusicSource:
         if self.delay:
             await asyncio.sleep(self.delay)
         return self.publication
+
+
+class _ReportingMusicSource(StubMusicSource):
+    """A source whose player reports something new after a delay."""
+
+    def __init__(self, publication: NowPlayingPublication, *, report_after: float) -> None:
+        super().__init__(publication)
+        self._started = time.monotonic()
+        self._report_after = report_after
+
+    def revision(self) -> int:
+        return int(time.monotonic() - self._started >= self._report_after)
 
 
 PUBLICATION = NowPlayingPublication(
@@ -553,6 +597,36 @@ class ServicePublishTest(unittest.IsolatedAsyncioTestCase):
         transport = await self._run_briefly(frozenset({"usage.v1"}))
         self.assertFalse([command for _p, command, _n in transport.sent
                           if command == "now_playing"])
+
+    async def _first_frame_delay(self, source: object, interval: float) -> float:
+        transport = _RecordingTransport(
+            frozenset({"usage.v1", NOW_PLAYING_CAPABILITY})
+        )
+        service = MultiDeviceBridgeService(
+            StubUsageSource(),
+            (DeviceSession("Panel", transport),),
+            interval=10.0,
+            publish_interval=10.0,
+            music_source=source,
+            music_interval=interval,
+        )
+        task = asyncio.create_task(service.run())
+        try:
+            started = time.monotonic()
+            for _ in range(500):
+                if any(command == "now_playing" for _p, command, _n in transport.sent):
+                    break
+                await asyncio.sleep(0.01)
+            return time.monotonic() - started
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def test_a_player_report_is_published_before_the_next_tick(self) -> None:
+        # The cadence is a second, and the player reports a seek after three
+        # tenths of one: the panel must hear about it then, not a tick later.
+        source = _ReportingMusicSource(PUBLICATION, report_after=0.3)
+        self.assertLess(await self._first_frame_delay(source, 1.0), 0.7)
 
     async def test_cadence_is_not_lengthened_by_collection_cost(self) -> None:
         transport = _RecordingTransport(

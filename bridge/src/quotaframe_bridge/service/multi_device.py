@@ -45,6 +45,9 @@ SCREEN_TOGGLE_CAPABILITY = "screen.toggle.v1"
 SCREEN_PAGE_CAPABILITY = "screen.page.v1"
 _SESSION_RESTART_INITIAL_DELAY = 1.0
 _SESSION_RESTART_MAX_DELAY = 60.0
+# How often the music publisher looks at the player while it waits for its
+# cadence: a seek should reach the panel in a fraction of a tick, not after one.
+MUSIC_WATCH_SECONDS = 0.1
 T = TypeVar("T")
 
 
@@ -697,10 +700,8 @@ class MultiDeviceBridgeService:
         deadline = self.monotonic()
         while True:
             deadline += self.music_interval
-            delay = deadline - self.monotonic()
-            if delay > 0:
-                await asyncio.sleep(delay)
-            else:
+            await self._wait_for_music_tick(deadline)
+            if self.monotonic() >= deadline:
                 # A slow lyric fetch overran the tick; resume from the current time.
                 deadline = self.monotonic()
             try:
@@ -713,6 +714,36 @@ class MultiDeviceBridgeService:
             self.now_playing = publication
             for session in self.sessions:
                 await session.publish_now_playing(publication)
+
+    async def _wait_for_music_tick(self, deadline: float) -> None:
+        """Wait for the cadence, or until the player reports a new state.
+
+        A seek, a pause or a track change reaches the mirror in a fraction of a
+        second, but waiting for the cadence would hide it for up to a whole
+        tick: seeking back and watching the panel would show the place the song
+        has left until the next frame. The wait is therefore sliced, and the
+        player's own report ends it early.
+        """
+
+        reported = self._player_revision()
+        while True:
+            delay = deadline - self.monotonic()
+            if delay <= 0:
+                return
+            if self._player_revision() != reported:
+                return
+            await asyncio.sleep(min(delay, MUSIC_WATCH_SECONDS))
+
+    def _player_revision(self) -> int:
+        """What the music source last saw the player report, 0 when it cannot say."""
+
+        revision = getattr(self.music_source, "revision", None)
+        if revision is None:
+            return 0
+        try:
+            return revision()
+        except Exception:
+            return 0
 
     @staticmethod
     def _snapshot(providers: Mapping[Provider, ProviderUsage]) -> UsageSnapshot:

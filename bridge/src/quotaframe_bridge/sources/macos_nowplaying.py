@@ -50,8 +50,9 @@ HOST_INTERPRETER = Path("/usr/bin/perl")
 ADAPTER_SCRIPT = Path("lib/media-control/mediaremote-adapter.pl")
 ADAPTER_FRAMEWORK = Path("Frameworks/MediaRemoteAdapter.framework")
 
-# The stream pushes a line per change; the debounce only coalesces bursts.
-DEBOUNCE_MILLISECONDS = 100
+# The stream pushes a line per change; the debounce only coalesces bursts. It sits
+# between a seek in the player and the panel showing the new place, so it is short.
+DEBOUNCE_MILLISECONDS = 30
 # A stream that exits is replaced, backing off so a broken host does not spin.
 RESTART_DELAYS_SECONDS = (1.0, 5.0, 30.0)
 # Without a live stream the last line is trusted this long, then ignored: the
@@ -250,6 +251,17 @@ class MediaRemoteStream:
         self._attempt = 0
         self._stopped = False
 
+    def latest(self) -> NowPlayingState | None:
+        """The newest payload received, without starting the stream or waiting for one.
+
+        A caller that only watches for a change, such as the publisher that decides when a
+        seek should reach the panel, must never spawn the adapter or block on a fresh
+        stream, so this reads what the pump already stored.
+        """
+
+        with self._lock:
+            return self._state
+
     def state(self) -> NowPlayingState | None:
         """Return the latest mirror state, starting the stream on first use."""
 
@@ -411,6 +423,16 @@ def current_state() -> NowPlayingState | None:
     return stream.state()
 
 
+def latest_state() -> NowPlayingState | None:
+    """The payload the process-wide stream last received, without starting it."""
+
+    with _default_lock:
+        stream = _default
+    if stream is None:
+        return None
+    return stream.latest()
+
+
 def _reset_default() -> None:
     """Drop the process-wide stream so the next call starts a fresh one."""
 
@@ -432,6 +454,7 @@ __all__ = (
     "NowPlayingState",
     "StreamEvent",
     "current_state",
+    "latest_state",
     "parse_payload",
     "parse_stream_line",
     "stream_command",

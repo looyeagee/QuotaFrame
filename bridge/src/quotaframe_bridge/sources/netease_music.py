@@ -593,6 +593,10 @@ class NeteaseMusicSource:
         self._lyrics_song_id: str | None = None
         # The last playhead the mirror reported, with the song it belongs to.
         self._last_mirror: tuple[str, _MirrorPlayhead] | None = None
+        # What the player last reported, so a seek or a pause can be noticed
+        # between two publications.
+        self._reported: tuple[object, ...] | None = None
+        self._revision = 0
 
     @property
     def supported(self) -> bool:
@@ -615,6 +619,41 @@ class NeteaseMusicSource:
         from quotaframe_bridge.sources.macos_nowplaying import current_state
 
         return current_state()
+
+    def _mirror_latest(self) -> NowPlayingState | None:
+        """The payload the mirror already holds, without starting or waiting for it."""
+
+        if self._now_playing is not None:
+            return self._now_playing()
+        from quotaframe_bridge.sources.macos_nowplaying import latest_state
+
+        return latest_state()
+
+    def revision(self) -> int:
+        """Counter that advances whenever the player reports a new state.
+
+        A seek, a pause or a track change reaches the mirror between two
+        publications, and a panel that waits for the cadence keeps showing the
+        place the song has left. The publisher watches this counter so the next
+        frame goes out as soon as the player has something to say. It only reads
+        what the stream already received, so it neither starts the adapter nor
+        blocks.
+        """
+
+        state = self._mirror_latest()
+        if state is None:
+            return self._revision
+        reported = (
+            state.title,
+            state.anchor_epoch,
+            state.elapsed_seconds,
+            state.playing,
+            state.playback_rate,
+        )
+        if reported != self._reported:
+            self._reported = reported
+            self._revision += 1
+        return self._revision
 
     def _mirror_for(self, track: Track, now: float) -> _MirrorPlayhead | None:
         """Playhead and playing flag from the mirror for this track, if it has them.
