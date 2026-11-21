@@ -108,7 +108,7 @@ Bridge 根据发布 manifest 和已校验的本地镜像生成本次传输的 `m
 {"cmd":"char_end"}
 ```
 
-容量、文件顺序、ACK 计数、分片和超时见[Folder Push 契约](open-device-access.md#7-folder-push应用ota)。官方实现的执行行为：
+容量、文件顺序、ACK 计数、分片和超时见[Folder Push 契约](open-device-access.md#8-folder-push应用ota)。官方实现的执行行为：
 
 - manifest 校验后进入物理确认阶段，Bridge 每 500 ms 查询 status，直到 `receiving` 才发送固件。
 - 接收期间 usage 返回 `ota_busy`。`char_end` 仅在镜像结构与 SHA-256 通过后切换启动分区。
@@ -139,3 +139,17 @@ usage 协议只允许 provider、百分比、重置时间、采样/发送时间�
 `previous` 为十进制字符串 `"0"`（下一页）或 `"1"`（上一页），其他值拒绝。页面集合、顺序与循环边界由设备决定；官方固件处于时钟时先回到额度页面，设置页若有未保存的预览则撤销。该能力可选，是否支持以 status 的 `caps` 为准。
 
 ACK 表示已入应用事件队列；不表示屏幕已完成刷新。未启用、OTA 占用、无效参数和队列满分别返回 `unsupported`、`ota_busy`、`invalid_request`、`queue_full`。配对或 OTA 期间应用层不执行翻页。相对翻页不是幂等操作，ACK 丢失或断线后不自动重发，也不为离线设备排队。
+
+## 正在播放（nowplaying.v1）
+
+设备在 `caps` 中声明 `nowplaying.v1` 后，Bridge 可发送当前歌曲和歌词窗口：
+
+```json
+{"cmd":"now_playing","v":"1","seq":"42","title":"证据","artist":"杨乃文","position":"54","duration":"275","state":"playing","current":"0","lines":"被当作乱放电的诱惑\n我双鱼 为什么天蝎要恨我\n难道都是我的错"}
+```
+
+`position` / `duration` 为秒，`state` 为 `playing` 或 `paused`。`lines` 是 `\n` 分隔的歌词窗口（最多 8 行），`current` 是正在唱的那一行在窗口中的下标；整首歌词放不进一帧，所以 Bridge 按播放进度推送当前行及其后几行。字段、截断规则和隐私边界见[接入契约](open-device-access.md#6-正在播放nowplayingv1)。
+
+成功 ACK 为 `{"ack":"now_playing","n":42,"ok":true}`；OTA 期间返回 `ota_busy`，非法字段返回 `invalid_request`。该命令是快照而不是事件，Bridge 不重放历史。
+
+Bridge 只在 macOS 上取数：网易云音乐桌面端把每次起播写进自己的本地数据库（`historyTracks`，只读打开），Bridge 由最新一行得到歌曲、歌手、时长与起播时刻；CoreAudio 的进程输出状态决定这次是播放还是暂停；歌词来自客户端自己使用的公开歌词接口，按歌曲缓存，换歌时才取一次。没有任何账号凭据离开电脑，面板上也只出现歌曲名、歌手、进度和歌词。

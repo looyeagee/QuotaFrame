@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "src/time_sync.cpp"
         "src/buddy_input_guard.c"
+        "src/now_playing_command.cpp"
         "src/usage_command.cpp"
     INCLUDE_DIRS "include"
     REQUIRES usage_core esp_desktop_buddy usage_json

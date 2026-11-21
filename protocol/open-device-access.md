@@ -37,7 +37,7 @@
 | --- | --- | --- |
 | status | 只有cmd=status | ack=status、ok、n=0，成功含data；关联当前串行查询 |
 | usage/time_sync/screen_toggle/screen_page/ota_abort | cmd、字符串v="1"、字符串seq及参数 | ack匹配cmd，ok为boolean，数字n精确匹配seq的数值 |
-| Folder Push | char_begin/file/chunk/file_end/char_end各自参数 | ack匹配当前cmd；成功n是0或文件累计字节数，见第7节；不添加seq/id |
+| Folder Push | char_begin/file/chunk/file_end/char_end各自参数 | ack匹配当前cmd；成功n是0或文件累计字节数，见第8节；不添加seq/id |
 
 扩展ACK的n由处理器提供；status核心ACK的n固定为0。各请求族按上表关联。
 
@@ -70,7 +70,7 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 | target | 无OTA时可选string | 1..31 ASCII字节，同上字符规则；可互刷的兼容类 |
 | fw | 无OTA时可选string | 1..31可打印ASCII字节，排除引号和反斜杠；OTA时符合版本规则 |
 | page | 可选string | 1..31 ASCII字节，`[A-Za-z0-9._-]+`，设备自定义页面状态，不是官方枚举 |
-| ota | 声明OTA时必需object | 见第7节 |
+| ota | 声明OTA时必需object | 见第8节 |
 | boot_valid | 可选boolean | OTA完成必须观察到true；缺省不能当成功 |
 
 名称不自动trim、截断、大小写折叠或由广播名补齐；正确JSON转义，UI按纯文本显示。长度按解码后码点和UTF-8字节计，编码后的完整帧另检查4096上限。
@@ -79,10 +79,11 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 
 | 能力 | 行为 |
 | --- | --- |
-| usage.v1 | 必需，理解Codex/Claude摘要，显示布局自主 |
+| usage.v1 | 必需，理解DeepSeek余额与MiniMax额度摘要，显示布局自主 |
 | time.sync.v1 | 本地日历同步 |
 | screen.toggle.v1 | 设备本地屏保切换 |
 | screen.page.v1 | 设备本地上一页/下一页，不要求提供page |
+| nowplaying.v1 | 显示正在播放的歌曲与歌词窗口；可选 |
 | ota.folder.v1 | 应用OTA；必须有firmware_project、target、fw、ota |
 
 不要求第三方使用Buddy，但必须满足同一线上契约。
@@ -131,7 +132,28 @@ ACK表示校验并接受到可处理状态，不等待慢速屏幕刷新。重�
 
 Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不驱动能力判断。没有对应能力则不发送。按键/手势在本地处理，屏幕操作不为离线设备排队，ACK丢失后不自动重放。OTA忙时按设备处理器规则返回ota_busy，status及ota_abort仍可用。
 
-## 6. 错误与远程解绑
+## 6. 正在播放（nowplaying.v1）
+
+设备声明 `nowplaying.v1` 后可接收当前歌曲与歌词窗口：
+
+```json
+{"cmd":"now_playing","v":"1","seq":"46","title":"证据","artist":"杨乃文","position":"54","duration":"275","state":"playing","current":"0","lines":"被当作乱放电的诱惑\n我双鱼 为什么天蝎要恨我\n难道都是我的错"}
+{"ack":"now_playing","n":46,"ok":true}
+```
+
+| 参数 | 规则 |
+| --- | --- |
+| title、artist | 可选UTF-8字符串，各≤192字节；缺失或空串表示未提供 |
+| position、duration | 必需uint32规范十进制字符串，秒；duration可为"0"表示时长未知 |
+| state | `playing` 或 `paused` |
+| lines | 可选字符串，行间以 `\n` 分隔，最多8行；单行≤192字节 |
+| current | lines 存在时随行给出，表示正在唱的那一行在 lines 中的下标 |
+
+整首歌词放不进一帧（完整JSON≤4096字节），因此Bridge按播放进度发布正在唱的那一行及其后几行；设备据此滚动显示，不需要缓存整首歌。文本按UTF-8整字符截断，设备不得显示半个字符。`lines` 缺省表示这一首没有可用歌词，设备仍显示歌名、歌手与进度。
+
+Bridge只在设备声明该能力时发送，且发送节奏由歌曲进度决定；内容不是幂等快照，断线后不补发历史。设备收到非法字段、超出范围的 `current` 或未知 `state` 时整条拒绝并返回 `invalid_request`，没有更新时不改变已显示的歌曲。
+
+## 7. 错误与远程解绑
 
 ```json
 {"ack":"screen_page","n":45,"ok":false,"error":"unsupported"}
@@ -145,7 +167,7 @@ error是稳定短码，不返回凭据或原始内部错误。普通命令沿用
 
 固件不注册on_unpair。收到 `{"cmd":"unpair"}` 时Buddy返回ack=unpair、ok=false、n=0、error=unsupported，设备bond保持不变。保留设备本地明确触发的恢复方式；Bridge忘记设备不发送unpair。其他未使用的Buddy回调保持未配置，不扩大远程控制面。
 
-## 7. Folder Push应用OTA
+## 8. Folder Push应用OTA
 
 ### 7.1 项目、兼容性和状态
 
@@ -200,10 +222,12 @@ manifest的file_end验证后进入confirming，设备逐次物理确认且满足
 
 本地启动检查不能依赖电脑在线；回滚和断电恢复必须实测。[乐鑫OTA说明](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/ota.html)
 
-## 8. 实施与隐私边界
+## 9. 实施与隐私边界
 
 Buddy getter 调用前的原始输入校验与固定版本包装见[接入架构](../docs/design/open-device-access.md#输入校验)。
 
 仅传送协议白名单摘要、公开固件和必要manifest，不发送账号、凭据、邮箱、组织、套餐、余额或原始采集错误。地址、名称及桌面确认不进入usage。
+
+nowplaying 只放行歌曲名、歌手、进度、播放状态和歌词文本：这些正是面板要显示的内容。歌曲ID、文件路径、播放列表、账号信息和客户端本地数据库的其他内容都不进入线上帧；歌词文本在Bridge侧按行截断后才会发送。
 
 验收覆盖三种关联规则、迟到/旧transport响应、严格数值、重复键、UTF-8与4096边界、无target最小设备、无page翻页、项目检查、远程unpair无副作用及OTA中断。可执行样例位于 `protocol/examples/`，解析边界测试位于 Bridge 与固件协议测试工程。

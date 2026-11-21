@@ -3,6 +3,7 @@ idf_component_register(
         "src/app_events.cpp"
         "src/ble_identity.cpp"
         "src/ble_service.cpp"
+        "src/now_playing_mailbox.cpp"
         "src/ota_commands.cpp"
     INCLUDE_DIRS "include"
     PRIV_REQUIRES bt app_update esp_timer

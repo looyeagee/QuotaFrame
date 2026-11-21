@@ -27,6 +27,7 @@ bool make_status_json(
     const char* firmware_version, const char* target,
     const OtaSnapshot& ota, bool enable_time_sync,
     char* output, size_t output_size, bool enable_screen_toggle = false,
-    bool boot_valid = false, bool enable_screen_page = false);
+    bool boot_valid = false, bool enable_screen_page = false,
+    bool enable_now_playing = false);
 
 }  // namespace usage_panel

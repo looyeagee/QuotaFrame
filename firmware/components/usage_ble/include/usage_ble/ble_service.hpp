@@ -6,6 +6,7 @@
 #include "esp_desktop_buddy/folder_push.h"
 #include "esp_desktop_buddy/transport_ble.h"
 #include "usage_ble/app_events.hpp"
+#include "usage_ble/now_playing_mailbox.hpp"
 #include "usage_ble/ota_commands.hpp"
 #include "usage_ota/folder_push_sink.hpp"
 #include "usage_ota/session.hpp"
@@ -28,6 +29,7 @@ struct BleServiceConfig {
     void* ui_context;
     bool enable_screen_toggle = false;
     bool enable_screen_page = false;
+    bool enable_now_playing = false;
 };
 
 /**
@@ -72,6 +74,13 @@ public:
     esp_desktop_buddy_command_extension_result_t handle_usage(
         const esp_desktop_buddy_command_view_t* request);
 
+    /** Stores one validated now-playing publication for the display loop. */
+    esp_desktop_buddy_command_extension_result_t handle_now_playing(
+        const esp_desktop_buddy_command_view_t* request);
+
+    /** Takes the pending now-playing publication; false when none arrived. */
+    bool take_now_playing(NowPlayingUpdate& out);
+
     /** Aborts OTA state and rebuilds Folder Push protocol state on success. */
     esp_desktop_buddy_command_extension_result_t handle_ota_abort(
         const esp_desktop_buddy_command_view_t* request);
@@ -87,6 +96,8 @@ public:
 
 private:
     static esp_desktop_buddy_command_extension_result_t usage_trampoline(
+        void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
+    static esp_desktop_buddy_command_extension_result_t now_playing_trampoline(
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t ota_abort_trampoline(
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
@@ -120,6 +131,8 @@ private:
     bool enable_time_sync_ = false;
     bool enable_screen_toggle_ = false;
     bool enable_screen_page_ = false;
+    bool enable_now_playing_ = false;
+    NowPlayingMailbox now_playing_{};
     OtaSession* ota_ = nullptr;
     OtaCommandRouter ota_commands_{};
     OtaFolderPushSink ota_folder_sink_{};
