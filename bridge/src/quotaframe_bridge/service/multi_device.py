@@ -41,6 +41,8 @@ from quotaframe_bridge.transports.base import (
 )
 
 LOGGER = logging.getLogger(__name__)
+SCREEN_TOGGLE_CAPABILITY = "screen.toggle.v1"
+SCREEN_PAGE_CAPABILITY = "screen.page.v1"
 _SESSION_RESTART_INITIAL_DELAY = 1.0
 _SESSION_RESTART_MAX_DELAY = 60.0
 T = TypeVar("T")
@@ -112,6 +114,37 @@ class DeviceSession:
     def exclusive_active(self) -> bool:
         return self._exclusive_active
 
+    @property
+    def screen_command_pending(self) -> bool:
+        """True while a screen command is in flight and would swallow a new one."""
+
+        return self._screen_command_task is not None and not self._screen_command_task.done()
+
+    def screen_command_unavailable(self, capability: str) -> str | None:
+        """Return why a screen command would be dropped, or None when it would run.
+
+        Both the scheduler and the sender re-check these conditions before
+        touching the transport, and both drop the command silently. Callers that
+        report an outcome to a person need the same predicate in advance.
+        """
+
+        if self._closing:
+            return "closing"
+        if self.screen_command_pending:
+            return "busy"
+        if not self.connected:
+            return "disconnected"
+        if self._exclusive_active:
+            return "exclusive"
+        status = device_status(self.transport)
+        if status is None:
+            return "disconnected"
+        if not status.secure:
+            return "unsecured"
+        if capability not in status.capabilities:
+            return "missing_capability"
+        return None
+
     def schedule_screen_toggle(self) -> None:
         self._schedule_screen_command(None)
 
@@ -122,12 +155,13 @@ class DeviceSession:
 
     def _schedule_screen_command(self, previous: bool | None) -> None:
         # Relative commands cannot be replayed safely after an unknown outcome.
-        if self._closing or (self._screen_command_task is not None and not self._screen_command_task.done()):
+        capability = SCREEN_TOGGLE_CAPABILITY if previous is None else SCREEN_PAGE_CAPABILITY
+        if self.screen_command_unavailable(capability) is not None:
             return
         self._screen_command_task = asyncio.create_task(self._send_screen_command(previous))
 
     async def _send_screen_command(self, previous: bool | None) -> None:
-        capability = "screen.toggle.v1" if previous is None else "screen.page.v1"
+        capability = SCREEN_TOGGLE_CAPABILITY if previous is None else SCREEN_PAGE_CAPABILITY
         command = "screen_toggle" if previous is None else "screen_page"
         status = device_status(self.transport)
         if (not self.connected or self.exclusive_active or status is None
@@ -430,6 +464,9 @@ class MultiDeviceBridgeService:
         self._running = False
         self.collection_count = 0
         self.consecutive_failures = 0
+        # Last accepted now-playing publication, kept for status surfaces that
+        # are not the panels themselves. None until the first successful fetch.
+        self.now_playing: NowPlayingPublication | None = None
 
     def toggle_screensavers(self) -> None:
         """Apply one tray click independently to each eligible device."""
@@ -673,6 +710,7 @@ class MultiDeviceBridgeService:
                 continue
             if publication is None:
                 continue
+            self.now_playing = publication
             for session in self.sessions:
                 await session.publish_now_playing(publication)
 

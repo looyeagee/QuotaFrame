@@ -321,7 +321,12 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
         sessions[3]._exclusive_active = True
         service = MultiDeviceBridgeService(RecordingSource(), sessions)
         service.turn_pages(-1)
-        await asyncio.gather(*(s._screen_command_task for s in sessions))
+        await asyncio.gather(*(s._screen_command_task for s in sessions if s._screen_command_task))
+        # A session that cannot take the command is not scheduled at all, so
+        # nothing is left in flight to explain later.
+        self.assertEqual(
+            [s._screen_command_task is None for s in sessions], [False, False, True, True]
+        )
         for transport in transports[:2]:
             self.assertEqual(json.loads(transport.sent[0][0]),
                 {"cmd": "screen_page", "v": "1", "seq": "0", "previous": "1"})
@@ -386,7 +391,10 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
         sessions[3]._exclusive_active = True
         service = MultiDeviceBridgeService(RecordingSource(), sessions)
         service.toggle_screensavers()
-        await asyncio.gather(*(s._screen_command_task for s in sessions))
+        await asyncio.gather(*(s._screen_command_task for s in sessions if s._screen_command_task))
+        self.assertEqual(
+            [s._screen_command_task is None for s in sessions], [False, True, True, True]
+        )
         self.assertEqual(json.loads(transports[0].sent[0][0]),
                          {"cmd": "screen_toggle", "v": "1", "seq": "0"})
         self.assertEqual([len(t.sent) for t in transports], [1, 0, 0, 0])

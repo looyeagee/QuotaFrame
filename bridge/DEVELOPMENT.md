@@ -114,6 +114,8 @@ quotaframe-bridge --name-prefix QF-WS-S3-A216-
 --connect-timeout 60
 --source-timeout          每条 CLI 命令的超时（秒），Windows 默认 15，macOS 默认 90
 --ack-timeout 5
+--http-host 127.0.0.1     本地控制页面监听地址
+--http-port 8788          本地控制页面端口，0 关闭
 --log-level INFO
 ```
 
@@ -126,6 +128,24 @@ BLE connected: device=Waveshare AMOLED 2.16 secure=true protocol=1 capabilities=
 自动重连通过相同校验后也会再次输出；未完成或校验失败的连接不会输出成功记录。
 
 `--interval` 从上一次采集完成后计时，`--publish-interval` 独立重发最近快照。采集中收到的手工刷新请求将在本轮完成后执行。新设备连接就绪后立即接收已有快照，无快照时等待首次结果。
+
+## 本地控制页面
+
+控制台形态默认在 `--http-host`:`--http-port`（默认 `127.0.0.1:8788`，端口 0 关闭）提供页面和 JSON 接口，实现在 `src/quotaframe_bridge/control/`：
+
+```text
+GET  /                   页面（令牌随查询串带入）
+GET  /api/state          设备、额度、播放状态快照
+POST /api/screen/toggle  切换到时钟 / 额度
+POST /api/screen/page    {"direction": "next" | "previous"}
+POST /api/refresh        立即采集
+```
+
+`backend.ServiceControl` 把服务适配成这组窄接口，命令调用的是 `toggle_screensavers()` / `turn_pages()` / `request_collection()`，也就是托盘用的同一入口。设备是否会接受命令由 `DeviceSession.screen_command_unavailable()` 判定；它和设备发送前的自检是同一个判断，因此返回 202 时会附每台设备的 `accepted` 与 `reason`，不会把被丢弃的命令报成成功。
+
+`server.py` 是标准库 `asyncio` 实现的 HTTP/1.1，不引入第三方框架：请求头上限 8 KiB、请求体上限 4 KiB、空闲连接 30 秒回收。`routes.py` 与套接字层分离，可脱离网络直接测试。令牌来自 `control.token`（`paths.data_directory()`，权限 0600），由 `token.py` 首次生成；绑定环回地址时额外校验 `Host` 头以防 DNS rebinding，绑定其他地址时只依赖令牌。
+
+页面是无构建步骤的单个字符串（`page.py`），文案取自 `catalog.py`，冻结包与源码树服务同一份内容。`bridge/tests/test_control_http.py` 覆盖路由、令牌、命令派发与真实套接字往返，不需要蓝牙。
 
 ## 数据源接口
 

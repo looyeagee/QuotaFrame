@@ -19,6 +19,7 @@ from quotaframe_bridge.cli.instance_lock import (
     BridgeAlreadyRunningError,
     BridgeInstanceLock,
 )
+from quotaframe_bridge.control import ControlServer, ServiceControl, load_or_create_token
 from quotaframe_bridge.pairing.base import DevicePairer
 from quotaframe_bridge.service.devices import TrayServiceGraph
 from quotaframe_bridge.service.device_manager import DeviceManager
@@ -97,6 +98,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="seconds one source request may take before the provider is skipped",
     )
     parser.add_argument("--ack-timeout", type=float, default=5.0)
+    parser.add_argument(
+        "--http-host",
+        default="127.0.0.1",
+        help=(
+            "address of the local control page; the default is reachable only "
+            "from this machine, any other address lets whatever can route to it "
+            "control every adopted panel once it knows the token"
+        ),
+    )
+    parser.add_argument(
+        "--http-port",
+        type=int,
+        default=8788,
+        help="port of the local control page; 0 disables it",
+    )
     parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
@@ -244,6 +260,7 @@ async def _run(args: argparse.Namespace) -> None:
         else create_usage_source(timeout=args.source_timeout)
     )
     music_source = create_now_playing_source()
+    graph = None
     if args.dry_run:
         transport = ConsoleTransport()
         service = MultiDeviceBridgeService(
@@ -315,7 +332,30 @@ async def _run(args: argparse.Namespace) -> None:
     cycles = args.cycles
     if args.dry_run and cycles is None:
         cycles = 1
-    await service.run(cycles=cycles)
+    control = _control_server(args, service, graph)
+    if control is None:
+        await service.run(cycles=cycles)
+        return
+    async with control:
+        await service.run(cycles=cycles)
+
+
+def _control_server(
+    args: argparse.Namespace,
+    service: MultiDeviceBridgeService,
+    graph: TrayServiceGraph[DevicePairer] | None,
+) -> ControlServer | None:
+    """Build the local control page server, or None when it is disabled."""
+
+    if args.http_port == 0:
+        return None
+    control = ServiceControl(service, graph=graph, version=__version__)
+    return ControlServer(
+        control,
+        token=load_or_create_token(),
+        host=args.http_host,
+        port=args.http_port,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -329,6 +369,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--cycles must be at least one")
     if args.interval < 0:
         parser.error("--interval must be non-negative")
+    if not 0 <= args.http_port <= 65535:
+        parser.error("--http-port must be between 0 and 65535")
     if (
         args.repair_pairing
         and not args.dry_run

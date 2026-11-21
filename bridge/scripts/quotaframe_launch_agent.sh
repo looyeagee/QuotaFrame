@@ -17,6 +17,7 @@ LABEL="com.quotaframe.bridge"
 LOG_DIR="${QUOTAFRAME_LOG_DIR:-$HOME/Library/Logs/quotaframe}"
 LOG_FILE="$LOG_DIR/bridge-console.log"
 LOG_LEVEL="${QUOTAFRAME_LOG_LEVEL:-INFO}"
+HTTP_PORT="${QUOTAFRAME_HTTP_PORT:-8788}"
 MAX_LOG_BYTES=$((8 * 1024 * 1024))
 
 script_path="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
@@ -165,6 +166,26 @@ cmd_logs() {
     exec tail -n 40 -f "$LOG_FILE"
 }
 
+# The page prints its own address into the log, but reading the token file is
+# cheaper than searching a rotated log after every restart.
+page_url() {
+    local token_file="$HOME/Library/Application Support/quotaframe/control.token"
+    local token=""
+    if [[ -f "$token_file" ]]; then
+        IFS= read -r token <"$token_file" || true
+    fi
+    [[ -n "$token" ]] || die "no control token; the Bridge has not served the page yet"
+    printf 'http://127.0.0.1:%s/?token=%s\n' "$HTTP_PORT" "$token"
+}
+
+cmd_page() {
+    page_url
+}
+
+cmd_open() {
+    open "$(page_url)"
+}
+
 case "${1:-status}" in
     run) cmd_run ;;
     install) cmd_install ;;
@@ -174,5 +195,7 @@ case "${1:-status}" in
     restart) cmd_restart ;;
     status) cmd_status ;;
     logs) cmd_logs ;;
-    *) die "usage: $0 {install|uninstall|start|stop|restart|status|logs}" ;;
+    page) cmd_page ;;
+    open) cmd_open ;;
+    *) die "usage: $0 {install|uninstall|start|stop|restart|status|logs|page|open}" ;;
 esac
