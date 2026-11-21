@@ -344,8 +344,9 @@ TEST_CASE("the panel moves on to the next line by itself", "[lyrics]")
     TEST_ASSERT_EQUAL_UINT8(0, music_current_line(v, 1000));
     // Half a second later the song has reached the next line, without a new publication.
     TEST_ASSERT_EQUAL_UINT8(1, music_current_line(v, 1500));
-    // The window ends there: the panel waits for the publication that carries more lines.
-    TEST_ASSERT_EQUAL_UINT8(2, music_current_line(v, 100000));
+    // The panel never invents a place the source did not state: once the publications
+    // stop, the playhead holds where the last three seconds left it.
+    TEST_ASSERT_EQUAL_UINT8(1, music_current_line(v, 100000));
 }
 
 TEST_CASE("a new line is composed as soon as the song reaches it", "[lyrics]")
@@ -364,6 +365,42 @@ TEST_CASE("a new line is composed as soon as the song reaches it", "[lyrics]")
     // A song that was never published has nothing to move on to.
     View idle;
     TEST_ASSERT_FALSE(music_line_moved(idle, 1000));
+}
+
+TEST_CASE("a quiet link stops the playhead instead of walking on", "[lyrics]")
+{
+    // The Bridge publishes once a second. If it stops, the panel must hold the line it
+    // last heard: carrying on with its own clock would walk the song's lyrics past the
+    // place the listener is at, and the next frame would look many seconds ahead.
+    const uint32_t starts[] = {10000, 12000, 15000};
+    View v;
+    apply_now_playing(v, timed_publication(11500, starts, 3), 1000);
+    // Inside the window the playhead follows the panel clock.
+    TEST_ASSERT_EQUAL_UINT64(14000, music_position_ms(v, 3500));
+    // Past it the playhead stands where the last three seconds left it.
+    TEST_ASSERT_EQUAL_UINT64(14500, music_position_ms(v, 11000));
+    TEST_ASSERT_EQUAL_UINT64(14500, music_position_ms(v, 60000));
+    TEST_ASSERT_EQUAL_UINT8(1, music_current_line(v, 60000));
+}
+
+TEST_CASE("a seek back moves the sung line back", "[lyrics]")
+{
+    // 愿与愁: sung at 113 s, then the listener seeks back to 103 s.
+    const uint32_t before_seek[] = {106860, 112519, 119200, 125760, 130129, 134699};
+    const uint32_t after_seek[] = {92530, 99950, 106860, 112519, 119200, 125760};
+    View v;
+    apply_now_playing(v, timed_publication(113000, before_seek, 6), 1000);
+    TEST_ASSERT_EQUAL_UINT8(1, music_current_line(v, 1000));
+    // Ten seconds of listening, with the Bridge publishing once a second.
+    for (uint64_t now = 2000; now <= 11000; now += 1000)
+        apply_now_playing(
+            v, timed_publication(static_cast<uint32_t>(113000 + (now - 1000)), before_seek, 6),
+            now);
+    TEST_ASSERT_EQUAL_UINT8(2, music_current_line(v, 12000));
+    // The publication that follows the seek names the place the song went back to.
+    apply_now_playing(v, timed_publication(103000, after_seek, 6), 12000);
+    TEST_ASSERT_EQUAL_UINT8(1, music_current_line(v, 12000));
+    TEST_ASSERT_EQUAL_UINT64(3050, music_line_age_ms(v, 12000));
 }
 
 TEST_CASE("the length of the line comes from the timeline", "[lyrics]")

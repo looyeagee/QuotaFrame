@@ -143,6 +143,17 @@ void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_
 
 namespace {
 
+/**
+ * How long the panel keeps advancing the playhead after the last publication.
+ *
+ * The Bridge publishes once a second, so a gap longer than this is not a slow
+ * song: the link or the Bridge stopped. Carrying on with the panel clock would
+ * walk the lyrics past the song for as long as the silence lasts, which reads as
+ * a jump of many seconds once the frames return, so the panel holds the line it
+ * last heard instead. One missed publication stays inside the window.
+ */
+constexpr uint64_t kMusicStaleMs = 3000;
+
 /** Whether the source stated the start of every line of the window. */
 bool has_timeline(const View &view) {
     return view.music.line_time_count != 0 &&
@@ -155,9 +166,12 @@ uint64_t music_position_ms(const View &view, uint64_t now_ms) {
     if (!view.music.has_position)
         return 0;
     uint64_t position = view.music.position_ms;
-    // The song keeps running between two publications, so the playhead does too.
-    if (view.music.playing && now_ms > view.music_position_at_ms)
-        position += now_ms - view.music_position_at_ms;
+    // The song keeps running between two publications, so the playhead does too - but only
+    // as far as the next publication would have carried it.
+    if (view.music.playing && now_ms > view.music_position_at_ms) {
+        const uint64_t since = now_ms - view.music_position_at_ms;
+        position += since < kMusicStaleMs ? since : kMusicStaleMs;
+    }
     return position;
 }
 
