@@ -4,6 +4,8 @@ idf_component_register(
         "test_panel_logic.cpp"
         "test_screens.cpp"
         "../../../main/canvas.cpp"
+        "../../../main/cjk_font.cpp"
+        "../../../main/cjk_font_data.cpp"
         "../../../main/panel_logic.cpp"
         "../../../main/screens.cpp"
     INCLUDE_DIRS "../../../main"

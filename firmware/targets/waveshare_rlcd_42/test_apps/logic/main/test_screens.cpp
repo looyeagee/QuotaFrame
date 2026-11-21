@@ -1,6 +1,7 @@
 #include "canvas.hpp"
 #include "screens.hpp"
 #include "unity.h"
+#include <cstdio>
 #include <cstring>
 
 using namespace usage_panel;
@@ -243,6 +244,73 @@ TEST_CASE("the clock page shows the room readings and both quota windows", "[ren
     for (int y = 190; y < 284; ++y)
         for (int x = 188; x < 200; ++x)
             TEST_ASSERT_FALSE_MESSAGE(black(x, y), "The balance reaches the MiniMax column");
+}
+
+TEST_CASE("the music page shows the song, the playhead and the lyric window", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Music;
+    v.link = {true, true, false, 0};
+    v.music_valid = true;
+    snprintf(v.music.title, sizeof(v.music.title), "证据");
+    snprintf(v.music.artist, sizeof(v.music.artist), "杨乃文");
+    v.music.position_seconds = 54;
+    v.music.duration_seconds = 275;
+    v.music.playing = true;
+    v.music.line_count = 3;
+    snprintf(v.music.lines[0], sizeof(v.music.lines[0]), "被当作乱放电的诱惑");
+    snprintf(v.music.lines[1], sizeof(v.music.lines[1]), "我双鱼 为什么天蝎要恨我");
+    snprintf(v.music.lines[2], sizeof(v.music.lines[2]), "难道都是我的错");
+    screens.render(v);
+
+    // The line being sung is inverted across the content width, and the glyphs inside it stay
+    // open so the text reads as white on black.
+    int band_black = 0, band_total = 0;
+    for (int y = 140; y < 164; ++y)
+        for (int x = 14; x < 386; ++x) {
+            ++band_total;
+            band_black += black(x, y) ? 1 : 0;
+        }
+    TEST_ASSERT_GREATER_THAN(band_total / 2, band_black);
+    TEST_ASSERT_LESS_THAN(band_total, band_black);
+    // The title and the artist carry CJK ink on their own rows above the playhead.
+    int title_ink = 0, artist_ink = 0;
+    for (int y = 46; y < 70; ++y)
+        for (int x = 14; x < 386; ++x)
+            title_ink += black(x, y) ? 1 : 0;
+    for (int y = 74; y < 98; ++y)
+        for (int x = 14; x < 386; ++x)
+            artist_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(40, title_ink, "The song title is missing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(40, artist_ink, "The artist is missing");
+    // The playhead bar is framed at y 106 and the rule under it sits at y 128.
+    TEST_ASSERT_TRUE(black(14, 106));
+    TEST_ASSERT_TRUE(black(14, 128));
+
+    // A paused song marks its state on the artist row without losing the text.
+    v.music.playing = false;
+    screens.render(v);
+    int paused_ink = 0;
+    for (int y = 84; y < 98; ++y)
+        for (int x = 300; x < 386; ++x)
+            paused_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, paused_ink, "The paused marker is missing");
+}
+
+TEST_CASE("the music page explains itself before any song arrives", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Music;
+    v.link = {true, true, false, 0};
+    screens.render(v);
+    // No publication means no inverted lyric band: only the header and one line of text.
+    int band_black = 0;
+    for (int y = 140; y < 164; ++y)
+        for (int x = 14; x < 386; ++x)
+            band_black += black(x, y) ? 1 : 0;
+    TEST_ASSERT_EQUAL_INT(0, band_black);
 }
 
 TEST_CASE("an unknown provider is rejected by the model", "[render]")

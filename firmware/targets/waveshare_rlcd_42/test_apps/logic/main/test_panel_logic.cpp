@@ -88,16 +88,22 @@ TEST_CASE("the landscape ring and the portrait ring cycle in both directions", "
 {
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(Navigator::next(Page::Home, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(Navigator::next(Page::Deepseek, false)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Minimax, false)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::next(Page::Minimax, false)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Music, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::next(Page::Clock, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Home, true)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::next(Page::Clock, true)));
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::previous(Page::Clock, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::previous(Page::Home, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Deepseek, false)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::previous(Page::Home, true)));
-    for (Page page : {Page::Deepseek, Page::Minimax, Page::Settings})
+    for (Page page : {Page::Deepseek, Page::Minimax, Page::Music, Page::Settings})
         TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(page, true)));
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Settings, false)));
+    // The header ring draws one marker per page, the music page third of five.
+    TEST_ASSERT_EQUAL_INT(5, ring_pages());
+    TEST_ASSERT_EQUAL_INT(3, ring_index(Page::Music));
+    TEST_ASSERT_EQUAL_INT(-1, ring_index(Page::Settings));
 }
 
 TEST_CASE("KEY steps to the previous page and BOOT to the next", "[nav]")
