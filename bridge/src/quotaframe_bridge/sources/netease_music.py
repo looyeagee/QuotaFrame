@@ -14,6 +14,11 @@ The database stays the source of the song identity and of the lyric lookup key;
 the mirror only overrides the playhead and the playing flag, and only while it
 reports this same song.
 
+A client that quits stops publishing, and the mirror says so. The last track
+then stays on the panel with the playhead where the mirror left it and the
+song marked as stopped, so the lyrics stop scrolling instead of running on
+with a player that is gone.
+
 Lyrics are read from the public song endpoints the same client uses for its
 own lyric panel. They are anonymous requests: no cookie, no account and no
 credential leaves the computer, and the response is cached per song so a
@@ -569,6 +574,8 @@ class NeteaseMusicSource:
         self._now_playing = now_playing
         self._lyrics: dict[str, tuple[LyricLine, ...]] = {}
         self._lyrics_song_id: str | None = None
+        # The last playhead the mirror reported, with the song it belongs to.
+        self._last_mirror: tuple[str, _MirrorPlayhead] | None = None
 
     @property
     def supported(self) -> bool:
@@ -607,11 +614,15 @@ class NeteaseMusicSource:
         if not _same_title(state.title, track.title):
             LOGGER.debug("now-playing mirror describes a different song")
             return None
-        return _MirrorPlayhead(
+        playhead = _MirrorPlayhead(
             position_seconds=int(state.position_seconds(now)),
             playing=state.playing,
             duration_seconds=int(round(state.duration_seconds)),
         )
+        # Kept for the case where the client stops publishing: the playhead then
+        # stays where the mirror left it instead of running on with the clock.
+        self._last_mirror = (track.song_id, playhead)
+        return playhead
 
     def _lyrics_for(self, song_id: str) -> tuple[LyricLine, ...]:
         if self._lyrics_song_id == song_id:
@@ -659,12 +670,22 @@ class NeteaseMusicSource:
             if duration <= 0:
                 duration = mirrored.duration_seconds
         else:
-            # Without the mirror the playhead is the distance from the moment
-            # the client wrote the row, so a pause reads as playing until the
-            # audio output stream tears down.
-            position = elapsed
-            ended = duration > 0 and elapsed > duration + ENDED_GRACE_SECONDS
-            playing = not ended and BUNDLE_ID in self._playing_bundle_ids()
+            remembered = self._last_mirror
+            if remembered is not None and remembered[0] == track.song_id:
+                # The client stopped publishing: it quit. The playhead stays
+                # where the mirror left it, and the song is not playing any
+                # more, so the panel stops scrolling its lyrics.
+                position = remembered[1].position_seconds
+                playing = (
+                    remembered[1].playing and BUNDLE_ID in self._playing_bundle_ids()
+                )
+            else:
+                # Without the mirror the playhead is the distance from the moment
+                # the client wrote the row, so a pause reads as playing until the
+                # audio output stream tears down.
+                position = elapsed
+                ended = duration > 0 and elapsed > duration + ENDED_GRACE_SECONDS
+                playing = not ended and BUNDLE_ID in self._playing_bundle_ids()
         # A track that has run out keeps the playhead at its end instead of
         # running past the duration while the client sits paused.
         if duration > 0:

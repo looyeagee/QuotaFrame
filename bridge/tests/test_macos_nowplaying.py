@@ -156,20 +156,28 @@ class PositionTest(unittest.TestCase):
 
 class ParseStreamLineTest(unittest.TestCase):
     def test_a_data_line_carries_the_payload(self) -> None:
-        state = parse_stream_line(stream_line(), received_at=0.0)
-        assert state is not None
-        self.assertEqual(state.title, "只要平凡")
+        event = parse_stream_line(stream_line(), received_at=0.0)
+        assert event.state is not None
+        self.assertEqual(event.state.title, "只要平凡")
+        self.assertFalse(event.empty)
 
-    def test_an_empty_payload_is_not_a_state(self) -> None:
+    def test_an_empty_payload_announces_that_no_client_publishes(self) -> None:
+        # The daemon sends this when the last client stopped publishing.
         empty = json.dumps({"type": "data", "diff": False, "payload": {}})
-        self.assertIsNone(parse_stream_line(empty, received_at=0.0))
+        event = parse_stream_line(empty, received_at=0.0)
+        self.assertTrue(event.empty)
+        self.assertIsNone(event.state)
 
     def test_a_diff_is_ignored_because_full_payloads_are_requested(self) -> None:
-        self.assertIsNone(parse_stream_line(stream_line(diff=True), received_at=0.0))
+        event = parse_stream_line(stream_line(diff=True), received_at=0.0)
+        self.assertFalse(event.empty)
+        self.assertIsNone(event.state)
 
     def test_noise_is_ignored(self) -> None:
         for text in ("", "   ", "not json", "[]", json.dumps({"type": "error"})):
-            self.assertIsNone(parse_stream_line(text, received_at=0.0))
+            event = parse_stream_line(text, received_at=0.0)
+            self.assertFalse(event.empty)
+            self.assertIsNone(event.state)
 
 
 class StreamCommandTest(unittest.TestCase):
@@ -201,6 +209,20 @@ class MediaRemoteStreamTest(unittest.TestCase):
             stream.stop()
         assert state is not None
         self.assertEqual(state.title, "只要平凡")
+
+    def test_the_stream_forgets_the_track_when_the_client_quits(self) -> None:
+        empty = json.dumps({"type": "data", "diff": False, "payload": {}})
+        with tempfile.TemporaryDirectory() as directory:
+            root = payload_directory(Path(directory))
+            stream = MediaRemoteStream(
+                directory=root,
+                spawn=lambda *a, **k: FakeProcess([stream_line(), empty]),
+            )
+            stream.state()
+            self.assertTrue(wait_for(lambda: stream._no_client))
+            state = stream.state()
+            stream.stop()
+        self.assertIsNone(state)
 
     def test_other_platforms_never_spawn(self) -> None:
         spawned: list[int] = []

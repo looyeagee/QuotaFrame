@@ -20,6 +20,10 @@ this process — it spawns that host and reads the JSON stream it writes.
 The reader is advisory in the same way the CoreAudio probe is: a missing payload,
 a host that refuses to run it, or a stream that dies all degrade to "no mirror
 state", and callers fall back to their own timing.
+
+The daemon also says when nothing publishes now-playing info any more, with an
+empty payload. The mirror takes that for the exit of the client it last saw:
+keeping the track would leave the panel playing a song whose client has quit.
 """
 
 from __future__ import annotations
@@ -94,6 +98,20 @@ class NowPlayingState:
         return max(0.0, position)
 
 
+@dataclass(frozen=True, slots=True)
+class StreamEvent:
+    """One line of the adapter's stream, decoded.
+
+    `state` is the track a client publishes. `empty` marks the daemon's
+    announcement that no client publishes now-playing info at all: the mirror
+    has to forget the last track then, or the panel keeps playing a song whose
+    client has quit.
+    """
+
+    state: NowPlayingState | None = None
+    empty: bool = False
+
+
 def _seconds(payload: Mapping[str, object], micros_key: str, seconds_key: str) -> float:
     micros = payload.get(micros_key)
     if isinstance(micros, (int, float)):
@@ -152,27 +170,35 @@ def parse_payload(
     )
 
 
-def parse_stream_line(line: str, *, received_at: float) -> NowPlayingState | None:
-    """Decode one line of the adapter's stream; unknown lines read as no state."""
+def parse_stream_line(line: str, *, received_at: float) -> StreamEvent:
+    """Decode one line of the adapter's stream.
+
+    A line the reader cannot use says nothing about the client and is ignored.
+    An empty payload is the daemon's announcement that no client publishes
+    now-playing info any more, which the mirror has to act on.
+    """
 
     text = line.strip()
     if not text:
-        return None
+        return StreamEvent()
     try:
         document = json.loads(text)
     except ValueError:
         LOGGER.debug("now-playing stream line is not JSON")
-        return None
+        return StreamEvent()
     if not isinstance(document, dict) or document.get("type") != "data":
-        return None
+        return StreamEvent()
     if document.get("diff"):
         # Full payloads are requested, so a delta means the request was ignored.
         LOGGER.debug("now-playing stream produced an unexpected diff")
-        return None
+        return StreamEvent()
     payload = document.get("payload")
     if not isinstance(payload, dict):
-        return None
-    return parse_payload(payload, received_at=received_at)
+        return StreamEvent()
+    if not payload.get("bundleIdentifier"):
+        # The daemon names no client: nothing publishes now-playing info.
+        return StreamEvent(empty=True)
+    return StreamEvent(state=parse_payload(payload, received_at=received_at))
 
 
 def stream_command(directory: Path) -> list[str] | None:
@@ -216,6 +242,8 @@ class MediaRemoteStream:
         self._platform = platform
         self._lock = threading.Lock()
         self._state: NowPlayingState | None = None
+        # Whether the daemon has said that no client publishes now-playing info.
+        self._no_client = False
         self._process: object | None = None
         self._thread: threading.Thread | None = None
         self._next_attempt_at = 0.0
@@ -229,8 +257,12 @@ class MediaRemoteStream:
             self._start_if_due()
             state = self._state
             running = self._process is not None
+            no_client = self._no_client
         if state is None:
-            return self._await_first_line() if running else None
+            if no_client or not running:
+                return None
+            # A stream that has just started may still have a client to report.
+            return self._await_first_line()
         silent_for = self._clock() - state.received_at
         if not running and silent_for > SILENCE_TOLERANCE_SECONDS:
             return None
@@ -297,11 +329,20 @@ class MediaRemoteStream:
         stdout = getattr(process, "stdout", None)
         try:
             for line in stdout or ():
-                state = parse_stream_line(line, received_at=self._clock())
-                if state is None:
+                event = parse_stream_line(line, received_at=self._clock())
+                if event.empty:
+                    # The daemon says no client publishes now-playing info. The
+                    # last track is history now, and keeping it would leave the
+                    # panel playing a song whose client has quit.
+                    with self._lock:
+                        self._state = None
+                        self._no_client = True
+                    continue
+                if event.state is None:
                     continue
                 with self._lock:
-                    self._state = state
+                    self._state = event.state
+                    self._no_client = False
         except (OSError, ValueError):
             LOGGER.debug("now-playing stream read failed", exc_info=True)
         finally:
@@ -389,6 +430,7 @@ __all__ = (
     "HOST_INTERPRETER",
     "MediaRemoteStream",
     "NowPlayingState",
+    "StreamEvent",
     "current_state",
     "parse_payload",
     "parse_stream_line",

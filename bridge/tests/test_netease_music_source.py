@@ -806,6 +806,40 @@ class NeteaseMirrorTest(unittest.TestCase):
         self.assertEqual(publication.position_seconds, 42)
         self.assertTrue(publication.playing)
 
+    def test_a_client_that_quits_stops_the_song(self) -> None:
+        # The mirror reports the client while it plays, then stops reporting:
+        # the client quit, so the song must not keep playing on the panel.
+        states: list[NowPlayingState | None] = [self._state(elapsed_seconds=120.0), None]
+        # The client is gone once it quits, so it holds no audio output any more.
+        clients: list[frozenset[str]] = [frozenset()]
+
+        def mirror() -> NowPlayingState | None:
+            return states.pop(0) if states else None
+
+        def probe() -> frozenset[str]:
+            return clients.pop(0) if clients else frozenset()
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = NeteaseMusicSource(
+                database=make_database(Path(directory), [
+                    ("3455592377", 1_700_000_000_000, json.dumps(TRACK_JSON)),
+                ]),
+                clock=lambda: 1_700_000_042.0,
+                audio_probe=probe,
+                now_playing=mirror,
+                urlopen=lambda _request, timeout: FakeResponse({
+                    "lrc": {"lyric": "[00:00.00]a\n[00:40.00]b\n"},
+                }),
+            )
+            playing = source.read()
+            stopped = source.read()
+        assert playing is not None and stopped is not None
+        self.assertTrue(playing.playing)
+        self.assertEqual(playing.position_seconds, 120)
+        self.assertFalse(stopped.playing)
+        # The playhead stays where the mirror left it instead of running on.
+        self.assertEqual(stopped.position_seconds, 120)
+
 
 if __name__ == "__main__":
     unittest.main()
