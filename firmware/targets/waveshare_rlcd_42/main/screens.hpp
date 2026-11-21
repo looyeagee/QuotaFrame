@@ -53,6 +53,8 @@ class Screens {
      */
     void room_readings(const View &v, int x, int limit, int preferred_gap, int min_gap);
     void clock(const View &v);
+    /** Music page: the song, its artist, the playhead and the lyric window. */
+    void music(const View &v);
     void settings(const View &v);
     void pairing(const View &v);
     void ota(const View &v);

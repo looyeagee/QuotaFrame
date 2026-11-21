@@ -8,11 +8,14 @@ eim run "idf.py -C firmware/targets/waveshare_rlcd_42 build" v6.1
 eim run "idf.py -C firmware/targets/waveshare_rlcd_42 -p <PORT> flash" v6.1
 ```
 
-Evidence level: **partial hardware**. The firmware and `test_apps/logic` compile with ESP-IDF
-v6.1, and the logic tests pass on a host build. On one board, the landscape Home and detail
-pages rendered live usage from a bonded Bridge, which reconnected with an encrypted link after
-flashing. Portrait and flipped layouts, button debounce, sensors, audio, first-time
-pairing and OTA have not been exercised on hardware.
+Evidence level: **partial hardware**. The firmware, `test_apps/logic` and the protocol test
+app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xd1ca0 bytes with 80 % of the app partition
+free. On one board, the landscape Home and detail pages rendered live usage from a bonded
+Bridge, which reconnected with an encrypted link after flashing. The music page has so far been
+verified only in the host preview and by the unit tests that compose its frame: a device has not
+drawn a published song, and the Chinese glyphs have not been read on the panel. Portrait and
+flipped layouts, button debounce, sensors, audio, first-time pairing and OTA have not been
+exercised on hardware.
 
 The device advertises as `QF-WS-S3-R42-` followed by the final two Bluetooth MAC bytes and
 reports `waveshare_rlcd_42` in the authenticated status. Usage publication, RTC
@@ -33,6 +36,9 @@ so it stays ahead of the scan instead of leaving a vertical seam.
 At 120 PPI one pixel is about 0.21 mm and stays visible, so the screens follow the look of a
 printed segment LCD instead of smoothing vector type:
 
+- Chinese text (song titles, artists, lyric lines) uses a 12 x 12 bitmap font drawn at 2x, so
+  a mixed line keeps Latin characters in the built-in font on the same baseline. The font is
+  generated from the Fusion Pixel 12px font (OFL-1.1); see [glyphs and preview](#glyphs-and-preview).
 - Figures (usage, clock, pairing code, OTA progress) are seven-segment digits.
   As on a printed segment LCD, every digit has a fixed cell and a `1` lights the right half of
   its cell. Percentages use a fixed field of a hundreds half digit and two right-aligned cells,
@@ -53,6 +59,7 @@ The display labels the short window `5H` for MiniMax and used-percentage meaning
 | Home | DEEPSEEK row with the account balance in 68 px segment digits and its currency; MINIMAX row with the 5H bar (used percentage, reset countdown, pace marker) and the WEEK bar |
 | Deepseek | Balance in 96 px segment digits with the currency and the sample age |
 | Minimax | One service: the 5H window in 80 px figures with its RESET countdown, then the 5H and WEEK sections each with a usage bar, elapsed-time marker and elapsed time. OVER +N% marks usage at least 5 percentage points above the elapsed fraction of the window |
+| Music | The song and its artist in 24 px CJK text, the playhead with elapsed and total time, then the line being sung inverted above the next four lines; PAUSED marks a stopped player |
 | Clock | Time with seconds; the date, the SHTC3 temperature and the humidity share the top row; the quota band keeps the MiniMax 5H and WEEK bars with their pace markers on the left and the DeepSeek balance on the right |
 | Settings | Auto cycle, alert mode, seconds, rotation |
 | Alert | Full-screen inverted page once the MiniMax 5H window reaches 95 %; NEAR LIMIT below 100 %, EXHAUSTED at 100 % |
@@ -86,9 +93,15 @@ Rotation is manual (the board has no accelerometer): LAND, PORT (landscape turne
 clockwise) or FLIP. Portrait provides Home, Clock and Settings; the other pages exist in
 landscape only.
 
+The music page only fills while a Bridge publishes `nowplaying.v1`: the Bridge reads the song
+from the NetEase Cloud Music client on the computer and sends the line being sung with the
+next four, so the panel shows lyrics without holding a whole song. A device that never received
+a song shows WAITING FOR DATA (linked) or NO MUSIC (offline); a song with no lyrics keeps the
+title, the artist and the playhead and shows NO LYRICS below the rule.
+
 ## Controls
 
-- BOOT (GPIO0): next page, HOME → CODEX → CLAUDE → TREND → CLOCK (portrait: HOME ↔ CLOCK).
+- BOOT (GPIO0): next page, HOME → DEEPSEEK → MINIMAX → MUSIC → CLOCK (portrait: HOME ↔ CLOCK).
 - KEY (GPIO18): previous page.
 - Hold KEY 800 ms: open Settings; hold again to leave.
 - PWR switches the board's power circuit and is not readable by the firmware.
@@ -145,8 +158,13 @@ so the display would sometimes contradict the LED.
 
 ## Glyphs and preview
 
-The pixel font and the seven-segment digits are defined in `main/canvas.cpp`; there are no
-generated font files or third-party font data.
+The pixel font and the seven-segment digits are defined in `main/canvas.cpp`. Chinese text
+needs a font of its own, so `main/cjk_font.cpp` draws a generated 12 x 12 bitmap font:
+`tools/rlcd42/gen_cjk_font.py` rasterises the Fusion Pixel 12px font (OFL-1.1) into
+`main/cjk_font_data.cpp`, which holds 6929 glyphs (GB2312 level 1 and 2 plus full-width
+punctuation) as twelve rows of twelve pixels each, about 180 KB of flash. Latin characters keep
+using the built-in 5 x 7 font, aligned to the bottom of the lyric line. The license text ships
+next to the target as [FONT_LICENSE.txt](FONT_LICENSE.txt).
 
 `tools/rlcd42/render_preview.cpp` renders every screen on a host into PBM images using the
 design's sample data; the build command is in the file header.

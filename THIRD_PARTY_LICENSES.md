@@ -252,6 +252,15 @@ For ESP Component Registry entries, `Registry license` is the API value for the 
 - Copyright/notice: `firmware/targets/waveshare_epaper_397/main/fonts/JetBrainsMono-OFL.txt`
 - Read Pico subsets: printable ASCII at weight 500, 18 px, and weight 700, 16–30 px; notice: `firmware/targets/mindreset_read_pico/main/fonts/JetBrainsMono-OFL.txt`
 
+## Fusion Pixel generated font subset
+
+- Version: `2026.11.10`
+- Source: https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.11.10 (`fusion-pixel-12px-monospaced-zh_hans.ttf`)
+- SPDX: `OFL-1.1`
+- Generated subset: 12 x 12 bitmap glyphs for GB2312 level 1 and 2 plus full-width punctuation, embedded as `firmware/targets/waveshare_rlcd_42/main/cjk_font_data.cpp`
+- Copyright/notice: `firmware/targets/waveshare_rlcd_42/FONT_LICENSE.txt`
+- Local integration: [UPSTREAM.md](firmware/targets/waveshare_rlcd_42/UPSTREAM.md)
+
 ## Read Pico board components
 
 - Version: `28cde682a4468a581c278761922724f57d976418`

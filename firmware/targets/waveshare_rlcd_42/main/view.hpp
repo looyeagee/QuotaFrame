@@ -1,11 +1,12 @@
 #pragma once
+#include "usage_core/now_playing.hpp"
 #include "usage_core/usage_state.hpp"
 #include <array>
 #include <cstdint>
 // The view and renderer depend only on usage_core so the screens can be rendered on a host.
 namespace usage_panel::rlcd {
 /** Pages in navigation order; Settings sits outside the KEY ring. */
-enum class Page : uint8_t { Home, Deepseek, Minimax, Clock, Settings };
+enum class Page : uint8_t { Home, Deepseek, Minimax, Music, Clock, Settings };
 
 enum class Rotation : uint8_t { Landscape, Portrait, Flipped };
 enum class AlertMode : uint8_t { Off, Invert, Beep };
@@ -43,6 +44,8 @@ struct View {
     UsageModel model;
     LinkState link;
     ClockTime clock;
+    NowPlayingUpdate music;
+    bool music_valid = false; // Whether a song was ever published.
     bool environment_valid = false;
     float temperature = 0, humidity = 0;
     int battery = -1; // Percent, or -1 when unknown.

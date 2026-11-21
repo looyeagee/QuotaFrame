@@ -44,6 +44,8 @@ const char *page_name(void *) {
         return "deepseek";
     case Page::Minimax:
         return "minimax";
+    case Page::Music:
+        return "music";
     case Page::Clock:
         return "clock";
     case Page::Settings:
@@ -79,7 +81,7 @@ extern "C" void app_main() {
     // No OTA power source is registered: the board senses battery voltage only and cannot tell
     // whether USB power is present, so a voltage threshold would block updates on USB power.
     BleServiceConfig config{kAdvertisingPrefix, "Waveshare RLCD 4.2", "waveshare_rlcd_42", true,
-                            &ota, page_name, nullptr, true, true};
+                            &ota, page_name, nullptr, true, true, true};
     ESP_ERROR_CHECK(ble.start(events, config));
 
     uint64_t next_poll = 0, next_frame = 0, reboot_at = 0;
@@ -103,6 +105,14 @@ extern "C" void app_main() {
                 reboot_at = view.now_ms + 1000;
             else if (view.now_ms >= reboot_at)
                 esp_restart();
+        }
+
+        // The now-playing publication is a snapshot: the newest one replaces the last.
+        NowPlayingUpdate music;
+        if (ble.take_now_playing(music)) {
+            view.music = music;
+            view.music_valid = true;
+            redraw = true;
         }
 
         AppEvent event{};

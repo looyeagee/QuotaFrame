@@ -110,14 +110,16 @@ int ring_index(Page page) {
         return 1;
     case Page::Minimax:
         return 2;
-    case Page::Clock:
+    case Page::Music:
         return 3;
+    case Page::Clock:
+        return 4;
     default:
         return -1;
     }
 }
 
-int ring_pages() { return 4; }
+int ring_pages() { return 5; }
 
 Page Navigator::next(Page page, bool portrait, bool) {
     if (portrait)
@@ -128,6 +130,8 @@ Page Navigator::next(Page page, bool portrait, bool) {
     case Page::Deepseek:
         return Page::Minimax;
     case Page::Minimax:
+        return Page::Music;
+    case Page::Music:
         return Page::Clock;
     default:
         return Page::Home;
@@ -136,7 +140,7 @@ Page Navigator::next(Page page, bool portrait, bool) {
 
 Page Navigator::previous(Page page, bool portrait, bool) {
     Page p = page;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < ring_pages(); ++i) {
         if (next(p, portrait) == page)
             return p;
         p = next(p, portrait);
@@ -146,7 +150,8 @@ Page Navigator::previous(Page page, bool portrait, bool) {
 
 bool Navigator::normalize(View &v) {
     const bool portrait = v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
-    if (portrait && (v.page == Page::Deepseek || v.page == Page::Minimax)) {
+    if (portrait && (v.page == Page::Deepseek || v.page == Page::Minimax ||
+                     v.page == Page::Music)) {
         v.page = Page::Home;
         return true;
     }

@@ -2,7 +2,7 @@
 // Build from the repository root:
 //   g++ -std=c++17 -O2 -Ifirmware/components/usage_core/include
 //       -Ifirmware/targets/waveshare_rlcd_42/main tools/rlcd42/render_preview.cpp
-//       firmware/targets/waveshare_rlcd_42/main/{canvas,panel_logic,screens}.cpp
+//       firmware/targets/waveshare_rlcd_42/main/{canvas,cjk_font,cjk_font_data,panel_logic,screens}.cpp
 //       firmware/components/usage_core/src/usage_state.cpp -o rlcd42_preview
 #include "canvas.hpp"
 #include "panel_logic.hpp"
@@ -199,5 +199,26 @@ int main(int argc, char **argv) {
     View nobat = design_view();
     nobat.battery = -1;
     render(nobat, "29_home_no_battery");
+
+    // The music page: the song, its artist, the playhead and the lyric window.
+    View song = design_view();
+    song.page = Page::Music;
+    song.music_valid = true;
+    snprintf(song.music.title, sizeof(song.music.title), "%s", "证据");
+    snprintf(song.music.artist, sizeof(song.music.artist), "%s", "杨乃文");
+    song.music.position_seconds = 54;
+    song.music.duration_seconds = 275;
+    song.music.playing = true;
+    song.music.line_count = 5;
+    snprintf(song.music.lines[0], sizeof(song.music.lines[0]), "%s", "被当作乱放电的诱惑");
+    snprintf(song.music.lines[1], sizeof(song.music.lines[1]), "%s", "我双鱼 为什么天蝎要恨我");
+    snprintf(song.music.lines[2], sizeof(song.music.lines[2]), "%s", "难道都是我的错");
+    snprintf(song.music.lines[3], sizeof(song.music.lines[3]), "%s", "我该生气还难过");
+    snprintf(song.music.lines[4], sizeof(song.music.lines[4]), "%s", "一杯被当做证据的红酒");
+    render(song, "30_music");
+    song.music.playing = false;
+    render(song, "31_music_paused");
+    song.music.line_count = 0;
+    render(song, "32_music_no_lyrics");
     return 0;
 }

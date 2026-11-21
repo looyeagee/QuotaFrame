@@ -1,4 +1,5 @@
 #include "screens.hpp"
+#include "cjk_font.hpp"
 #include "panel_logic.hpp"
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,16 @@ constexpr int kContentTop = 46;
 constexpr int kOverThreshold = 5;
 // Footer rule on pages with a footer line; the footer text follows 10 px below it.
 constexpr int kFooterRule = 252, kPortraitFooterRule = 340;
+// Music page: two lyric-font lines for the song, a playhead, then the lyric window.
+constexpr int kMusicScale = 2;
+constexpr int kMusicLineHeight = CjkText::line_height(kMusicScale);
+// "PAUSED" at the label scale keeps the artist clear of it on the same row.
+constexpr int kPausedWidth = 76;
+constexpr int kMusicBarTop = 106, kMusicBarHeight = 14;
+constexpr int kMusicRule = 128;
+constexpr int kMusicLyricsTop = 140, kMusicLyricPitch = 28, kMusicLyricRows = 5;
+// Inverted lyric rows bleed this far past the text margin, like the status chips.
+constexpr int kMusicTextInset = 4;
 
 Provider provider_of(int i) { return provider_for(i); }
 
@@ -80,6 +91,30 @@ int draw_balance(Canvas &c, int x, int top, const ProviderSnapshot &s, int max_w
 }
 
 int round_px(float v) { return static_cast<int>(std::lround(v)); }
+
+/** Playhead as "1:05 / 4:35", or with an hours field for long tracks. */
+void format_playhead(uint32_t position, uint32_t duration, char *out, size_t size) {
+    // Longest form: two ten-digit fields around " / " plus the colon separators.
+    char text[40];
+    if (duration == 0) {
+        snprintf(text, sizeof(text), "-:-- / -:--");
+    } else if (duration >= 3600) {
+        snprintf(text, sizeof(text), "%lu:%02lu:%02lu / %lu:%02lu:%02lu",
+                 static_cast<unsigned long>(position / 3600),
+                 static_cast<unsigned long>(position / 60 % 60),
+                 static_cast<unsigned long>(position % 60),
+                 static_cast<unsigned long>(duration / 3600),
+                 static_cast<unsigned long>(duration / 60 % 60),
+                 static_cast<unsigned long>(duration % 60));
+    } else {
+        snprintf(text, sizeof(text), "%lu:%02lu / %lu:%02lu",
+                 static_cast<unsigned long>(position / 60),
+                 static_cast<unsigned long>(position % 60),
+                 static_cast<unsigned long>(duration / 60),
+                 static_cast<unsigned long>(duration % 60));
+    }
+    snprintf(out, size, "%s", text);
+}
 
 /** Balance in cents for the balance service, or -1 when it has none to show. */
 long long compact_balance(const View &v, int i) {
@@ -600,6 +635,62 @@ void Screens::clock(const View &v) {
     }
 }
 
+void Screens::music(const View &v) {
+    header(v, "MUSIC", ring_index(Page::Music));
+    const int right = c_.width() - kLeft;
+    const int content = right - kLeft;
+    if (!v.music_valid) {
+        c_.text(kLeft, kContentTop, v.link.encrypted ? "WAITING FOR DATA" : "NO MUSIC", 2);
+        return;
+    }
+    const auto &m = v.music;
+    char fitted[64];
+    // The song and its artist sit above the playhead, in the line height of the lyric font.
+    CjkText::fit(fitted, sizeof(fitted), m.title, content, kMusicScale);
+    CjkText::draw(c_, kLeft, 46, fitted, kMusicScale);
+    if (m.artist[0]) {
+        CjkText::fit(fitted, sizeof(fitted), m.artist, content - kPausedWidth, kMusicScale);
+        CjkText::draw(c_, kLeft, 74, fitted, kMusicScale);
+    }
+    // The paused state sits at the right end of the artist row, clear of the title above it.
+    if (!m.playing)
+        c_.text_right(right, 84, "PAUSED", 2);
+    // Playhead: the bar keeps 12 px clear of the elapsed/total figures on its right.
+    char times[40];
+    format_playhead(m.position_seconds, m.duration_seconds, times, sizeof(times));
+    const int times_w = Canvas::text_width(times, 2);
+    const int bar_w = std::max(60, content - times_w - 12);
+    const int percent =
+        m.duration_seconds > 0
+            ? static_cast<int>(static_cast<uint64_t>(m.position_seconds) * 100 /
+                               m.duration_seconds)
+            : -1;
+    bar(kLeft, kMusicBarTop, bar_w, kMusicBarHeight, std::min(percent, 100));
+    c_.text_right(right, kMusicBarTop + 1, times, 2);
+    // A rule separates the song from the lyrics, like the rule under the header.
+    c_.fill(kLeft, kMusicRule, content, 2);
+    if (m.line_count == 0) {
+        c_.text(kLeft, kMusicLyricsTop + 6, v.link.encrypted ? "NO LYRICS" : "--", 2);
+        return;
+    }
+    const int lyric_width = content - 2 * kMusicTextInset;
+    for (int row = 0; row < kMusicLyricRows; ++row) {
+        const int index = m.current_line + row;
+        if (index >= m.line_count)
+            break;
+        CjkText::fit(fitted, sizeof(fitted), m.lines[index], lyric_width, kMusicScale);
+        const int top = kMusicLyricsTop + row * kMusicLyricPitch;
+        if (row == 0) {
+            // The line being sung is inverted, like the chips elsewhere on the panel.
+            c_.fill(kLeft - kMusicTextInset, top - 2, content + 2 * kMusicTextInset,
+                    kMusicLineHeight + 4);
+            CjkText::draw(c_, kLeft, top, fitted, kMusicScale, Ink::White);
+        } else {
+            CjkText::draw(c_, kLeft, top, fitted, kMusicScale);
+        }
+    }
+}
+
 void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
@@ -741,6 +832,9 @@ void Screens::render(const View &v) {
             break;
         case Page::Minimax:
             portrait_ ? home_portrait(v) : focus(v, 1);
+            break;
+        case Page::Music:
+            portrait_ ? home_portrait(v) : music(v);
             break;
         case Page::Clock:
             clock(v);

@@ -28,3 +28,17 @@ complete audible playback before the output is disabled. Incomplete I2S writes s
 It does not include the upstream codec abstraction, microphone path or variable-rate API.
 
 The repository includes the [Apache-2.0 license text](../../components/esp-mosaico-bsp/LICENSE).
+
+## CJK bitmap font
+
+- Source version: [Fusion Pixel Font 12px monospaced, zh_hans](https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.11.10), release `2026.11.10`.
+- Source file: `fusion-pixel-12px-monospaced-zh_hans.ttf` from the `fusion-pixel-font-12px-monospaced-ttf-v2026.11.10.zip` release asset.
+- License: [SIL Open Font License 1.1](FONT_LICENSE.txt), Copyright 2023 TakWolf and the Fusion Pixel contributors.
+- Local implementation: [main/cjk_font.cpp](main/cjk_font.cpp), [main/cjk_font_data.cpp](main/cjk_font_data.cpp), generator [tools/rlcd42/gen_cjk_font.py](../../../tools/rlcd42/gen_cjk_font.py).
+
+The generator rasterises GB2312 level 1 and 2 hanzi plus the full-width punctuation rows on
+the twelve pixel grid the font was drawn for, packs each glyph as twelve rows of twelve pixels
+and writes the two tables the firmware looks up. The firmware decodes UTF-8, binary-searches the
+code point table and draws the glyph at an integer scale; Latin characters keep using the
+built-in 5 x 7 font. The data file is generated and must not be edited by hand; the license text
+is kept next to the target as `FONT_LICENSE.txt`.
