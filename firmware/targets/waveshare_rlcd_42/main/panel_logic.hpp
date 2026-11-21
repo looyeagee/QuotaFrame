@@ -69,15 +69,17 @@ bool service_visible(const View &v, int slot);
 void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms);
 
 /**
- * Right-to-left offset for `travel` pixels of overflow, `age_ms` after the line appeared.
+ * Right-to-left offset for a `line_width` line with `travel` pixels of overflow, `age_ms`
+ * after it appeared.
  *
- * The pace comes from the line itself, not from the song: it holds for a moment, then moves
- * one column of text every 0.4 s, so a line three times as long takes three times as long to
- * reveal. Nothing here knows when the line stops being sung, which is why an interlude after
- * the line leaves it resting at its end instead of crawling across the gap. Offsets are whole
- * columns, so a moving line never shows half a glyph, and no overflow returns zero.
+ * The pace comes from the text: `900 ms` to read its first word plus `100 ms` per column of
+ * the whole line, so a narrow row scrolls faster instead of longer. `budget_ms` is how long
+ * the source says the line still has, or 0 when it cannot say; it may shorten the scroll to
+ * fit, never stretch it, which is why a line followed by an instrumental interlude keeps the
+ * content pace and cannot crawl across the gap. Offsets are whole columns, so a moving line
+ * never shows half a glyph, and a line with no overflow returns zero.
  */
-int lyric_scroll_offset(int travel, uint64_t age_ms);
+int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t budget_ms);
 
 /** Text column the lyric scroll steps by: the ASCII cell of the lyric font at its scale. */
 constexpr int kLyricScrollColumn = 12;

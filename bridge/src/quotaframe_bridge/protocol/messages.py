@@ -226,6 +226,9 @@ def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
         "duration": _u32_text(publication.duration_seconds, "duration"),
         "state": "playing" if publication.playing else "paused",
     }
+    if publication.line_end_seconds:
+        # Optional upper bound for the panel's scroll: it may finish sooner, never later.
+        payload["line_end"] = _u32_text(publication.line_end_seconds, "line_end")
     if lines:
         payload["current"] = _u32_text(publication.current_line, "current")
         payload["lines"] = "\n".join(

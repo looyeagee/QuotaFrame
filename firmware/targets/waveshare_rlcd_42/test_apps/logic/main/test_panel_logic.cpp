@@ -216,33 +216,44 @@ TEST_CASE("a lyric line that fits never moves", "[lyrics]")
 {
     // No overflow, no motion, however long the line stays on screen.
     for (uint64_t age : {0, 1400, 5000, 60000, 3600000})
-        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(0, age));
+        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(360, 0, age, 8000));
 }
 
-TEST_CASE("the scroll pace comes from the length of the line", "[lyrics]")
+TEST_CASE("the scroll pace comes from the length of the text", "[lyrics]")
 {
-    // 200 px of overflow is 17 columns: 1 s of lead-in and 17 x 0.4 s.
-    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, 0));
-    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, 999));
-    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, 1200));
-    TEST_ASSERT_EQUAL_INT(96, lyric_scroll_offset(200, 4400));
-    TEST_ASSERT_EQUAL_INT(204, lyric_scroll_offset(200, 7800));
-    // It stops at its end and stays there however long the line is on screen, so an interlude
-    // after the line cannot make it crawl across the gap.
-    TEST_ASSERT_EQUAL_INT(204, lyric_scroll_offset(200, 20000));
-    TEST_ASSERT_EQUAL_INT(204, lyric_scroll_offset(200, 600000));
-    // A shorter overflow needs fewer columns and is revealed sooner.
-    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(36, 1000));
-    TEST_ASSERT_EQUAL_INT(24, lyric_scroll_offset(36, 1800));
-    TEST_ASSERT_EQUAL_INT(36, lyric_scroll_offset(36, 2200));
+    // A 45 column line: 900 ms plus 100 ms a column is 5.4 s of motion after the 900 ms hold.
+    const int total = 540;
+    const int travel = 336; // the clock page's column
+    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(total, travel, 0, 0));
+    TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(total, travel, 899, 0));
+    // At half the motion the line is halfway through its columns.
+    TEST_ASSERT_EQUAL_INT(168, lyric_scroll_offset(total, travel, 900 + 2700, 0));
+    // It stops at the end and stays there: the same line is on screen for a whole interlude.
+    for (uint64_t age : {900 + 5400, 20000, 30000, 600000})
+        TEST_ASSERT_EQUAL_INT(336, lyric_scroll_offset(total, travel, age, 0));
+    // The same words on the wider music row: same time, shorter distance, so slower motion.
+    TEST_ASSERT_EQUAL_INT(180, lyric_scroll_offset(total, 180, 900 + 5400, 0));
+}
+
+TEST_CASE("the time the line has left may shorten the scroll, never stretch it", "[lyrics]")
+{
+    const int total = 540;
+    const int travel = 336;
+    // Eight seconds of line: the content pace wins, and the scroll ends well before it.
+    TEST_ASSERT_EQUAL_INT(336, lyric_scroll_offset(total, travel, 6400, 8000));
+    // Four seconds of line: the budget wins, and the last column arrives as the line changes.
+    TEST_ASSERT_EQUAL_INT(336, lyric_scroll_offset(total, travel, 4000, 4000));
+    TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 3000, 4000) < 336);
+    // Half a second of line: the scroll starts at once instead of spending its hold first.
+    TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 100, 500) > 0);
 }
 
 TEST_CASE("the scroll steps whole text columns", "[lyrics]")
 {
-    // Whole columns keep every glyph on the layout the font draws it for, so a moving line
-    // never shows half a character at either edge of its clip.
-    for (uint64_t age = 0; age < 12000; age += 250)
-        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(200, age) % kLyricScrollColumn);
+    for (uint64_t age = 0; age < 12000; age += 250) {
+        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(540, 336, age, 0) % kLyricScrollColumn);
+        TEST_ASSERT_EQUAL_INT(0, lyric_scroll_offset(540, 336, age, 4000) % kLyricScrollColumn);
+    }
 }
 
 namespace {

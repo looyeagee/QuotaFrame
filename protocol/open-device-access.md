@@ -137,7 +137,7 @@ Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不�
 设备声明 `nowplaying.v1` 后可接收当前歌曲与歌词窗口：
 
 ```json
-{"cmd":"now_playing","v":"1","seq":"46","title":"证据","artist":"杨乃文","position":"54","duration":"275","state":"playing","current":"0","lines":"被当作乱放电的诱惑\n我双鱼 为什么天蝎要恨我\n难道都是我的错"}
+{"cmd":"now_playing","v":"1","seq":"46","title":"证据","artist":"杨乃文","position":"54","duration":"275","state":"playing","current":"0","line_end":"60","lines":"被当作乱放电的诱惑\n我双鱼 为什么天蝎要恨我\n难道都是我的错"}
 {"ack":"now_playing","n":46,"ok":true}
 ```
 
@@ -148,8 +148,9 @@ Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不�
 | state | `playing` 或 `paused` |
 | lines | 可选字符串，行间以 `\n` 分隔，最多8行；单行≤192字节 |
 | current | lines 存在时随行给出，表示正在唱的那一行在 lines 中的下标 |
+| line_end | 可选uint32规范十进制字符串，秒；这一行结束、下一行开始的位置。设备只把它当滚动上限，缺省或早于position表示来源无法提供 |
 
-整首歌词放不进一帧（完整JSON≤4096字节），因此Bridge按播放进度发布正在唱的那一行及其后四行；设备据此显示歌词窗口，不需要缓存整首歌。放不下的歌词行由设备自己按文本长度决定滚动节奏：与本句演唱时长、间奏长度和歌曲时间轴无关。文本按UTF-8整字符截断，设备不得显示半个字符。`lines` 缺省表示这一首没有可用歌词，设备仍显示歌名、歌手与进度。
+整首歌词放不进一帧（完整JSON≤4096字节），因此Bridge按播放进度发布正在唱的那一行及其后四行；设备据此显示歌词窗口，不需要缓存整首歌。放不下的歌词行由设备按文本长度决定滚动节奏；`line_end` 只用作上限：本句时间短时用于让滚动在本句内结束，本句后面跟着长间奏时不会把速度摊薄。算法与参数见[歌词滚动算法](../docs/design/lyric-scroll.md)。文本按UTF-8整字符截断，设备不得显示半个字符。`lines` 缺省表示这一首没有可用歌词，设备仍显示歌名、歌手与进度。
 
 Bridge只在设备声明该能力时发送，且发送节奏由歌曲进度决定；内容不是幂等快照，断线后不补发历史。设备收到非法字段、超出范围的 `current` 或未知 `state` 时整条拒绝并返回 `invalid_request`，没有更新时不改变已显示的歌曲。
 

@@ -362,6 +362,27 @@ def select_window(
     return tuple(lines[start:index + after + 1])
 
 
+def line_end_seconds(lines: Sequence[LyricLine], position_seconds: int) -> int:
+    """Position at which the line being sung stops, or 0 when it is unknown.
+
+    A panel only uses it as an upper bound for scrolling a line that does not fit, so an
+    interlude after the line simply leaves it resting at its end. The last line of a song has
+    no successor, so it reports nothing rather than guessing an end.
+    """
+
+    if not lines:
+        return 0
+    index = 0
+    for candidate, line in enumerate(lines):
+        if line.time_seconds <= position_seconds:
+            index = candidate
+        else:
+            break
+    if index + 1 >= len(lines):
+        return 0
+    return lines[index + 1].time_seconds
+
+
 def current_index(window: Sequence[LyricLine], position_seconds: int) -> int:
     """Index of the line being sung inside `window`."""
 
@@ -648,7 +669,8 @@ class NeteaseMusicSource:
         # running past the duration while the client sits paused.
         if duration > 0:
             position = min(position, duration)
-        window = select_window(self._lyrics_for(track.song_id), position)
+        lyrics = self._lyrics_for(track.song_id)
+        window = select_window(lyrics, position)
         current = current_index(window, position)
         return NowPlayingPublication(
             title=track.title,
@@ -659,6 +681,7 @@ class NeteaseMusicSource:
             playing=playing,
             lines=tuple(line.text for line in window),
             current_line=current,
+            line_end_seconds=line_end_seconds(lyrics, position),
         )
 
     async def collect(self) -> NowPlayingPublication | None:
@@ -687,5 +710,6 @@ __all__ = [
     "parse_track",
     "read_current_track",
     "current_index",
+    "line_end_seconds",
     "select_window",
 ]

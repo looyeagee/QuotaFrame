@@ -664,7 +664,11 @@ void Screens::lyric_row(const View &v, int x, int top, int width, const char *li
     const int end = CjkText::tail_start(line, width, kMusicScale);
     const uint64_t age = v.now_ms > v.music_line_ms ? v.now_ms - v.music_line_ms : 0;
     // A paused player keeps the line at its first word instead of scrolling away from it.
-    const int offset = v.music.playing ? lyric_scroll_offset(end, age) : 0;
+    const int offset =
+        v.music.playing
+            ? lyric_scroll_offset(CjkText::width(line, kMusicScale), end, age,
+                                  v.music_line_budget_ms)
+            : 0;
     const int start = CjkText::boundary_at_or_before(line, std::min(offset, end), kMusicScale);
     const int visible = CjkText::window_width(line, start, width, kMusicScale);
     c_.clip(x, top, visible, kMusicLineHeight);

@@ -53,10 +53,15 @@ class NowPlayingPublication:
     playing: bool
     lines: tuple[str, ...] = ()
     current_line: int = 0
+    # Position at which the sung line stops and the next one starts, or 0 when the
+    # source cannot say. A panel only uses it as an upper bound for its scroll.
+    line_end_seconds: int = 0
 
     def __post_init__(self) -> None:
         if self.position_seconds < 0 or self.duration_seconds < 0:
             raise ValueError("now-playing times must not be negative")
+        if self.line_end_seconds < 0:
+            raise ValueError("line end must not be negative")
         if self.lines and not 0 <= self.current_line < len(self.lines):
             raise ValueError("current_line must address one of the lines")
 

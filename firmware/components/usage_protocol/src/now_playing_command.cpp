@@ -83,6 +83,14 @@ NowPlayingParseResult parse_now_playing_command(
         }
     }
 
+    // Optional upper bound for the scroll of the line being sung.
+    uint32_t line_end = 0;
+    const auto line_end_result = get_decimal_u32(request, "line_end", line_end);
+    if (line_end_result == FieldResult::Invalid)
+        return result;
+    if (line_end_result == FieldResult::Valid)
+        result.update.line_end_seconds = line_end;
+
     uint32_t current = 0;
     const auto current_result = get_decimal_u32(request, "current", current);
     if (current_result == FieldResult::Invalid)

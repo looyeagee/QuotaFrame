@@ -397,7 +397,7 @@ TEST_CASE("a pure hanzi line stops with its last character whole", "[render][lyr
     TEST_ASSERT_EQUAL_INT(0, start % 24);
     TEST_ASSERT_TRUE(total - start <= room);
     // The scroll reaches that boundary and stays there.
-    TEST_ASSERT_TRUE(lyric_scroll_offset(start, 60000) >= start);
+    TEST_ASSERT_TRUE(lyric_scroll_offset(total, start, 60000, 0) >= start);
 }
 
 TEST_CASE("only the sung line scrolls inside its own row", "[render][lyrics]")

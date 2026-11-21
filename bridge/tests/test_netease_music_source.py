@@ -41,6 +41,7 @@ from quotaframe_bridge.sources.netease_music import (
     NeteaseMusicSource,
     current_index,
     display_text,
+    line_end_seconds,
     fetch_lyrics,
     is_credit_line,
     parse_lrc,
@@ -178,6 +179,19 @@ class WindowTest(unittest.TestCase):
     def test_current_index_tracks_the_sung_line(self) -> None:
         window = select_window(self.LINES, 31)
         self.assertEqual(current_index(window, 31), 1)
+
+
+class LineEndTest(unittest.TestCase):
+    LINES = tuple(LyricLine(index * 10, f"line {index}") for index in range(4))
+
+    def test_line_end_is_the_start_of_the_next_line(self) -> None:
+        self.assertEqual(line_end_seconds(self.LINES, 0), 10)
+        self.assertEqual(line_end_seconds(self.LINES, 12), 20)
+        self.assertEqual(line_end_seconds(self.LINES, 29), 30)
+
+    def test_the_last_line_and_an_empty_song_report_no_end(self) -> None:
+        self.assertEqual(line_end_seconds(self.LINES, 35), 0)
+        self.assertEqual(line_end_seconds((), 5), 0)
 
 
 class TrackReadingTest(unittest.TestCase):
@@ -635,6 +649,21 @@ class EncodingTest(unittest.TestCase):
         self.assertEqual(message["lines"], "第一句\n第二句")
         self.assertEqual(message["current"], "1")
         self.assertEqual(NOW_PLAYING_CAPABILITY, "nowplaying.v1")
+
+    def test_line_end_travels_only_when_it_is_known(self) -> None:
+        known = NowPlayingPublication(
+            title="歌", artist="", album="", position_seconds=54,
+            duration_seconds=231, playing=True,
+            lines=("第一句", "第二句"), current_line=0, line_end_seconds=60,
+        )
+        self.assertEqual(
+            json.loads(encode_now_playing(known, 1).decode("utf-8"))["line_end"], "60"
+        )
+        unknown = NowPlayingPublication(
+            title="歌", artist="", album="", position_seconds=54,
+            duration_seconds=231, playing=True,
+        )
+        self.assertNotIn("line_end", json.loads(encode_now_playing(unknown, 2).decode("utf-8")))
 
     def test_chinese_travels_as_utf8_not_escapes(self) -> None:
         raw = encode_now_playing(

@@ -30,6 +30,12 @@ struct NowPlayingUpdate {
     bool playing = false;
     uint8_t current_line = 0;
     uint8_t line_count = 0;
+    /**
+     * Position at which this line stops and the next one starts, in seconds; 0 when the
+     * source cannot say. Only an upper bound: a panel shortens a scroll to fit inside it and
+     * never stretches one to fill it.
+     */
+    uint32_t line_end_seconds = 0;
     char title[kMaxTitleBytes + 1]{};
     char artist[kMaxTitleBytes + 1]{};
     char lines[kMaxLyricLines][kMaxLyricLineBytes + 1]{};

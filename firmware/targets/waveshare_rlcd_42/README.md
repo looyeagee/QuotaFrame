@@ -111,13 +111,21 @@ NO MUSIC, WAITING FOR DATA or NO LYRICS on the same rows.
 
 Only the line being sung scrolls; the lines below it stay put and keep the trailing ellipsis of
 a line that does not fit, because they are context rather than the words being sung. A sung line
-that does not fit holds still for a second, then moves right to left one text column every 0.4 s
-until its whole tail fits, and stays there until the next line replaces it. The pace comes from
-the length of the line and nothing else, so an instrumental interlude after the line leaves it
-resting at its end instead of crawling across the gap, and a song whose lyric timing is wrong
-still reads correctly. The scroll stops on a character boundary with the last character whole
-and flush against the end of the row, so neither edge of a moving line ever shows half a glyph.
-A paused player holds the line at its first word instead of scrolling away.
+that does not fit holds still for 0.9 s, then moves right to left until its whole tail fits, and
+stays there until the next line replaces it. The pace comes from the text: 0.9 s plus 0.1 s per
+text column of the line, counted over the whole line rather than over the distance the row has
+to scroll, so a narrow row scrolls faster instead of longer and the same words take the same
+time on the music page and on the clock page.
+
+The Bridge sends `line_end`, the position at which the line stops, and the panel uses it only as
+an upper bound: it shortens the scroll to finish inside the line when the line is short, and
+ignores it otherwise. That is what an instrumental interlude needs — a line followed by thirty
+seconds of nothing has minutes to spare, so the content pace wins, the scroll finishes and
+rests, and nothing crawls across the gap. The scroll stops on a character boundary with the last
+character whole and flush against the end of the row, so neither edge of a moving line ever
+shows half a glyph. A paused player holds the line at its first word instead of scrolling away.
+The parameters and the reasoning behind each of them are in
+[歌词滚动算法](../../../docs/design/lyric-scroll.md).
 
 The window the Bridge sends is rebuilt around the sung line every time it changes, so the page
 always has one line of context above the highlight and four below it.

@@ -99,17 +99,19 @@ int setting_options(int row) {
 
 namespace {
 // The line holds still long enough to read its first word before it starts to move.
-constexpr uint32_t kLyricLeadInMs = 1000;
-// Then each column of overflow takes this long: 0.4 s per twelve pixels is a little under
-// half a hanzi a second, which is comfortable to read and roughly matches how fast a line is
-// sung. Nothing about the song's timing is involved, so an interlude after the line changes
-// nothing: the line stops at its end and waits there.
-constexpr uint32_t kLyricColumnMs = 400;
+constexpr uint32_t kLyricLeadInMs = 900;
+// Reading the line takes this long plus this much per column of text. The columns come from
+// the whole line, not from how far the row has to scroll, so a narrow row scrolls faster
+// instead of longer: the same words read in the same time on the music page and on the clock
+// page. Without this the clock page's column, two thirds the width, took nearly twice as long
+// as the line lasted and never reached its end.
+constexpr uint32_t kLyricBaseMs = 900;
+constexpr uint32_t kLyricColumnMs = 100;
+// Shortest motion for a line whose remaining time is almost gone.
+constexpr uint32_t kLyricFloorMs = 600;
 
-/** Columns a line has to scroll to bring its end into view. */
-int scroll_columns(int travel) {
-    return (travel + kLyricScrollColumn - 1) / kLyricScrollColumn;
-}
+/** Columns of text in `width` pixels. */
+int text_columns(int width) { return (width + kLyricScrollColumn - 1) / kLyricScrollColumn; }
 } // namespace
 
 void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms) {
@@ -124,19 +126,40 @@ void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_
     }
     view.music = update;
     view.music_valid = true;
-    if (!same_line)
+    if (!same_line) {
         view.music_line_ms = now_ms;
+        // Measured once per line: a position that jitters cannot change the pace mid-line.
+        view.music_line_budget_ms =
+            update.line_end_seconds > update.position_seconds
+                ? (update.line_end_seconds - update.position_seconds) * 1000u
+                : 0;
+    }
 }
 
-int lyric_scroll_offset(int travel, uint64_t age_ms) {
+int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t budget_ms) {
     if (travel <= 0)
         return 0;
-    const int columns = scroll_columns(travel);
-    if (age_ms < kLyricLeadInMs)
+    // Content pace: what the line itself needs to be read.
+    uint32_t motion = kLyricBaseMs + static_cast<uint32_t>(text_columns(line_width)) * kLyricColumnMs;
+    uint32_t lead = kLyricLeadInMs;
+    if (budget_ms > 0) {
+        // The source says how long this line still has. It may shorten the scroll, never
+        // stretch it: a line followed by an interlude has minutes left and keeps the content
+        // pace, so it cannot crawl across the gap.
+        if (budget_ms > lead + kLyricFloorMs) {
+            motion = std::min(motion, budget_ms - lead);
+        } else {
+            lead = 0;
+            motion = std::min<uint32_t>(motion, std::max<uint32_t>(budget_ms, kLyricFloorMs));
+        }
+    }
+    if (motion == 0)
+        motion = 1;
+    if (age_ms < lead)
         return 0;
-    const uint64_t moving = age_ms - kLyricLeadInMs;
-    const uint32_t duration = static_cast<uint32_t>(columns) * kLyricColumnMs;
-    const uint64_t step = moving * static_cast<uint64_t>(columns) / duration;
+    const int columns = text_columns(travel);
+    const uint64_t moving = age_ms - lead;
+    const uint64_t step = moving * static_cast<uint64_t>(columns) / motion;
     return static_cast<int>(std::min<uint64_t>(step, static_cast<uint64_t>(columns))) *
            kLyricScrollColumn;
 }
