@@ -66,9 +66,15 @@ MAX_RESPONSE_BYTES = 256 * 1024
 # Lines kept before and after the current one so the panel can show context.
 WINDOW_BEFORE = 1
 # The panel's music page draws five lyric rows from the line being sung onward,
-# so the window has to carry four lines after it; the lead-in keeps a consumer
-# that shows context above the highlight working.
-WINDOW_AFTER = 4
+# and it moves on to the next line itself when the playhead reaches its
+# timestamp rather than waiting for the next publication. Four lines after the
+# sung one fill those rows only at the instant the publication arrives: the row
+# that leaves the window is drawn blank until the next publication shifts the
+# window, which is the bottom row flickering once a second. Two spare lines keep
+# every row filled across the publication period, and the lead-in keeps a
+# consumer that shows context above the highlight working. With the lead-in this
+# is the eight lines that one frame carries.
+WINDOW_AFTER = 6
 # A track that ended long ago is history, not a song in progress.
 ENDED_GRACE_SECONDS = 5
 CACHE_DIR_RELATIVE = Path("Library/Caches/quotaframe/lyrics")

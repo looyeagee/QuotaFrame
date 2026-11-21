@@ -96,8 +96,10 @@ landscape only.
 The music page only fills while a Bridge publishes `nowplaying.v1`: the Bridge reads the song
 from the NetEase Cloud Music client on the computer and sends a window of lyric lines with the
 one being sung at its head, so the panel shows lyrics without holding a whole song. The page
-draws five lyric rows under the playhead, and the Bridge sends four lines after the sung one,
-which fills them all. A line may carry up to 192 bytes, so a Chinese lyric of sixty-four
+draws five lyric rows under the playhead, and the Bridge sends six lines after the sung one:
+four fill the rows below the sung line and two are slack, because the panel moves on to the
+next line on the song's own timeline rather than waiting for the next publication. A line may
+carry up to 192 bytes, so a Chinese lyric of sixty-four
 characters arrives whole; the row shows about fifteen of them and scrolls the rest. A device that never received a song shows WAITING FOR DATA (linked) or
 NO MUSIC (offline); a song with no lyrics keeps the title, the artist and the playhead and
 shows NO LYRICS below the rule.

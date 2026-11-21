@@ -170,12 +170,28 @@ class WindowTest(unittest.TestCase):
 
     def test_default_window_fills_the_panel_rows_after_the_sung_line(self) -> None:
         # The music page draws five rows from the sung line onward, so the default window
-        # has to carry four lines after it rather than stopping at three.
+        # has to carry at least four lines after it.
         lines = tuple(LyricLine(index * 10_000, f"line {index}") for index in range(12))
         window = select_window(lines, 32_000)
         current = current_index(window, 32_000)
-        self.assertEqual(len(window) - current, 5)
+        self.assertGreaterEqual(len(window) - current, 5)
         self.assertEqual(window[current].text, "line 3")
+
+    def test_window_keeps_the_bottom_row_filled_until_the_next_publication(self) -> None:
+        # The panel moves on to the next line on its own timeline, so with four lines after
+        # the sung one the fifth row has nothing to draw as soon as a line passes: it is
+        # blank until the next publication shifts the window. The window has to reach two
+        # lines past the five rows it fills, and the frame limit is eight lines.
+        lines = tuple(LyricLine(index * 1_000, f"line {index}") for index in range(12))
+        published_at = 3_200
+        window = select_window(lines, published_at)
+        self.assertLessEqual(len(window), 8)
+        for advanced_ms in (0, 1_000, 2_000):
+            with self.subTest(advanced_ms=advanced_ms):
+                current = current_index(window, published_at + advanced_ms)
+                self.assertLessEqual(current + 4, len(window) - 1)
+                self.assertEqual(window[current].text,
+                                 lines[current_index(lines, published_at + advanced_ms)].text)
 
     def test_position_before_the_first_line_keeps_the_start(self) -> None:
         self.assertEqual(current_index(self.LINES, 0), 0)
