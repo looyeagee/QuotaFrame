@@ -117,9 +117,17 @@ text column of the line, counted over the whole line rather than over the distan
 to scroll, so a narrow row scrolls faster instead of longer and the same words take the same
 time on the music page and on the clock page.
 
-The Bridge sends `line_end`, the position at which the line stops, and the panel uses it only as
-an upper bound: it shortens the scroll to finish inside the line when the line is short, and
-ignores it otherwise. A scroll always ends 0.4 s before the line does, because a frame composed
+The Bridge sends the playhead and the start of every line of the window in milliseconds
+(`position_ms` and `line_times`), because the lyric file states its timestamps that precisely.
+The panel places the song on that timeline: it advances the playhead with its own clock between
+two publications, moves on to the next line when the song reaches it, composes a frame at that
+moment instead of waiting for the quarter-second frame boundary, and scrolls the sung line at
+the age the song states. A source that sends only seconds keeps the panel on the publication
+clock, and the line then changes at most one publication late.
+
+The Bridge also sends `line_end`, the position at which the line stops, and the panel uses it
+only as an upper bound: it shortens the scroll to finish inside the line when the line is short,
+and ignores it otherwise. A scroll always ends 0.4 s before the line does, because a frame composed
 every 250 ms would otherwise never show the last one. That is what an instrumental interlude needs — a line followed by thirty
 seconds of nothing has minutes to spare, so the content pace wins, the scroll finishes and
 rests, and nothing crawls across the gap. The scroll stops on a character boundary with the last

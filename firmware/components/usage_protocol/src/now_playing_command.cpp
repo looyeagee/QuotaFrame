@@ -29,6 +29,27 @@ void copy_truncated(char* out, size_t out_size, const char* text) {
     out[length] = '\0';
 }
 
+/**
+ * Parses one decimal number in the canonical text form the protocol uses.
+ *
+ * Leading zeros, signs, non-digits and values above UINT32_MAX are rejected,
+ * like every other decimal field of the protocol.
+ */
+bool parse_decimal_u32(const char* text, size_t length, uint32_t& value) {
+    if (length == 0 || (text[0] == '0' && length > 1))
+        return false;
+    uint64_t parsed = 0;
+    for (size_t index = 0; index < length; ++index) {
+        if (text[index] < '0' || text[index] > '9')
+            return false;
+        parsed = parsed * 10u + static_cast<unsigned>(text[index] - '0');
+        if (parsed > UINT32_MAX)
+            return false;
+    }
+    value = static_cast<uint32_t>(parsed);
+    return true;
+}
+
 }  // namespace
 
 NowPlayingParseResult parse_now_playing_command(
@@ -83,6 +104,31 @@ NowPlayingParseResult parse_now_playing_command(
         }
     }
 
+    // The start of every line of the window, in milliseconds, in the order of the lines.
+    const char* line_times = nullptr;
+    if (esp_desktop_buddy_command_view_get_string(request, "line_times", &line_times) == ESP_OK &&
+        line_times) {
+        const char* cursor = line_times;
+        while (*cursor) {
+            const char* end = strchr(cursor, '\n');
+            const size_t length = end ? static_cast<size_t>(end - cursor) : strlen(cursor);
+            uint32_t value = 0;
+            if (!parse_decimal_u32(cursor, length, value))
+                return result;
+            if (result.update.line_time_count >= kMaxLyricLines)
+                return result;
+            result.update.line_times_ms[result.update.line_time_count++] = value;
+            if (!end)
+                break;
+            cursor = end + 1;
+        }
+    }
+    // The timestamps address the lines one by one, so a list of another length
+    // does not describe this window.
+    if (result.update.line_time_count != 0 &&
+        result.update.line_time_count != result.update.line_count)
+        return result;
+
     // Optional upper bound for the scroll of the line being sung.
     uint32_t line_end = 0;
     const auto line_end_result = get_decimal_u32(request, "line_end", line_end);
@@ -90,6 +136,17 @@ NowPlayingParseResult parse_now_playing_command(
         return result;
     if (line_end_result == FieldResult::Valid)
         result.update.line_end_seconds = line_end;
+
+    // The playhead in milliseconds; a source that states none leaves it at zero. The song
+    // may start at zero, so the field's presence is what says the playhead is known.
+    uint32_t position_ms = 0;
+    const auto position_result = get_decimal_u32(request, "position_ms", position_ms);
+    if (position_result == FieldResult::Invalid)
+        return result;
+    if (position_result == FieldResult::Valid) {
+        result.update.position_ms = position_ms;
+        result.update.has_position = true;
+    }
 
     uint32_t current = 0;
     const auto current_result = get_decimal_u32(request, "current", current);

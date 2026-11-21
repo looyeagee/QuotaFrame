@@ -280,6 +280,23 @@ NowPlayingUpdate publication(const char *line) {
     snprintf(update.lines[0], sizeof(update.lines[0]), "%s", line);
     return update;
 }
+
+/** One publication that states the start of every line of its window. */
+NowPlayingUpdate timed_publication(uint32_t position_ms, const uint32_t *starts, uint8_t count) {
+    NowPlayingUpdate update;
+    snprintf(update.title, sizeof(update.title), "Song");
+    update.playing = true;
+    update.line_count = count;
+    update.position_ms = position_ms;
+    update.has_position = true;
+    update.line_time_count = count;
+    for (uint8_t index = 0; index < count; ++index) {
+        update.line_times_ms[index] = starts[index];
+        snprintf(update.lines[index], sizeof(update.lines[index]), "line %u",
+                 static_cast<unsigned>(index));
+    }
+    return update;
+}
 } // namespace
 
 TEST_CASE("the scroll restarts only when the sung line changes", "[lyrics]")
@@ -302,4 +319,73 @@ TEST_CASE("the scroll restarts only when the sung line changes", "[lyrics]")
     apply_now_playing(v, empty, 12000);
     TEST_ASSERT_EQUAL_UINT64(12000, v.music_line_ms);
     TEST_ASSERT_FALSE(v.music.line_count);
+}
+
+TEST_CASE("the scroll follows the timeline of the song", "[lyrics]")
+{
+    // The song states that the line began 1.5 s ago; the panel shows it there, not where
+    // the publication happened to arrive.
+    const uint32_t starts[] = {10000, 12000, 15000};
+    View v;
+    apply_now_playing(v, timed_publication(11500, starts, 3), 1000);
+    TEST_ASSERT_EQUAL_UINT64(1500, music_line_age_ms(v, 1000));
+    // The panel clock carries the playhead on, so the age grows with the song.
+    TEST_ASSERT_EQUAL_UINT64(1900, music_line_age_ms(v, 1400));
+    // A paused song stands still.
+    v.music.playing = false;
+    TEST_ASSERT_EQUAL_UINT64(1500, music_line_age_ms(v, 1400));
+}
+
+TEST_CASE("the panel moves on to the next line by itself", "[lyrics]")
+{
+    const uint32_t starts[] = {10000, 12000, 15000};
+    View v;
+    apply_now_playing(v, timed_publication(11500, starts, 3), 1000);
+    TEST_ASSERT_EQUAL_UINT8(0, music_current_line(v, 1000));
+    // Half a second later the song has reached the next line, without a new publication.
+    TEST_ASSERT_EQUAL_UINT8(1, music_current_line(v, 1500));
+    // The window ends there: the panel waits for the publication that carries more lines.
+    TEST_ASSERT_EQUAL_UINT8(2, music_current_line(v, 100000));
+}
+
+TEST_CASE("a new line is composed as soon as the song reaches it", "[lyrics]")
+{
+    const uint32_t starts[] = {10000, 12000, 15000};
+    View v;
+    apply_now_playing(v, timed_publication(11500, starts, 3), 1000);
+    // The frame that just went out drew the first line.
+    v.music_line_shown = music_current_line(v, 1000);
+    TEST_ASSERT_FALSE(music_line_moved(v, 1300));
+    // Half a second later the song is on the next line, which has not been drawn yet: the
+    // frame that shows it must not wait for the quarter-second boundary.
+    TEST_ASSERT_TRUE(music_line_moved(v, 1500));
+    v.music_line_shown = music_current_line(v, 1500);
+    TEST_ASSERT_FALSE(music_line_moved(v, 1500));
+    // A song that was never published has nothing to move on to.
+    View idle;
+    TEST_ASSERT_FALSE(music_line_moved(idle, 1000));
+}
+
+TEST_CASE("the length of the line comes from the timeline", "[lyrics]")
+{
+    const uint32_t starts[] = {10000, 12000, 15000};
+    View v;
+    apply_now_playing(v, timed_publication(11500, starts, 3), 1000);
+    // The line lasts until the next one begins.
+    TEST_ASSERT_EQUAL_UINT32(2000, music_line_budget_ms(v, 1000));
+    TEST_ASSERT_EQUAL_UINT32(3000, music_line_budget_ms(v, 1500));
+    // The last line of the window has no successor, so its length is unknown.
+    View last;
+    apply_now_playing(last, timed_publication(15000, starts, 3), 1000);
+    TEST_ASSERT_EQUAL_UINT32(0, music_line_budget_ms(last, 100000));
+}
+
+TEST_CASE("a source without a timeline keeps the panel's own clock", "[lyrics]")
+{
+    View v;
+    apply_now_playing(v, publication("first line"), 1000);
+    TEST_ASSERT_EQUAL_UINT64(0, music_line_age_ms(v, 1000));
+    TEST_ASSERT_EQUAL_UINT64(2000, music_line_age_ms(v, 3000));
+    TEST_ASSERT_EQUAL_UINT8(0, music_current_line(v, 3000));
+    TEST_ASSERT_EQUAL_UINT32(0, music_line_budget_ms(v, 3000));
 }

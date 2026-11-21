@@ -662,12 +662,14 @@ void Screens::lyric_row(const View &v, int x, int top, int width, const char *li
     // The line stops where its whole tail fits, so its last character is always shown in full,
     // and both edges of the clip fall between glyphs rather than through one.
     const int end = CjkText::tail_start(line, width, kMusicScale);
-    const uint64_t age = v.now_ms > v.music_line_ms ? v.now_ms - v.music_line_ms : 0;
+    // The age of the line comes from the song's own timeline, so the text moves at the pace
+    // the music states rather than at the pace the publication arrived.
+    const uint64_t age = music_line_age_ms(v, v.now_ms);
     // A paused player keeps the line at its first word instead of scrolling away from it.
     const int offset =
         v.music.playing
             ? lyric_scroll_offset(CjkText::width(line, kMusicScale), end, age,
-                                  v.music_line_budget_ms)
+                                  music_line_budget_ms(v, v.now_ms))
             : 0;
     const int start = CjkText::boundary_at_or_before(line, std::min(offset, end), kMusicScale);
     const int visible = CjkText::window_width(line, start, width, kMusicScale);
@@ -708,8 +710,10 @@ void Screens::now_playing_summary(const View &v, int x, int top, int width, int 
         c_.text(x, top + kSummaryLyricTop, "NO LYRICS", 2);
         return;
     }
+    // The line being sung follows the song, so it may move on before the next publication.
+    const int current = music_current_line(v, v.now_ms);
     for (int row = 0; row < rows; ++row) {
-        const int index = m.current_line + row;
+        const int index = current + row;
         if (index >= m.line_count)
             break;
         const int lyric_width = width - 2 * kMusicTextInset;
@@ -765,8 +769,10 @@ void Screens::music(const View &v) {
         return;
     }
     const int lyric_width = content - 2 * kMusicTextInset;
+    // The line being sung follows the song, so it may move on before the next publication.
+    const int current = music_current_line(v, v.now_ms);
     for (int row = 0; row < kMusicLyricRows; ++row) {
-        const int index = m.current_line + row;
+        const int index = current + row;
         if (index >= m.line_count)
             break;
         const int top = kMusicLyricsTop + row * kMusicLyricPitch;

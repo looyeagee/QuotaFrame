@@ -48,8 +48,15 @@ struct View {
     bool music_valid = false; // Whether a song was ever published.
     uint64_t music_line_ms = 0; // When the line being sung began showing, for its scroll.
     // Milliseconds the source says the line had left when it appeared; 0 when it cannot say.
-    // A scroll is shortened to fit inside it, never stretched to fill it.
+    // A scroll is shortened to fit inside it, never stretched to fill it. Only used when the
+    // source states no timeline of its own.
     uint32_t music_line_budget_ms = 0;
+    // Panel clock when the publication that carries the playhead arrived; the playhead is
+    // advanced from there with the panel clock until the next publication arrives.
+    uint64_t music_position_at_ms = 0;
+    // Line the last composed frame drew as the one being sung. The panel advances the line
+    // between publications, so a frame is composed as soon as this falls behind the song.
+    uint8_t music_line_shown = 0;
     bool environment_valid = false;
     float temperature = 0, humidity = 0;
     int battery = -1; // Percent, or -1 when unknown.

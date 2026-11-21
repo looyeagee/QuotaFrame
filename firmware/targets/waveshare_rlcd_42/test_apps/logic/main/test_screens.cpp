@@ -421,3 +421,29 @@ TEST_CASE("only the sung line scrolls inside its own row", "[render][lyrics]")
     // The clip ends on a text column, so the right edge never cuts a glyph in half.
     TEST_ASSERT_TRUE(right <= 373);
 }
+
+TEST_CASE("the timeline names the line the panel highlights", "[render][lyrics]")
+{
+    // The publication still names the first line, but the song has passed the start of the
+    // second one: the panel shows the line that is sung, not the line that arrived.
+    Screens screens(canvas);
+    View v = lyric_view("第一句", "第二句");
+    v.music.current_line = 0;
+    v.music.position_ms = 12500;
+    v.music.has_position = true;
+    v.music.line_time_count = 2;
+    v.music.line_times_ms[0] = 10000;
+    v.music.line_times_ms[1] = 12000;
+    v.music_position_at_ms = 0;
+    v.now_ms = 500;
+    screens.render(v);
+    static uint8_t timeline[Canvas::kBytes];
+    memcpy(timeline, canvas.data(), sizeof(timeline));
+
+    // The same page with the second line named outright has to look the same.
+    View named = lyric_view("第一句", "第二句");
+    named.music.current_line = 1;
+    named.now_ms = 0;
+    screens.render(named);
+    TEST_ASSERT_EQUAL_UINT8(0, memcmp(timeline, canvas.data(), Canvas::kBytes));
+}

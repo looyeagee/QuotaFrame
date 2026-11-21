@@ -128,6 +128,9 @@ void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_
     }
     view.music = update;
     view.music_valid = true;
+    // The playhead is anchored on the moment the publication arrived; the panel advances it
+    // with its own clock until the next publication says where the song is.
+    view.music_position_at_ms = now_ms;
     if (!same_line) {
         view.music_line_ms = now_ms;
         // Measured once per line: a position that jitters cannot change the pace mid-line.
@@ -136,6 +139,68 @@ void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_
                 ? (update.line_end_seconds - update.position_seconds) * 1000u
                 : 0;
     }
+}
+
+namespace {
+
+/** Whether the source stated the start of every line of the window. */
+bool has_timeline(const View &view) {
+    return view.music.line_time_count != 0 &&
+           view.music.line_time_count == view.music.line_count;
+}
+
+}  // namespace
+
+uint64_t music_position_ms(const View &view, uint64_t now_ms) {
+    if (!view.music.has_position)
+        return 0;
+    uint64_t position = view.music.position_ms;
+    // The song keeps running between two publications, so the playhead does too.
+    if (view.music.playing && now_ms > view.music_position_at_ms)
+        position += now_ms - view.music_position_at_ms;
+    return position;
+}
+
+uint8_t music_current_line(const View &view, uint64_t now_ms) {
+    const auto &music = view.music;
+    if (!has_timeline(view))
+        return music.current_line;
+    const uint64_t position = music_position_ms(view, now_ms);
+    uint8_t current = music.current_line;
+    for (uint8_t index = 0; index < music.line_time_count; ++index) {
+        if (music.line_times_ms[index] <= position)
+            current = index;
+        else
+            break;
+    }
+    return current;
+}
+
+uint64_t music_line_age_ms(const View &view, uint64_t now_ms) {
+    if (!has_timeline(view)) {
+        // Without a timeline the panel counts from the moment the line appeared.
+        return now_ms > view.music_line_ms ? now_ms - view.music_line_ms : 0;
+    }
+    const uint8_t current = music_current_line(view, now_ms);
+    if (current >= view.music.line_time_count)
+        return 0;
+    const uint64_t position = music_position_ms(view, now_ms);
+    const uint64_t start = view.music.line_times_ms[current];
+    return position > start ? position - start : 0;
+}
+
+uint32_t music_line_budget_ms(const View &view, uint64_t now_ms) {
+    if (!has_timeline(view))
+        return view.music_line_budget_ms;
+    const uint8_t current = music_current_line(view, now_ms);
+    if (current + 1 >= view.music.line_time_count)
+        // The last line of the window has no successor, so its length is unknown.
+        return 0;
+    return view.music.line_times_ms[current + 1] - view.music.line_times_ms[current];
+}
+
+bool music_line_moved(const View &view, uint64_t now_ms) {
+    return view.music_valid && music_current_line(view, now_ms) != view.music_line_shown;
 }
 
 int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t budget_ms) {

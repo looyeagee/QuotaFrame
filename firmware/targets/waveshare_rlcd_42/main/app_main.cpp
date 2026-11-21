@@ -195,8 +195,12 @@ extern "C" void app_main() {
             redraw = true;
         }
         location = view.page;
+        // The song reaches its next line between two publications; compose the frame then,
+        // instead of waiting for the quarter-second frame boundary that only paces countdowns.
+        redraw = redraw || music_line_moved(view, view.now_ms);
         // Frames are composed at a fixed cadence so countdowns tick; unchanged frames are not sent.
         if (redraw || view.now_ms >= next_frame) {
+            view.music_line_shown = music_current_line(view, view.now_ms);
             screens.render(view);
             panel.show(canvas);
             next_frame = view.now_ms + kFrameIntervalMs;

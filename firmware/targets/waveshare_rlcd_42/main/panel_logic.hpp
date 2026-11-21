@@ -65,8 +65,54 @@ bool service_visible(const View &v, int slot);
  * Applies a now-playing publication and restarts the lyric scroll when the line being sung
  * changes. The scroll anchor is the moment the panel began showing that line, so a line that
  * has to move starts at its beginning instead of wherever an earlier line left off.
+ *
+ * The publication also anchors the playhead: the panel advances it with its own clock until
+ * the next publication arrives, so the line being sung follows the song instead of the
+ * publication cadence.
  */
 void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms);
+
+/**
+ * Playhead in milliseconds, advanced by the panel clock while the song plays.
+ *
+ * Returns 0 when the source states no position. The value is the source's playhead plus the
+ * time that passed since the publication arrived, so it lags the song by the time the
+ * publication spent on the link.
+ */
+uint64_t music_position_ms(const View &view, uint64_t now_ms);
+
+/**
+ * Index of the line being sung inside the window.
+ *
+ * The source states the start of every line, so the panel moves on to the next line itself
+ * when the playhead reaches it instead of waiting for the next publication. The source's own
+ * index is the floor: a panel that is ahead of the publication does not fall back behind it.
+ */
+uint8_t music_current_line(const View &view, uint64_t now_ms);
+
+/**
+ * Milliseconds since the line being sung began, on the song's own timeline.
+ *
+ * Without a timeline the panel counts from the moment the line appeared, which is as precise
+ * as the publication that carried it.
+ */
+uint64_t music_line_age_ms(const View &view, uint64_t now_ms);
+
+/**
+ * Milliseconds the line being sung lasts, as the source states it.
+ *
+ * It is an upper bound for the scroll: the scroll may finish sooner, never later. Returns 0
+ * when the source cannot say how long the line lasts.
+ */
+uint32_t music_line_budget_ms(const View &view, uint64_t now_ms);
+
+/**
+ * Whether the song has moved on to a line the panel has not drawn yet.
+ *
+ * The panel advances the playhead itself, so this is what makes it compose a frame at the
+ * moment the next line is sung rather than at the next quarter-second boundary.
+ */
+bool music_line_moved(const View &view, uint64_t now_ms);
 
 /**
  * Right-to-left offset for a `line_width` line with `travel` pixels of overflow, `age_ms`

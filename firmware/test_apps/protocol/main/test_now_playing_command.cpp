@@ -88,6 +88,65 @@ TEST_CASE("a now-playing command carries the song, the playhead and the lyric wi
     TEST_ASSERT_NOT_NULL(strstr(reply, "\"n\":42"));
 }
 
+TEST_CASE("the millisecond timeline travels with the lines", "[protocol]")
+{
+    Capture capture{};
+    char reply[200]{};
+    feed_line(kNowPlaying, capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+    TEST_ASSERT_EQUAL_UINT32(54320, capture.update.position_ms);
+    TEST_ASSERT_TRUE(capture.update.has_position);
+    TEST_ASSERT_EQUAL_UINT8(3, capture.update.line_time_count);
+    TEST_ASSERT_EQUAL_UINT32(52100, capture.update.line_times_ms[0]);
+    TEST_ASSERT_EQUAL_UINT32(55000, capture.update.line_times_ms[1]);
+    TEST_ASSERT_EQUAL_UINT32(58000, capture.update.line_times_ms[2]);
+}
+
+TEST_CASE("a command without milliseconds leaves the panel on the seconds", "[protocol]")
+{
+    Capture capture{};
+    char reply[200]{};
+    feed_line(
+        "{\"cmd\":\"now_playing\",\"v\":\"1\",\"seq\":\"47\",\"position\":\"54\","
+        "\"duration\":\"275\",\"state\":\"playing\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+    TEST_ASSERT_EQUAL_UINT32(0, capture.update.position_ms);
+    TEST_ASSERT_FALSE(capture.update.has_position);
+    TEST_ASSERT_EQUAL_UINT8(0, capture.update.line_time_count);
+}
+
+TEST_CASE("timestamps that do not address the lines are rejected", "[protocol]")
+{
+    Capture capture{};
+    char reply[200]{};
+    feed_line(
+        "{\"cmd\":\"now_playing\",\"v\":\"1\",\"seq\":\"48\",\"position\":\"54\","
+        "\"duration\":\"275\",\"state\":\"playing\",\"lines\":\"一\\n二\","
+        "\"line_times\":\"1000\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(0, capture.accepted);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"ok\":false"));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"error\":\"invalid_request\""));
+}
+
+TEST_CASE("a timestamp that is not a canonical number is rejected", "[protocol]")
+{
+    Capture capture{};
+    char reply[200]{};
+    feed_line(
+        "{\"cmd\":\"now_playing\",\"v\":\"1\",\"seq\":\"49\",\"position\":\"54\","
+        "\"duration\":\"275\",\"state\":\"playing\",\"lines\":\"一\","
+        "\"line_times\":\"01000\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(0, capture.accepted);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"ok\":false"));
+}
+
 TEST_CASE("an unknown player state is rejected", "[protocol]")
 {
     Capture capture{};
