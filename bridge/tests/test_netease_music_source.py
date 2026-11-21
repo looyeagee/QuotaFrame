@@ -41,7 +41,7 @@ from quotaframe_bridge.sources.netease_music import (
     NeteaseMusicSource,
     current_index,
     display_text,
-    line_end_seconds,
+    line_end_ms,
     fetch_lyrics,
     is_credit_line,
     parse_lrc,
@@ -99,7 +99,7 @@ class FakeResponse:
 
 
 class LrcParsingTest(unittest.TestCase):
-    def test_timestamps_become_sorted_seconds(self) -> None:
+    def test_timestamps_become_sorted_milliseconds(self) -> None:
         lines = parse_lrc(
             "[00:12.34]first\n"
             "[00:05.00]second\n"
@@ -108,26 +108,30 @@ class LrcParsingTest(unittest.TestCase):
         self.assertEqual(
             lines,
             (
-                LyricLine(5, "second"),
-                LyricLine(12, "first"),
-                LyricLine(62, "third"),
+                LyricLine(5_000, "second"),
+                LyricLine(12_340, "first"),
+                LyricLine(62_500, "third"),
             ),
         )
 
     def test_metadata_tags_are_skipped(self) -> None:
         lines = parse_lrc("[ti:title]\n[ar:artist]\n[00:01.00]text\n")
-        self.assertEqual(lines, (LyricLine(1, "text"),))
+        self.assertEqual(lines, (LyricLine(1_000, "text"),))
 
     def test_one_text_line_can_carry_several_timestamps(self) -> None:
         lines = parse_lrc("[00:01.00][00:09.00]chorus\n")
-        self.assertEqual(lines, (LyricLine(1, "chorus"), LyricLine(9, "chorus")))
+        self.assertEqual(lines, (LyricLine(1_000, "chorus"), LyricLine(9_000, "chorus")))
 
     def test_milliseconds_are_three_digits(self) -> None:
-        self.assertEqual(parse_lrc("[00:01.250]x\n")[0].time_seconds, 1)
+        self.assertEqual(parse_lrc("[00:01.250]x\n")[0].time_ms, 1_250)
+
+    def test_two_digits_are_hundredths_and_one_is_a_tenth(self) -> None:
+        self.assertEqual(parse_lrc("[00:01.50]x\n")[0].time_ms, 1_500)
+        self.assertEqual(parse_lrc("[00:01.5]x\n")[0].time_ms, 1_500)
 
     def test_lines_arrive_in_the_forms_the_panel_draws(self) -> None:
         lines = parse_lrc("[00:01.00]\u5355\u4f9d\u7eaf\uff1a\u2f00\u4e2a\u2f08\n")
-        self.assertEqual(lines, (LyricLine(1, "\u5355\u4f9d\u7eaf:\u4e00\u4e2a\u4eba"),))
+        self.assertEqual(lines, (LyricLine(1_000, "\u5355\u4f9d\u7eaf:\u4e00\u4e2a\u4eba"),))
 
 
 class DisplayTextTest(unittest.TestCase):
@@ -153,23 +157,23 @@ class DisplayTextTest(unittest.TestCase):
 
 
 class WindowTest(unittest.TestCase):
-    LINES = tuple(LyricLine(index * 10, f"line {index}") for index in range(6))
+    LINES = tuple(LyricLine(index * 10_000, f"line {index}") for index in range(6))
 
     def test_window_keeps_context_around_the_current_line(self) -> None:
-        window = select_window(self.LINES, 22, before=1, after=3)
+        window = select_window(self.LINES, 22_000, before=1, after=3)
         self.assertEqual([line.text for line in window],
                          ["line 1", "line 2", "line 3", "line 4", "line 5"])
 
     def test_window_stops_at_the_song_end(self) -> None:
-        window = select_window(self.LINES, 50, before=1, after=3)
+        window = select_window(self.LINES, 50_000, before=1, after=3)
         self.assertEqual([line.text for line in window], ["line 4", "line 5"])
 
     def test_default_window_fills_the_panel_rows_after_the_sung_line(self) -> None:
         # The music page draws five rows from the sung line onward, so the default window
         # has to carry four lines after it rather than stopping at three.
-        lines = tuple(LyricLine(index * 10, f"line {index}") for index in range(12))
-        window = select_window(lines, 32)
-        current = current_index(window, 32)
+        lines = tuple(LyricLine(index * 10_000, f"line {index}") for index in range(12))
+        window = select_window(lines, 32_000)
+        current = current_index(window, 32_000)
         self.assertEqual(len(window) - current, 5)
         self.assertEqual(window[current].text, "line 3")
 
@@ -177,21 +181,32 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(current_index(self.LINES, 0), 0)
 
     def test_current_index_tracks_the_sung_line(self) -> None:
-        window = select_window(self.LINES, 31)
-        self.assertEqual(current_index(window, 31), 1)
+        window = select_window(self.LINES, 31_000)
+        self.assertEqual(current_index(window, 31_000), 1)
+
+    def test_a_line_starts_on_the_millisecond_it_states(self) -> None:
+        # The window follows the song in milliseconds, so the line that begins at
+        # 12.340 s is the sung one from that instant on.
+        lines = (
+            LyricLine(10_000, "before"),
+            LyricLine(12_340, "first"),
+            LyricLine(15_000, "second"),
+        )
+        self.assertEqual(current_index(select_window(lines, 12_339), 12_339), 0)
+        self.assertEqual(current_index(select_window(lines, 12_340), 12_340), 1)
 
 
 class LineEndTest(unittest.TestCase):
-    LINES = tuple(LyricLine(index * 10, f"line {index}") for index in range(4))
+    LINES = tuple(LyricLine(index * 10_000, f"line {index}") for index in range(4))
 
     def test_line_end_is_the_start_of_the_next_line(self) -> None:
-        self.assertEqual(line_end_seconds(self.LINES, 0), 10)
-        self.assertEqual(line_end_seconds(self.LINES, 12), 20)
-        self.assertEqual(line_end_seconds(self.LINES, 29), 30)
+        self.assertEqual(line_end_ms(self.LINES, 0), 10_000)
+        self.assertEqual(line_end_ms(self.LINES, 12_000), 20_000)
+        self.assertEqual(line_end_ms(self.LINES, 29_000), 30_000)
 
     def test_the_last_line_and_an_empty_song_report_no_end(self) -> None:
-        self.assertEqual(line_end_seconds(self.LINES, 35), 0)
-        self.assertEqual(line_end_seconds((), 5), 0)
+        self.assertEqual(line_end_ms(self.LINES, 35_000), 0)
+        self.assertEqual(line_end_ms((), 5_000), 0)
 
 
 class TrackReadingTest(unittest.TestCase):
@@ -244,7 +259,7 @@ class LyricFetchTest(unittest.TestCase):
             })
 
         lines = fetch_lyrics("42", urlopen=urlopen)
-        self.assertEqual(lines, (LyricLine(1, "sung"),))
+        self.assertEqual(lines, (LyricLine(1_000, "sung"),))
         self.assertIn("id=42", requested[0])
 
     def test_empty_original_falls_back_to_the_translation(self) -> None:
@@ -254,7 +269,8 @@ class LyricFetchTest(unittest.TestCase):
                 "tlyric": {"lyric": "[00:02.00]translated\n"},
             })
 
-        self.assertEqual(fetch_lyrics("42", urlopen=urlopen), (LyricLine(2, "translated"),))
+        self.assertEqual(fetch_lyrics("42", urlopen=urlopen),
+                         (LyricLine(2_000, "translated"),))
 
 
 class SourceTest(unittest.TestCase):
@@ -284,6 +300,9 @@ class SourceTest(unittest.TestCase):
         self.assertTrue(publication.playing)
         self.assertEqual(publication.lines, ("a", "b", "c"))
         self.assertEqual(publication.current_line, 1)
+        self.assertEqual(publication.position_ms, 42_000)
+        # The panel places the song on this timeline, so every line carries its start.
+        self.assertEqual(publication.line_times_ms, (0, 40_000, 50_000))
 
     def test_ended_track_keeps_the_playhead_at_its_end(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -410,7 +429,7 @@ class LyricCacheTest(unittest.TestCase):
     def test_a_document_from_another_parser_version_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             cache = LyricCache(Path(directory))
-            cache.write("42", (LyricLine(1, "旧"),))
+            cache.write("42", (LyricLine(1_000, "旧"),))
             path = Path(directory) / "42.json"
             document = json.loads(path.read_text(encoding="utf-8"))
             document["v"] = CACHE_VERSION + 1
@@ -420,7 +439,7 @@ class LyricCacheTest(unittest.TestCase):
     def test_a_damaged_document_reads_as_a_miss(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             cache = LyricCache(Path(directory))
-            cache.write("42", (LyricLine(1, "第一句"),))
+            cache.write("42", (LyricLine(1_000, "第一句"),))
             (Path(directory) / "42.json").write_text("{not json", encoding="utf-8")
             self.assertIsNone(cache.read("42"))
 
@@ -434,7 +453,7 @@ class LyricCacheTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = LyricCache(Path(directory))
             for index in range(MAX_CACHE_ENTRIES + 8):
-                cache.write(str(index), (LyricLine(index, "行"),))
+                cache.write(str(index), (LyricLine(index * 1000, "行"),))
             stored = sorted((Path(directory)).glob("*.json"))
         self.assertEqual(len(stored), MAX_CACHE_ENTRIES)
 
@@ -626,8 +645,8 @@ class CreditFilterTest(unittest.TestCase):
         self.assertEqual(
             fetch_lyrics("42", urlopen=urlopen),
             (
-                LyricLine(0, "看晨曦吻大地  看落日寻天际"),
-                LyricLine(186, "女:你不是喜欢亚比啦"),
+                LyricLine(290, "看晨曦吻大地  看落日寻天际"),
+                LyricLine(186_000, "女:你不是喜欢亚比啦"),
             ),
         )
 
@@ -649,6 +668,27 @@ class EncodingTest(unittest.TestCase):
         self.assertEqual(message["lines"], "第一句\n第二句")
         self.assertEqual(message["current"], "1")
         self.assertEqual(NOW_PLAYING_CAPABILITY, "nowplaying.v1")
+
+    def test_the_millisecond_timeline_travels_with_the_lines(self) -> None:
+        publication = NowPlayingPublication(
+            title="歌", artist="", album="", position_seconds=54,
+            duration_seconds=231, playing=True,
+            lines=("第一句", "第二句"), current_line=1,
+            position_ms=54_320, line_times_ms=(53_000, 54_320),
+        )
+        message = json.loads(encode_now_playing(publication, 1).decode("utf-8"))
+        self.assertEqual(message["position_ms"], "54320")
+        self.assertEqual(message["line_times"], "53000\n54320")
+
+    def test_a_source_without_a_timeline_sends_no_timestamps(self) -> None:
+        publication = NowPlayingPublication(
+            title="歌", artist="", album="", position_seconds=54,
+            duration_seconds=231, playing=True,
+            lines=("第一句", "第二句"), current_line=0,
+        )
+        message = json.loads(encode_now_playing(publication, 1).decode("utf-8"))
+        self.assertNotIn("position_ms", message)
+        self.assertNotIn("line_times", message)
 
     def test_line_end_travels_only_when_it_is_known(self) -> None:
         known = NowPlayingPublication(
@@ -743,6 +783,9 @@ class NeteaseMirrorTest(unittest.TestCase):
         # The database clock alone would say 42 s and "playing".
         self.assertFalse(publication.playing)
         self.assertEqual(publication.position_seconds, 120)
+        # The mirror states the playhead in fractions of a second, and the panel
+        # needs them: the line that is sung at 120.650 s is not the one at 120 s.
+        self.assertEqual(publication.position_ms, 120_650)
 
     def test_a_title_in_another_compatibility_form_still_matches(self) -> None:
         # The client draws the radical, the history row keeps the ideograph.

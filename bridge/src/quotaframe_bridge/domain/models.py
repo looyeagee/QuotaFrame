@@ -43,6 +43,11 @@ class NowPlayingPublication:
     The panel shows the song title, its artists, the playhead and a window of
     lyric lines around the one being sung. Only display text is carried; the
     catalog identifier of the track stays on the computer.
+
+    The playhead and the start of every line in the window are also carried in
+    milliseconds, so a panel can place the song on its own timeline instead of
+    counting from the moment a publication arrived. The seconds are the same
+    instants rounded down, for a panel that only draws a clock.
     """
 
     title: str
@@ -56,14 +61,22 @@ class NowPlayingPublication:
     # Position at which the sung line stops and the next one starts, or 0 when the
     # source cannot say. A panel only uses it as an upper bound for its scroll.
     line_end_seconds: int = 0
+    # Playhead in milliseconds, 0 when the source cannot say.
+    position_ms: int = 0
+    # Start of every line in `lines`, in milliseconds, in the same order.
+    line_times_ms: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if self.position_seconds < 0 or self.duration_seconds < 0:
             raise ValueError("now-playing times must not be negative")
         if self.line_end_seconds < 0:
             raise ValueError("line end must not be negative")
+        if self.position_ms < 0:
+            raise ValueError("now-playing position must not be negative")
         if self.lines and not 0 <= self.current_line < len(self.lines):
             raise ValueError("current_line must address one of the lines")
+        if self.line_times_ms and len(self.line_times_ms) != len(self.lines):
+            raise ValueError("line_times_ms must address every line")
 
 
 @dataclass(frozen=True, slots=True)

@@ -74,7 +74,7 @@ ENDED_GRACE_SECONDS = 5
 CACHE_DIR_RELATIVE = Path("Library/Caches/quotaframe/lyrics")
 # A cached document is only reused by the parser version that wrote it, so an
 # entry turns stale instead of outliving a change to parsing or filtering.
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 # Small text files per song; the ceiling keeps a long listening history from
 # growing without bound.
 MAX_CACHE_ENTRIES = 512
@@ -141,9 +141,13 @@ def display_text(text: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class LyricLine:
-    """One timed lyric line."""
+    """One timed lyric line.
 
-    time_seconds: int
+    The timestamp is kept in milliseconds: the lyric file states it that
+    precisely, and a line that is half a second late is heard as late.
+    """
+
+    time_ms: int
     text: str
 
 
@@ -320,6 +324,19 @@ def is_credit_line(text: str) -> bool:
     return _names_a_credit(prefix)
 
 
+def _timestamp_ms(minutes: int, seconds: int, fraction: str | None) -> int:
+    """Millisecond position of one LRC timestamp.
+
+    The fraction carries as many digits as the file gives: one digit is tenths,
+    two are hundredths, three are milliseconds.
+    """
+
+    total = minutes * 60_000 + seconds * 1000
+    if fraction:
+        total += int(fraction) * 10 ** (3 - len(fraction))
+    return total
+
+
 def parse_lrc(text: str) -> tuple[LyricLine, ...]:
     """Decode an LRC document into timed lines.
 
@@ -334,32 +351,32 @@ def parse_lrc(text: str) -> tuple[LyricLine, ...]:
             continue
         content = display_text(raw[stamps[-1].end():].strip())
         for stamp in stamps:
-            minutes = int(stamp.group(1))
-            seconds = int(stamp.group(2))
-            fraction = stamp.group(3)
-            if fraction:
-                # Two digits are hundredths, three digits are milliseconds.
-                divisor = 100 if len(fraction) == 2 else 1000
-                seconds += int(fraction) / divisor
-            lines.append(LyricLine(int(minutes * 60 + seconds), content))
-    lines.sort(key=lambda line: line.time_seconds)
+            lines.append(
+                LyricLine(
+                    _timestamp_ms(
+                        int(stamp.group(1)), int(stamp.group(2)), stamp.group(3)
+                    ),
+                    content,
+                )
+            )
+    lines.sort(key=lambda line: line.time_ms)
     return tuple(lines)
 
 
 def select_window(
     lines: Sequence[LyricLine],
-    position_seconds: int,
+    position_ms: int,
     *,
     before: int = WINDOW_BEFORE,
     after: int = WINDOW_AFTER,
 ) -> tuple[LyricLine, ...]:
-    """Return the lines around the one playing at `position_seconds`."""
+    """Return the lines around the one playing at `position_ms`."""
 
     if not lines:
         return ()
     index = 0
     for candidate, line in enumerate(lines):
-        if line.time_seconds <= position_seconds:
+        if line.time_ms <= position_ms:
             index = candidate
         else:
             break
@@ -367,7 +384,7 @@ def select_window(
     return tuple(lines[start:index + after + 1])
 
 
-def line_end_seconds(lines: Sequence[LyricLine], position_seconds: int) -> int:
+def line_end_ms(lines: Sequence[LyricLine], position_ms: int) -> int:
     """Position at which the line being sung stops, or 0 when it is unknown.
 
     A panel only uses it as an upper bound for scrolling a line that does not fit, so an
@@ -379,21 +396,21 @@ def line_end_seconds(lines: Sequence[LyricLine], position_seconds: int) -> int:
         return 0
     index = 0
     for candidate, line in enumerate(lines):
-        if line.time_seconds <= position_seconds:
+        if line.time_ms <= position_ms:
             index = candidate
         else:
             break
     if index + 1 >= len(lines):
         return 0
-    return lines[index + 1].time_seconds
+    return lines[index + 1].time_ms
 
 
-def current_index(window: Sequence[LyricLine], position_seconds: int) -> int:
+def current_index(window: Sequence[LyricLine], position_ms: int) -> int:
     """Index of the line being sung inside `window`."""
 
     current = 0
     for index, line in enumerate(window):
-        if line.time_seconds <= position_seconds:
+        if line.time_ms <= position_ms:
             current = index
         else:
             break
@@ -507,7 +524,7 @@ class LyricCache:
         document = {
             "v": CACHE_VERSION,
             "id": song_id,
-            "lines": [{"t": line.time_seconds, "x": line.text} for line in lines],
+            "lines": [{"t": line.time_ms, "x": line.text} for line in lines],
         }
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
@@ -544,7 +561,7 @@ class LyricCache:
 class _MirrorPlayhead:
     """What the system mirror contributes to one publication."""
 
-    position_seconds: int
+    position_ms: int
     playing: bool
     duration_seconds: int
 
@@ -615,7 +632,7 @@ class NeteaseMusicSource:
             LOGGER.debug("now-playing mirror describes a different song")
             return None
         playhead = _MirrorPlayhead(
-            position_seconds=int(state.position_seconds(now)),
+            position_ms=int(round(state.position_seconds(now) * 1000)),
             playing=state.playing,
             duration_seconds=int(round(state.duration_seconds)),
         )
@@ -661,11 +678,11 @@ class NeteaseMusicSource:
             return None
         now = self._clock()
         now_ms = int(now * 1000)
-        elapsed = max(0, (now_ms - track.started_at_ms) // 1000)
+        elapsed_ms = max(0, now_ms - track.started_at_ms)
         mirrored = self._mirror_for(track, now)
         duration = track.duration_seconds
         if mirrored is not None:
-            position = mirrored.position_seconds
+            position_ms = mirrored.position_ms
             playing = mirrored.playing
             if duration <= 0:
                 duration = mirrored.duration_seconds
@@ -675,7 +692,7 @@ class NeteaseMusicSource:
                 # The client stopped publishing: it quit. The playhead stays
                 # where the mirror left it, and the song is not playing any
                 # more, so the panel stops scrolling its lyrics.
-                position = remembered[1].position_seconds
+                position_ms = remembered[1].position_ms
                 playing = (
                     remembered[1].playing and BUNDLE_ID in self._playing_bundle_ids()
                 )
@@ -683,26 +700,31 @@ class NeteaseMusicSource:
                 # Without the mirror the playhead is the distance from the moment
                 # the client wrote the row, so a pause reads as playing until the
                 # audio output stream tears down.
-                position = elapsed
-                ended = duration > 0 and elapsed > duration + ENDED_GRACE_SECONDS
+                position_ms = elapsed_ms
+                elapsed_seconds = elapsed_ms // 1000
+                ended = (
+                    duration > 0 and elapsed_seconds > duration + ENDED_GRACE_SECONDS
+                )
                 playing = not ended and BUNDLE_ID in self._playing_bundle_ids()
         # A track that has run out keeps the playhead at its end instead of
         # running past the duration while the client sits paused.
         if duration > 0:
-            position = min(position, duration)
+            position_ms = min(position_ms, duration * 1000)
         lyrics = self._lyrics_for(track.song_id)
-        window = select_window(lyrics, position)
-        current = current_index(window, position)
+        window = select_window(lyrics, position_ms)
+        current = current_index(window, position_ms)
         return NowPlayingPublication(
             title=track.title,
             artist=track.artist,
             album=track.album,
-            position_seconds=position,
+            position_seconds=position_ms // 1000,
             duration_seconds=duration,
             playing=playing,
             lines=tuple(line.text for line in window),
             current_line=current,
-            line_end_seconds=line_end_seconds(lyrics, position),
+            line_end_seconds=line_end_ms(lyrics, position_ms) // 1000,
+            position_ms=position_ms,
+            line_times_ms=tuple(line.time_ms for line in window),
         )
 
     async def collect(self) -> NowPlayingPublication | None:
@@ -731,6 +753,6 @@ __all__ = [
     "parse_track",
     "read_current_track",
     "current_index",
-    "line_end_seconds",
+    "line_end_ms",
     "select_window",
 ]

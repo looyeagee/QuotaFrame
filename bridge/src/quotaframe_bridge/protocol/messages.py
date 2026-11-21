@@ -211,6 +211,11 @@ def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
     The lyric lines travel as one string with newline separators: the command
     view of the device reads strings, and a window of lines stays far below the
     4096 byte frame limit that a whole song would exceed.
+
+    The playhead and the start of every line travel in milliseconds, so a panel
+    can tell where the song is on its own timeline. `line_times` carries one
+    value per line, in the order of `lines`; a panel that does not know the
+    field keeps using the seconds.
     """
 
     sequence = _u32(seq, "seq")
@@ -234,6 +239,15 @@ def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
         payload["lines"] = "\n".join(
             _truncate_utf8(line, MAX_LINE_BYTES) for line in lines
         )
+        times = publication.line_times_ms[:MAX_LINES]
+        if len(times) == len(lines):
+            payload["line_times"] = "\n".join(
+                _u32_text(value, "line_times") for value in times
+            )
+    if publication.position_ms or publication.line_times_ms:
+        # A song may start at zero, so the field travels whenever the source knows a
+        # playhead; the device reads its presence as the position being known.
+        payload["position_ms"] = _u32_text(publication.position_ms, "position_ms")
     return (
         json.dumps(
             payload,
