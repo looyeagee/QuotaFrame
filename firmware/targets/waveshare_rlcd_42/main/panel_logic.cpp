@@ -107,8 +107,10 @@ constexpr uint32_t kLyricLeadInMs = 900;
 // as the line lasted and never reached its end.
 constexpr uint32_t kLyricBaseMs = 900;
 constexpr uint32_t kLyricColumnMs = 100;
-// Shortest motion for a line whose remaining time is almost gone.
-constexpr uint32_t kLyricFloorMs = 600;
+// A scroll that ends exactly when the line does is never seen to end: frames are composed
+// every 250 ms, so the last one before the switch is up to a frame short of the tail. Finish
+// this much earlier to leave the final frame on screen at least once.
+constexpr uint32_t kLyricEndMarginMs = 400;
 
 /** Columns of text in `width` pixels. */
 int text_columns(int width) { return (width + kLyricScrollColumn - 1) / kLyricScrollColumn; }
@@ -145,13 +147,12 @@ int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t bu
     if (budget_ms > 0) {
         // The source says how long this line still has. It may shorten the scroll, never
         // stretch it: a line followed by an interlude has minutes left and keeps the content
-        // pace, so it cannot crawl across the gap.
-        if (budget_ms > lead + kLyricFloorMs) {
-            motion = std::min(motion, budget_ms - lead);
-        } else {
-            lead = 0;
-            motion = std::min<uint32_t>(motion, std::max<uint32_t>(budget_ms, kLyricFloorMs));
-        }
+        // pace, so it cannot crawl across the gap. Whatever is left goes to the motion first,
+        // because a tight line needs it to arrive rather than to wait.
+        const uint32_t usable = budget_ms > kLyricEndMarginMs ? budget_ms - kLyricEndMarginMs : 0;
+        lead = std::min<uint32_t>(kLyricLeadInMs, usable / 3);
+        const uint32_t room = usable > lead ? usable - lead : 0;
+        motion = std::min(motion, room);
     }
     if (motion == 0)
         motion = 1;

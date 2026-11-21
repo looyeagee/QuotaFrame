@@ -241,11 +241,25 @@ TEST_CASE("the time the line has left may shorten the scroll, never stretch it",
     const int travel = 336;
     // Eight seconds of line: the content pace wins, and the scroll ends well before it.
     TEST_ASSERT_EQUAL_INT(336, lyric_scroll_offset(total, travel, 6400, 8000));
-    // Four seconds of line: the budget wins, and the last column arrives as the line changes.
-    TEST_ASSERT_EQUAL_INT(336, lyric_scroll_offset(total, travel, 4000, 4000));
+    TEST_ASSERT_EQUAL_INT(336, lyric_scroll_offset(total, travel, 8000, 8000));
+    // Four seconds: the budget wins, and the tail is on screen before the line changes. The
+    // last frame the panel composes would otherwise fall short of it.
+    TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 3600, 4000) == 336);
     TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 3000, 4000) < 336);
-    // Half a second of line: the scroll starts at once instead of spending its hold first.
-    TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 100, 500) > 0);
+    // Two seconds: the hold gives way to the motion rather than the other way round.
+    TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 1600, 2000) == 336);
+    // A line with almost nothing left still shows its end instead of never reaching it.
+    TEST_ASSERT_TRUE(lyric_scroll_offset(total, travel, 100, 500) == 336);
+}
+
+TEST_CASE("the scroll ends a frame before the line does", "[lyrics]")
+{
+    // Whatever time the line has, the tail is reached at least 400 ms before the switch, which
+    // is one composed frame: ending exactly at the switch means the last frame never shows it.
+    for (uint32_t budget : {600u, 1100u, 2100u, 3100u, 8000u}) {
+        const int at_end = lyric_scroll_offset(540, 336, budget - 400, budget);
+        TEST_ASSERT_EQUAL_INT(336, at_end);
+    }
 }
 
 TEST_CASE("the scroll steps whole text columns", "[lyrics]")

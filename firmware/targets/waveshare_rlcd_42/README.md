@@ -111,15 +111,16 @@ NO MUSIC, WAITING FOR DATA or NO LYRICS on the same rows.
 
 Only the line being sung scrolls; the lines below it stay put and keep the trailing ellipsis of
 a line that does not fit, because they are context rather than the words being sung. A sung line
-that does not fit holds still for 0.9 s, then moves right to left until its whole tail fits, and
-stays there until the next line replaces it. The pace comes from the text: 0.9 s plus 0.1 s per
+that does not fit holds still for up to 0.9 s, then moves right to left until its whole tail fits,
+and stays there until the next line replaces it. The pace comes from the text: 0.9 s plus 0.1 s per
 text column of the line, counted over the whole line rather than over the distance the row has
 to scroll, so a narrow row scrolls faster instead of longer and the same words take the same
 time on the music page and on the clock page.
 
 The Bridge sends `line_end`, the position at which the line stops, and the panel uses it only as
 an upper bound: it shortens the scroll to finish inside the line when the line is short, and
-ignores it otherwise. That is what an instrumental interlude needs — a line followed by thirty
+ignores it otherwise. A scroll always ends 0.4 s before the line does, because a frame composed
+every 250 ms would otherwise never show the last one. That is what an instrumental interlude needs — a line followed by thirty
 seconds of nothing has minutes to spare, so the content pace wins, the scroll finishes and
 rests, and nothing crawls across the gap. The scroll stops on a character boundary with the last
 character whole and flush against the end of the row, so neither edge of a moving line ever
