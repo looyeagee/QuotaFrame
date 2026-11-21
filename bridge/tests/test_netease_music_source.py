@@ -578,6 +578,13 @@ class CreditFilterTest(unittest.TestCase):
         self.assertTrue(is_credit_line("词Lyrics: 某某"))
         self.assertTrue(is_credit_line("Rap词: 某某"))
 
+    def test_a_role_with_a_qualifier_in_front_or_a_noun_behind_is_a_credit(self) -> None:
+        self.assertTrue(is_credit_line("制作统筹 : 潘卉琦"))
+        self.assertTrue(is_credit_line("杜比全景声混音工程师 : 张步若"))
+        self.assertTrue(is_credit_line("音乐混音：崔禄"))
+        self.assertTrue(is_credit_line("音响总监 : 何飚"))
+        self.assertTrue(is_credit_line("PGM: 郭锦阳"))
+
     def test_a_sung_line_that_mentions_a_role_is_not_a_credit(self) -> None:
         # Only the start of the line names a role; the instrument is in the words.
         self.assertFalse(is_credit_line("我听见大提琴的声音：远了"))

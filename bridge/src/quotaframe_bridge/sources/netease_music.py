@@ -66,7 +66,7 @@ ENDED_GRACE_SECONDS = 5
 CACHE_DIR_RELATIVE = Path("Library/Caches/quotaframe/lyrics")
 # A cached document is only reused by the parser version that wrote it, so an
 # entry turns stale instead of outliving a change to parsing or filtering.
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 # Small text files per song; the ceiling keeps a long listening history from
 # growing without bound.
 MAX_CACHE_ENTRIES = 512
@@ -87,11 +87,14 @@ CREDIT_ROLES = (
     "合音", "合声", "和音", "艺术顾问", "对唱设计", "推广营销", "音乐工程",
     "制作协力", "制作团队",
 )
+# Nouns that follow a role in the full name of the credit, as in
+# "杜比全景声混音工程师".
+CREDIT_ROLE_NOUNS = ("工程师", "制作人", "助理", "指导", "设计", "编写", "协力", "统筹", "团队", "师")
 # Roles the client writes in Latin script, either alone or after the Chinese name.
 CREDIT_LATIN_ROLES = (
     "op", "sp", "cello", "violin", "viola", "piano", "guitar", "bass", "drums",
     "strings", "synth", "sax", "flute", "harp", "trumpet", "trombone", "sitar",
-    "clarinet", "oboe", "mandolin", "accordion",
+    "clarinet", "oboe", "mandolin", "accordion", "pgm",
 )
 CREDIT_MARKERS = (
     "本歌曲来自", "业务联系", "现金激励", "流量扶持", "未经许可", "侵权必究",
@@ -270,8 +273,14 @@ def _names_a_credit(prefix: str) -> bool:
             if leading == role:
                 return True
             continue
-        # A compound role such as "混音/母带" still names the credit.
+        # A compound role such as "混音/母带" still names the credit, and a
+        # qualifier can sit in front of the role ("音乐混音", "制作统筹") or a noun
+        # behind it ("杜比全景声混音工程师").
         if leading.startswith(role) or written.startswith(role):
+            return True
+        if leading.endswith(role) or any(
+            leading.endswith(role + noun) for noun in CREDIT_ROLE_NOUNS
+        ):
             return True
     return written in CREDIT_LATIN_ROLES
 
