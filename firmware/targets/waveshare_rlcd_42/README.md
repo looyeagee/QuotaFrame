@@ -9,7 +9,7 @@ eim run "idf.py -C firmware/targets/waveshare_rlcd_42 -p <PORT> flash" v6.1
 ```
 
 Evidence level: **partial hardware**. The firmware, `test_apps/logic` and the protocol test
-app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xd1ca0 bytes with 80 % of the app partition
+app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xd2860 bytes with 79 % of the app partition
 free. On one board, the landscape Home and detail pages rendered live usage from a bonded
 Bridge, which reconnected with an encrypted link after flashing. The music page has so far been
 verified only in the host preview and by the unit tests that compose its frame: a device has not
@@ -168,9 +168,11 @@ so the display would sometimes contradict the LED.
 The pixel font and the seven-segment digits are defined in `main/canvas.cpp`. Chinese text
 needs a font of its own, so `main/cjk_font.cpp` draws a generated 12 x 12 bitmap font:
 `tools/rlcd42/gen_cjk_font.py` rasterises the Fusion Pixel 12px font (OFL-1.1) into
-`main/cjk_font_data.cpp`, which holds 6929 glyphs (GB2312 level 1 and 2 plus full-width
-punctuation) as twelve rows of twelve pixels each, about 180 KB of flash. Latin characters keep
-using the built-in 5 x 7 font, aligned to the bottom of the lyric line. The license text ships
+`main/cjk_font_data.cpp`, which holds 7024 glyphs (printable ASCII, GB2312 level 1 and 2, and
+the full-width punctuation) as twelve rows of twelve pixels each, about 180 KB of flash. ASCII
+is drawn from that table in the six pixel cell of the built-in font, so a Latin word or a number
+keeps the width it always had while sitting on the baseline of the hanzi beside it; the built-in
+5 x 7 font still draws the panel's labels and the playhead figures. The license text ships
 next to the target as [FONT_LICENSE.txt](FONT_LICENSE.txt).
 
 `tools/rlcd42/render_preview.cpp` renders every screen on a host into PBM images using the

@@ -10,18 +10,19 @@ namespace {
 constexpr int kGlyphPixels = 12;
 // Twelve rows of twelve pixels, two bytes per row.
 constexpr int kBytesPerGlyph = 2 * kGlyphPixels;
-// The built-in font draws ASCII in six pixel cells: five columns and one blank.
+// ASCII keeps the five columns and one blank of the panel's own font, so a Latin word or a
+// number occupies the cells it always did; every ASCII glyph of the table fits that cell.
 constexpr int kAsciiCell = 6;
-// The built-in font is seven rows high.
-constexpr int kAsciiRows = 7;
+/** Columns a covered character is drawn in. */
+int cell_columns(uint32_t codepoint) {
+    return codepoint < 0x80 ? kAsciiCell : kGlyphPixels;
+}
 
 /** Reads the next UTF-8 character; an invalid sequence becomes U+FFFD. */
 uint32_t next_codepoint(const unsigned char *&p) {
     const unsigned char first = *p++;
-    // The built-in font has only the uppercase letters, so a lowercase letter folds to the
-    // glyph the font does have instead of advancing by nothing.
     if (first < 0x80)
-        return first >= 'a' && first <= 'z' ? first - ('a' - 'A') : first;
+        return first;
     int extra = 0;
     uint32_t codepoint = first;
     if ((first & 0xE0) == 0xC0) {
@@ -44,11 +45,9 @@ uint32_t next_codepoint(const unsigned char *&p) {
     return codepoint;
 }
 
-/** Advance of one uppercase ASCII character, or zero when the built-in font has no glyph. */
-int ascii_advance(uint32_t codepoint, int scale) {
-    if ((codepoint >= 32 && codepoint < 96) || codepoint == 0xB0)
-        return kAsciiCell * scale;
-    return 0;
+/** Advance of one character, or zero when nothing is drawn in its place. */
+int advance_of(uint32_t codepoint, int scale) {
+    return cell_columns(codepoint) * scale;
 }
 
 }  // namespace
@@ -73,11 +72,9 @@ int CjkText::width(const char *text, int scale) {
     int total = 0;
     for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p;) {
         const uint32_t codepoint = next_codepoint(p);
-        if (codepoint < 0x80) {
-            total += ascii_advance(codepoint, scale);
-            continue;
-        }
-        total += kGlyphPixels * scale;
+        // A control character carries no glyph and takes no room.
+        if (codepoint >= 0x20)
+            total += advance_of(codepoint, scale);
     }
     return total;
 }
@@ -107,8 +104,7 @@ void CjkText::fit(char *out, size_t out_size, const char *text, int max_width, i
         const uint32_t codepoint = next_codepoint(p);
         const size_t next =
             static_cast<size_t>(reinterpret_cast<const char *>(p) - text);
-        const int advance = codepoint < 0x80 ? ascii_advance(codepoint, scale)
-                                             : kGlyphPixels * scale;
+        const int advance = codepoint >= 0x20 ? advance_of(codepoint, scale) : 0;
         if (used + advance + ellipsis > max_width)
             break;
         used += advance;
@@ -125,29 +121,25 @@ int CjkText::draw(Canvas &canvas, int x, int top, const char *text, int scale, I
     int pen = x;
     for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p;) {
         const uint32_t codepoint = next_codepoint(p);
-        if (codepoint < 0x80) {
-            const int advance = ascii_advance(codepoint, scale);
-            if (advance > 0) {
-                const char ascii[2] = {static_cast<char>(codepoint), '\0'};
-                // The built-in font sits on the baseline of the line.
-                canvas.text(pen, top + (kGlyphPixels - kAsciiRows) * scale, ascii, scale, ink);
-                pen += advance;
-            }
+        // A control character carries no glyph and takes no room.
+        if (codepoint < 0x20)
             continue;
-        }
-        const int cell = kGlyphPixels * scale;
+        const int columns = cell_columns(codepoint);
+        const int cell = columns * scale;
         const int index = lookup(codepoint);
         if (index < 0) {
-            // An empty box marks a character the font does not cover.
-            canvas.frame(pen + scale, top + scale, cell - 2 * scale, cell - 2 * scale,
-                         scale, ink);
+            // An empty box marks a character the font does not cover. An ASCII character the
+            // table lacks keeps its cell blank, so the rest of the line stays in place.
+            if (codepoint >= 0x80)
+                canvas.frame(pen + scale, top + scale, cell - 2 * scale, cell - 2 * scale,
+                             scale, ink);
             pen += cell;
             continue;
         }
         const uint8_t *glyph = cjk_data::kCjkGlyphData + index * kBytesPerGlyph;
         for (int row = 0; row < kGlyphPixels; ++row) {
             const int bits = (glyph[row * 2] << 8) | glyph[row * 2 + 1];
-            for (int column = 0; column < kGlyphPixels; ++column) {
+            for (int column = 0; column < columns; ++column) {
                 if (bits & (1 << (kGlyphPixels - 1 - column)))
                     canvas.fill(pen + column * scale, top + row * scale, scale, scale, ink);
             }

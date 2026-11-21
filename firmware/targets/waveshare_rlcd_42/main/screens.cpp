@@ -24,7 +24,7 @@ constexpr int kFooterRule = 252, kPortraitFooterRule = 340;
 // Music page: two lyric-font lines for the song, a playhead, then the lyric window.
 constexpr int kMusicScale = 2;
 constexpr int kMusicLineHeight = CjkText::line_height(kMusicScale);
-// "PAUSED" at the label scale keeps the artist clear of it on the same row.
+// "PAUSED" ends the artist row in the lyric font, which keeps the artist clear of it there.
 constexpr int kPausedWidth = 76;
 constexpr int kMusicBarTop = 106, kMusicBarHeight = 14;
 constexpr int kMusicRule = 128;
@@ -717,9 +717,10 @@ void Screens::music(const View &v) {
         CjkText::fit(fitted, sizeof(fitted), m.artist, content - kPausedWidth, kMusicScale);
         CjkText::draw(c_, kLeft, 74, fitted, kMusicScale);
     }
-    // The paused state sits at the right end of the artist row, clear of the title above it.
+    // The paused state ends the artist row in the same font, so the two share the baseline.
     if (!m.playing)
-        c_.text_right(right, 84, "PAUSED", 2);
+        CjkText::draw(c_, right - CjkText::width("PAUSED", kMusicScale), 74, "PAUSED",
+                      kMusicScale);
     // Playhead: the bar keeps 12 px clear of the elapsed/total figures on its right.
     char times[40];
     format_playhead(m.position_seconds, m.duration_seconds, times, sizeof(times));

@@ -36,9 +36,10 @@ The repository includes the [Apache-2.0 license text](../../components/esp-mosai
 - License: [SIL Open Font License 1.1](FONT_LICENSE.txt), Copyright 2023 TakWolf and the Fusion Pixel contributors.
 - Local implementation: [main/cjk_font.cpp](main/cjk_font.cpp), [main/cjk_font_data.cpp](main/cjk_font_data.cpp), generator [tools/rlcd42/gen_cjk_font.py](../../../tools/rlcd42/gen_cjk_font.py).
 
-The generator rasterises GB2312 level 1 and 2 hanzi plus the full-width punctuation rows on
-the twelve pixel grid the font was drawn for, packs each glyph as twelve rows of twelve pixels
-and writes the two tables the firmware looks up. The firmware decodes UTF-8, binary-searches the
-code point table and draws the glyph at an integer scale; Latin characters keep using the
-built-in 5 x 7 font. The data file is generated and must not be edited by hand; the license text
+The generator rasterises printable ASCII, GB2312 level 1 and 2 hanzi plus the full-width
+punctuation rows on the twelve pixel grid the font was drawn for, packs each glyph as twelve
+rows of twelve pixels and writes the two tables the firmware looks up. The firmware decodes
+UTF-8, binary-searches the code point table and draws the glyph at an integer scale; ASCII is
+drawn from the same table in the six pixel cell of the built-in font, so Latin and hanzi share
+one baseline. The data file is generated and must not be edited by hand; the license text
 is kept next to the target as `FONT_LICENSE.txt`.

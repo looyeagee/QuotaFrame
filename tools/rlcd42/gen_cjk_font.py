@@ -2,8 +2,10 @@
 
 The glyphs come from the Fusion Pixel 12px font (SIL Open Font License 1.1),
 rasterised on the twelve pixel grid the font was drawn for. The panel's own
-5 x 7 font only covers ASCII, so Chinese song titles and lyrics need a font of
-their own; this script turns the font into the two tables the firmware looks up:
+5 x 7 font only covers ASCII, and only its uppercase letters, so titles and
+lyrics need a font of their own; printable ASCII comes from the same table so
+that Latin and hanzi share one baseline. This script turns the font into the
+two tables the firmware looks up:
 
 - ``kCjkCodepoints`` holds the covered code points in ascending order.
 - ``kCjkGlyphData`` holds one glyph per code point: twelve rows of twelve
@@ -29,12 +31,14 @@ BYTES_PER_GLYPH = 2 * GLYPH_SIZE
 _HANZI_ROWS = range(0xB0, 0xF8)
 # GB2312 rows that hold the full-width punctuation the lyrics use.
 _PUNCTUATION_ROWS = (0xA1, 0xA2)
+# Printable ASCII, which the panel's own 5 x 7 font lacks a lowercase half of.
+_ASCII = range(0x20, 0x7F)
 
 
 def charset() -> list[int]:
     """Code points the font has to cover, in ascending order."""
 
-    points: set[int] = set()
+    points: set[int] = set(_ASCII)
     for first in list(_HANZI_ROWS) + list(_PUNCTUATION_ROWS):
         for second in range(0xA1, 0xFF):
             try:

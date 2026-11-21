@@ -10,11 +10,11 @@ namespace usage_panel::rlcd {
 /**
  * Text drawing that covers Chinese as well as ASCII.
  *
- * The panel's built-in font only has ASCII glyphs, so the music page draws
- * its titles and its lyric lines with a 12 x 12 bitmap font. Latin characters
- * keep using the built-in font and are aligned to the bottom of the line, so a
- * line that mixes scripts reads like one line. That font draws ASCII letters in
- * uppercase only, so lowercase letters arrive as their uppercase glyphs.
+ * The panel's built-in font only has ASCII glyphs, and only the uppercase half of them, so
+ * the music page draws its titles and its lyric lines from a 12 x 12 bitmap table that holds
+ * hanzi as well as printable ASCII. ASCII keeps the six pixel cell of the built-in font, so a
+ * Latin word or a number stays as wide as it was, and it comes from the same table as the
+ * hanzi, so both scripts sit on the one baseline.
  */
 class CjkText {
   public:
