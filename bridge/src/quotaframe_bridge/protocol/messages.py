@@ -22,6 +22,8 @@ MAX_INVERSE_CLOCK_SKEW_SECONDS = 300
 NOW_PLAYING_CAPABILITY = "nowplaying.v1"
 # Capability a device declares when the alert mode can be set over the link.
 ALERT_SET_CAPABILITY = "alert.set.v1"
+# Capability a device declares when the display brightness can be set over the link.
+BRIGHTNESS_SET_CAPABILITY = "brightness.set.v1"
 # Alert modes share one numbering with the firmware settings page.
 ALERT_OFF = 0
 ALERT_PAGE = 1
@@ -78,6 +80,8 @@ class DeviceStatus:
     firmware_project: str = ""
     # Persisted alert mode the panel reports, or None when it reports none.
     alert: int | None = None
+    # Persisted display brightness percent the panel reports, or None when it reports none.
+    brightness: int | None = None
 
 
 class Sequence:
@@ -216,6 +220,19 @@ def encode_alert_set(seq: int, mode: int) -> bytes:
         raise ValueError("alert mode must be 0, 1 or 2")
     return _json_line({"cmd": "alert_set", "v": "1", "seq": _u32_text(seq, "seq"),
                        "mode": str(mode)})
+
+
+def encode_brightness_set(seq: int, percent: int) -> bytes:
+    """Set one panel's persisted display brightness in percent (0..100).
+
+    The device writes the value to its own storage, so the setting survives a
+    reboot and a reconnect without Bridge repeating it.
+    """
+
+    if type(percent) is not int or not 0 <= percent <= 100:
+        raise ValueError("brightness percent must be an int from 0 to 100")
+    return _json_line({"cmd": "brightness_set", "v": "1", "seq": _u32_text(seq, "seq"),
+                       "percent": str(percent)})
 
 
 def _truncate_utf8(text: str, limit: int) -> str:
@@ -375,6 +392,13 @@ def parse_status(message: Mapping[str, Any]) -> DeviceStatus:
             raise ProtocolError("device alert mode is invalid")
     else:
         alert = None
+    brightness = data.get("brightness")
+    if "brightness" in data:
+        if isinstance(brightness, bool) or not isinstance(brightness, int) \
+                or not 0 <= brightness <= 100:
+            raise ProtocolError("device brightness is invalid")
+    else:
+        brightness = None
     try:
         ota = None if "ota" not in data else parse_ota_status(ota_value)
     except OtaMessageError as exc:
@@ -408,4 +432,5 @@ def parse_status(message: Mapping[str, Any]) -> DeviceStatus:
         firmware_project=firmware_project,
         ota=ota,
         alert=alert,
+        brightness=brightness,
     )

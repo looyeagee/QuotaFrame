@@ -47,14 +47,19 @@ class PanelControl(Protocol):
     def state(self) -> dict[str, object]:
         """Return one JSON-ready snapshot of every device and provider."""
 
-    def toggle_screen(self) -> dict[str, object]:
-        """Ask every eligible panel to switch between clock and usage."""
+    def toggle_screen(self, address: str | None = None) -> dict[str, object]:
+        """Ask the chosen panel, or every eligible panel, to switch between clock and usage."""
 
-    def turn_page(self, direction: int) -> dict[str, object]:
-        """Ask every eligible panel to change usage page by one step."""
+    def turn_page(self, direction: int, address: str | None = None) -> dict[str, object]:
+        """Ask the chosen panel, or every eligible panel, to change usage page by one step."""
 
-    def set_alert(self, mode: int) -> dict[str, object]:
-        """Ask every eligible panel to persist one alert mode."""
+    def set_alert(self, mode: int, address: str | None = None) -> dict[str, object]:
+        """Ask the chosen panel, or every eligible panel, to persist one alert mode."""
+
+    def set_brightness(
+        self, percent: int, address: str | None = None
+    ) -> dict[str, object]:
+        """Ask the chosen panel, or every eligible panel, to persist one brightness."""
 
     def refresh(self) -> dict[str, object]:
         """Ask the collection loop to read usage now."""
@@ -131,43 +136,71 @@ class ServiceControl:
             },
         }
 
-    def toggle_screen(self) -> dict[str, object]:
-        return self._dispatch(SCREEN_TOGGLE_CAPABILITY, None)
+    def toggle_screen(self, address: str | None = None) -> dict[str, object]:
+        return self._dispatch(SCREEN_TOGGLE_CAPABILITY, None, address)
 
-    def turn_page(self, direction: int) -> dict[str, object]:
+    def turn_page(self, direction: int, address: str | None = None) -> dict[str, object]:
         if direction not in (-1, 1):
             raise ValueError("page direction must be -1 or 1")
-        return self._dispatch(SCREEN_PAGE_CAPABILITY, direction)
+        return self._dispatch(SCREEN_PAGE_CAPABILITY, direction, address)
 
-    def set_alert(self, mode: int) -> dict[str, object]:
+    def set_alert(self, mode: int, address: str | None = None) -> dict[str, object]:
         if type(mode) is not int or mode not in (0, 1, 2):
             raise ValueError("alert mode must be 0, 1 or 2")
-        results = []
-        eligible = False
-        for session in self._service.sessions:
-            reason = session.alert_command_unavailable()
-            eligible = eligible or reason is None
-            results.append(
-                {
-                    "name": session.label,
-                    "accepted": reason is None,
-                    "reason": reason,
-                }
-            )
-        if eligible:
-            self._service.set_alert(mode)
-        return {"devices": results, "alert": mode}
+        return self._setting(
+            DeviceSession.alert_command_unavailable,
+            lambda session: session.schedule_alert_set(mode),
+            address,
+        )
+
+    def set_brightness(self, percent: int, address: str | None = None) -> dict[str, object]:
+        if type(percent) is not int or not 0 <= percent <= 100:
+            raise ValueError("brightness percent must be an int from 0 to 100")
+        return self._setting(
+            DeviceSession.brightness_command_unavailable,
+            lambda session: session.schedule_brightness_set(percent),
+            address,
+        )
 
     def refresh(self) -> dict[str, object]:
         self._service.request_collection()
         return {"requested": True}
 
-    def _dispatch(self, capability: str, direction: int | None) -> dict[str, object]:
+    def _select(
+        self, address: str | None
+    ) -> tuple[list[DeviceSession], dict[str, object] | None]:
+        """Resolve one device address to its session.
+
+        No address selects every session; an unknown address, or any address in
+        a mode without an ownership graph, produces the per-device rejection the
+        page renders like any other.
+        """
+
+        if address is None:
+            return list(self._service.sessions), None
+        if self._graph is not None:
+            matched = [
+                device.session
+                for device in self._graph.devices
+                if device.address == address
+            ]
+            if matched:
+                return matched, None
+        return [], {
+            "devices": [{"name": address, "accepted": False, "reason": "unknown_device"}]
+        }
+
+    def _dispatch(
+        self, capability: str, direction: int | None, address: str | None = None
+    ) -> dict[str, object]:
         # Eligibility is measured before dispatch so a device that would swallow
         # the command is reported instead of counted as success.
+        sessions, rejection = self._select(address)
+        if rejection is not None:
+            return rejection
         results = []
         eligible = False
-        for session in self._service.sessions:
+        for session in sessions:
             reason = session.screen_command_unavailable(capability)
             eligible = eligible or reason is None
             results.append(
@@ -178,12 +211,40 @@ class ServiceControl:
                 }
             )
         if eligible:
-            # One service entry point per command keeps the page and the tray on
-            # the same scheduling path; ineligible sessions drop it themselves.
-            if direction is None:
-                self._service.toggle_screensavers()
-            else:
-                self._service.turn_pages(direction)
+            # One scheduling call per session keeps the page and the tray on the
+            # same path; ineligible sessions drop the command themselves.
+            for session in sessions:
+                if direction is None:
+                    session.schedule_screen_toggle()
+                else:
+                    session.schedule_screen_page(direction < 0)
+        return {"devices": results}
+
+    def _setting(
+        self,
+        unavailable: Callable[[DeviceSession], str | None],
+        schedule: Callable[[DeviceSession], None],
+        address: str | None,
+    ) -> dict[str, object]:
+        """Apply one persisted setting to the chosen sessions, reporting each one."""
+
+        sessions, rejection = self._select(address)
+        if rejection is not None:
+            return rejection
+        results = []
+        eligible = False
+        for session in sessions:
+            reason = unavailable(session)
+            eligible = eligible or reason is None
+            results.append(
+                {
+                    "name": session.label,
+                    "accepted": reason is None,
+                    "reason": reason,
+                }
+            )
+        for session in sessions:
+            schedule(session)
         return {"devices": results}
 
     def pair_new_device(self) -> dict[str, object]:
@@ -353,6 +414,11 @@ class ServiceControl:
                 # The session reports a written mode until a reconnect re-reads status.
                 "mode": session.alert_mode,
                 "set": _availability(session.alert_command_unavailable()),
+            },
+            "brightness": {
+                # Same write-then-report contract as the alert mode.
+                "percent": session.brightness,
+                "set": _availability(session.brightness_command_unavailable()),
             },
             "pairing": {
                 "repair": self._repair_availability(device, session),

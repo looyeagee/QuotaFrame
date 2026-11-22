@@ -31,6 +31,7 @@ STATE_PATH = "/api/state"
 TOGGLE_PATH = "/api/screen/toggle"
 PAGE_COMMAND_PATH = "/api/screen/page"
 ALERT_PATH = "/api/alert"
+BRIGHTNESS_PATH = "/api/brightness"
 REFRESH_PATH = "/api/refresh"
 PAIR_PATH = "/api/pair"
 PAIR_STOP_PATH = "/api/pair/stop"
@@ -44,6 +45,7 @@ ALLOWED_METHODS = {
     TOGGLE_PATH: ("POST",),
     PAGE_COMMAND_PATH: ("POST",),
     ALERT_PATH: ("POST",),
+    BRIGHTNESS_PATH: ("POST",),
     REFRESH_PATH: ("POST",),
     PAIR_PATH: ("POST",),
     PAIR_STOP_PATH: ("POST",),
@@ -118,11 +120,13 @@ class ControlRoutes:
         if path == STATE_PATH:
             return _ok(self._control.state())
         if path == TOGGLE_PATH:
-            return _accepted(self._control.toggle_screen())
+            return self._toggle(request)
         if path == PAGE_COMMAND_PATH:
             return self._turn_page(request)
         if path == ALERT_PATH:
             return self._set_alert(request)
+        if path == BRIGHTNESS_PATH:
+            return self._set_brightness(request)
         if path == REFRESH_PATH:
             return _accepted(self._control.refresh())
         if path == PAIR_PATH:
@@ -138,20 +142,39 @@ class ControlRoutes:
     def _turn_page(self, request: Request) -> Response:
         try:
             direction = _direction(request)
+            address = _address(request)
         except ValueError as exc:
             return _error(400, str(exc))
         if direction is None:
             return _error(400, "direction_required")
-        return _accepted(self._control.turn_page(direction))
+        return _accepted(self._control.turn_page(direction, address))
 
     def _set_alert(self, request: Request) -> Response:
         try:
             mode = _alert_mode(request)
+            address = _address(request)
         except ValueError as exc:
             return _error(400, str(exc))
         if mode is None:
             return _error(400, "mode_required")
-        return _accepted(self._control.set_alert(mode))
+        return _accepted(self._control.set_alert(mode, address))
+
+    def _set_brightness(self, request: Request) -> Response:
+        try:
+            percent = _brightness_percent(request)
+            address = _address(request)
+        except ValueError as exc:
+            return _error(400, str(exc))
+        if percent is None:
+            return _error(400, "percent_required")
+        return _accepted(self._control.set_brightness(percent, address))
+
+    def _toggle(self, request: Request) -> Response:
+        try:
+            address = _address(request)
+        except ValueError as exc:
+            return _error(400, str(exc))
+        return _accepted(self._control.toggle_screen(address))
 
     def _pair_device(self, request: Request, action) -> Response:
         try:
@@ -265,6 +288,40 @@ def _address(request: Request) -> str | None:
     ):
         raise ValueError("invalid_address")
     return address
+
+
+# The brightness range is shared with the firmware route and status.brightness.
+MAX_BRIGHTNESS_PERCENT = 100
+
+
+def _brightness_percent(request: Request) -> int | None:
+    """Read `{"percent": 80}` from the body or `?percent=` from the URL."""
+
+    raw: object = None
+    if request.body:
+        try:
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError("invalid_json") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("invalid_json")
+        raw = payload.get("percent")
+    if raw is None:
+        values = request.query().get("percent")
+        raw = values[0] if values else None
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError("invalid_percent")
+    if isinstance(raw, int):
+        text = str(raw)
+    elif isinstance(raw, str):
+        text = raw
+    else:
+        raise ValueError("invalid_percent")
+    if not text.isdigit() or not 0 <= int(text) <= MAX_BRIGHTNESS_PERCENT:
+        raise ValueError("invalid_percent")
+    return int(text)
 
 
 def _is_loopback(host: str) -> bool:

@@ -35,6 +35,8 @@ _DYNAMIC_KEYS = (
     "alert_page",
     "alert_beep",
     "control_alert_unknown",
+    "all_devices",
+    "control_brightness_unknown",
     "control_pair_scanning",
     "control_pair_added",
     "control_pair_none_found",
@@ -125,6 +127,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <section class="card">
     <h2>{{control_actions}}</h2>
     <div class="actions">
+      <select id="target" aria-label="{{control_target}}"></select>
       <button class="primary" id="toggle">{{toggle_screen}}</button>
       <button id="previous">{{previous_page}}</button>
       <button id="next">{{next_page}}</button>
@@ -144,6 +147,16 @@ _TEMPLATE = """<!DOCTYPE html>
       <button class="primary" id="alert-apply">{{alert_apply}}</button>
     </div>
     <p class="status" id="alert-status" role="status"></p>
+  </section>
+
+  <section class="card">
+    <h2>{{control_brightness}}</h2>
+    <div class="actions">
+      <input type="range" id="brightness" min="10" max="100" step="5" aria-label="{{control_brightness}}">
+      <span class="mono" id="brightness-value"></span>
+      <button class="primary" id="brightness-apply">{{alert_apply}}</button>
+    </div>
+    <p class="status" id="brightness-status" role="status"></p>
   </section>
 
   <section class="card">
@@ -181,8 +194,34 @@ const nodes = {
   usage: document.getElementById("usage"),
   nowplaying: document.getElementById("nowplaying"),
   pairing: document.getElementById("pairing-status"),
+  target: document.getElementById("target"),
 };
 const PROVIDER_NAMES = { deepseek: "DeepSeek", minimax: "MiniMax" };
+
+// The device chooser gates every panel command: an empty value means all panels.
+let targetAddress = "";
+target.addEventListener("change", () => { targetAddress = target.value; });
+
+function renderTarget(state) {
+  const devices = state.devices || [];
+  const current = targetAddress;
+  target.replaceChildren();
+  const all = element("option", null, LABELS.all_devices);
+  all.value = "";
+  target.append(all);
+  for (const device of devices) {
+    const option = element("option", null, device.name);
+    option.value = device.address || "";
+    target.append(option);
+  }
+  // A panel that disappeared falls back to all panels instead of a dead choice.
+  target.value = [...target.options].some((o) => o.value === current) ? current : "";
+  targetAddress = target.value;
+}
+
+function targetBody() {
+  return targetAddress ? { address: targetAddress } : {};
+}
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -278,8 +317,10 @@ function renderDevices(state) {
     card.append(pairingActions(device));
     nodes.devices.append(card);
   }
-  const anyToggle = devices.some((d) => (d.screen || {}).toggle?.available);
-  const anyPage = devices.some((d) => (d.screen || {}).page?.available);
+  // The chooser gates these buttons: a chosen panel enables them only when it can run them.
+  const chosen = chosenDevices(state);
+  const anyToggle = chosen.some((d) => (d.screen || {}).toggle?.available);
+  const anyPage = chosen.some((d) => (d.screen || {}).page?.available);
   document.getElementById("toggle").disabled = !anyToggle;
   document.getElementById("previous").disabled = !anyPage;
   document.getElementById("next").disabled = !anyPage;
@@ -388,7 +429,7 @@ let alertDirty = false;
 alertSelect.addEventListener("change", () => { alertDirty = true; });
 
 function renderAlert(state) {
-  const devices = state.devices || [];
+  const devices = chosenDevices(state);
   const modes = devices.map((device) => (device.alert || {}).mode);
   const reported = modes.filter((mode) => typeof mode === "number");
   alertApply.disabled = !devices.some((device) => (device.alert || {}).set?.available);
@@ -408,6 +449,48 @@ function renderAlert(state) {
   alertStatus.textContent = parts.join("\\n");
   alertStatus.style.whiteSpace = "pre-line";
   alertStatus.className = "status";
+}
+
+const brightnessInput = document.getElementById("brightness");
+const brightnessValue = document.getElementById("brightness-value");
+const brightnessApply = document.getElementById("brightness-apply");
+const brightnessStatus = document.getElementById("brightness-status");
+let brightnessDirty = false;
+brightnessInput.addEventListener("input", () => {
+  brightnessDirty = true;
+  brightnessValue.textContent = brightnessInput.value + "%";
+});
+
+// The chooser scopes every panel command; these are the panels it names.
+function chosenDevices(state) {
+  const devices = state.devices || [];
+  if (!targetAddress) return devices;
+  return devices.filter((device) => device.address === targetAddress);
+}
+
+function renderBrightness(state) {
+  const devices = chosenDevices(state);
+  const percents = devices.map((device) => (device.brightness || {}).percent);
+  const reported = percents.filter((p) => typeof p === "number");
+  brightnessApply.disabled = !devices.some(
+    (device) => (device.brightness || {}).set?.available);
+  // Follow the panels when they agree; a mixed fleet keeps the manual choice.
+  if (!brightnessDirty && reported.length &&
+      reported.every((p) => p === reported[0])) {
+    brightnessInput.value = String(reported[0]);
+    brightnessValue.textContent = reported[0] + "%";
+  }
+  const parts = devices.map((device) => {
+    const brightness = device.brightness || {};
+    const current = typeof brightness.percent === "number"
+      ? brightness.percent + "%" : LABELS.control_brightness_unknown;
+    const blocked = brightness.set && brightness.set.available === false && brightness.set.reason
+      ? " · " + reasonText(brightness.set.reason) : "";
+    return device.name + ": " + current + blocked;
+  });
+  brightnessStatus.textContent = parts.join("\\n");
+  brightnessStatus.style.whiteSpace = "pre-line";
+  brightnessStatus.className = "status";
 }
 
 const PAIRING_ERRORS = {
@@ -463,8 +546,10 @@ function renderPairing(state) {
 
 function render(state) {
   renderMeta(state);
+  renderTarget(state);
   renderDevices(state);
   renderAlert(state);
+  renderBrightness(state);
   renderPairing(state);
   renderUsage(state);
   renderNowPlaying(state);
@@ -509,18 +594,23 @@ async function command(button, path, body) {
 }
 
 document.getElementById("toggle").addEventListener("click", (event) =>
-  command(event.currentTarget, "/api/screen/toggle"));
+  command(event.currentTarget, "/api/screen/toggle", targetBody()));
 document.getElementById("previous").addEventListener("click", (event) =>
-  command(event.currentTarget, "/api/screen/page", { direction: "previous" }));
+  command(event.currentTarget, "/api/screen/page", { ...targetBody(), direction: "previous" }));
 document.getElementById("next").addEventListener("click", (event) =>
-  command(event.currentTarget, "/api/screen/page", { direction: "next" }));
+  command(event.currentTarget, "/api/screen/page", { ...targetBody(), direction: "next" }));
 document.getElementById("refresh").addEventListener("click", async (event) => {
   await command(event.currentTarget, "/api/refresh");
 });
 alertApply.addEventListener("click", async (event) => {
   const mode = Number(alertSelect.value);
   alertDirty = false;
-  await command(event.currentTarget, "/api/alert", { mode });
+  await command(event.currentTarget, "/api/alert", { ...targetBody(), mode });
+});
+brightnessApply.addEventListener("click", async (event) => {
+  const percent = Number(brightnessInput.value);
+  brightnessDirty = false;
+  await command(event.currentTarget, "/api/brightness", { ...targetBody(), percent });
 });
 
 pairButton.addEventListener("click", async (event) => {
@@ -607,6 +697,8 @@ _STATIC_KEYS = (
     "control_usage",
     "control_now_playing",
     "control_loading",
+    "control_target",
+    "control_brightness",
 )
 
 # Copy the script embeds as JSON string literals.

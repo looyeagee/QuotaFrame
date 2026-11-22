@@ -18,10 +18,12 @@ from quotaframe_bridge.domain.models import (
 )
 from quotaframe_bridge.protocol.messages import (
     ALERT_SET_CAPABILITY,
+    BRIGHTNESS_SET_CAPABILITY,
     MAX_INVERSE_CLOCK_SKEW_SECONDS,
     NOW_PLAYING_CAPABILITY,
     Sequence,
     encode_alert_set,
+    encode_brightness_set,
     encode_now_playing,
     encode_screen_toggle,
     encode_screen_page,
@@ -110,9 +112,12 @@ class DeviceSession:
         self._time_sync_task: asyncio.Task[None] | None = None
         self._screen_command_task: asyncio.Task[None] | None = None
         self._alert_command_task: asyncio.Task[None] | None = None
+        self._brightness_command_task: asyncio.Task[None] | None = None
         # Last alert mode this session wrote or read; cleared on every reconnect
         # so the panel's own status stays authoritative across a restart.
         self._alert_mode: int | None = None
+        # Last brightness percent this session wrote or read; cleared like the alert mode.
+        self._brightness: int | None = None
         self._force_time_sync = True
 
     @property
@@ -136,6 +141,15 @@ class DeviceSession:
         return self._alert_command_task is not None and not self._alert_command_task.done()
 
     @property
+    def brightness_command_pending(self) -> bool:
+        """True while a brightness change is in flight."""
+
+        return (
+            self._brightness_command_task is not None
+            and not self._brightness_command_task.done()
+        )
+
+    @property
     def alert_mode(self) -> int | None:
         """Alert mode the panel holds: our last acknowledged write, else its status."""
 
@@ -143,6 +157,15 @@ class DeviceSession:
             return self._alert_mode
         status = device_status(self.transport)
         return None if status is None else status.alert
+
+    @property
+    def brightness(self) -> int | None:
+        """Brightness percent the panel holds: our last acknowledged write, else its status."""
+
+        if self._brightness is not None:
+            return self._brightness
+        status = device_status(self.transport)
+        return None if status is None else status.brightness
 
     def screen_command_unavailable(self, capability: str) -> str | None:
         """Return why a screen command would be dropped, or None when it would run.
@@ -194,6 +217,47 @@ class DeviceSession:
         if self.alert_command_unavailable() is not None:
             return
         self._alert_command_task = asyncio.create_task(self._send_alert_set(mode))
+
+    def brightness_command_unavailable(self) -> str | None:
+        """Return why a brightness change would be dropped, or None.
+
+        The percent is a persisted write, so the panel has to report the
+        capability and hold a usable link before sending it is worth anything.
+        """
+
+        if self.brightness_command_pending:
+            return "busy"
+        return self.screen_command_unavailable(BRIGHTNESS_SET_CAPABILITY)
+
+    def schedule_brightness_set(self, percent: int) -> None:
+        if type(percent) is not int or not 0 <= percent <= 100:
+            raise ValueError("brightness percent must be an int from 0 to 100")
+        if self.brightness_command_unavailable() is not None:
+            return
+        self._brightness_command_task = asyncio.create_task(self._send_brightness_set(percent))
+
+    async def _send_brightness_set(self, percent: int) -> None:
+        # An absolute setting is idempotent, but an unknown outcome is still not
+        # replayed: the next state poll shows which percent the panel kept.
+        status = device_status(self.transport)
+        if (not self.connected or self.exclusive_active or status is None
+                or not status.secure
+                or BRIGHTNESS_SET_CAPABILITY not in status.capabilities):
+            return
+        try:
+            async with self._exclusive_lock:
+                if (not self.connected or self.exclusive_active
+                        or device_status(self.transport) is not status):
+                    return
+                sequence = self._sequence.next()
+                await self.transport.send_command(
+                    encode_brightness_set(sequence, percent), "brightness_set", sequence)
+                # The ACK is the only fresh value until the next status query.
+                self._brightness = percent
+        except TransportReset:
+            LOGGER.warning("%s brightness_set outcome unknown; not replayed", self.label)
+        except Exception as exc:
+            LOGGER.warning("%s brightness_set failed: %s", self.label, type(exc).__name__)
 
     async def _send_alert_set(self, mode: int) -> None:
         # An absolute setting is idempotent, but an unknown outcome is still not
@@ -351,8 +415,10 @@ class DeviceSession:
         self._connect_task = task
         try:
             await task
-            # A reconnect re-reads status, which becomes the alert mode again.
+            # A reconnect re-reads status, which becomes the alert mode and the
+            # brightness again.
             self._alert_mode = None
+            self._brightness = None
             return True
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():

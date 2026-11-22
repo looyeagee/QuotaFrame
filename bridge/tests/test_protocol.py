@@ -16,6 +16,7 @@ from quotaframe_bridge.protocol.messages import (
     ProtocolError,
     Sequence,
     encode_alert_set,
+    encode_brightness_set,
     encode_status_query,
     encode_usage,
     parse_ack,
@@ -217,6 +218,17 @@ class AlertCommandTests(unittest.TestCase):
                 encode_alert_set(47, mode)
 
 
+class BrightnessCommandTests(unittest.TestCase):
+    def test_brightness_encoder_carries_the_percent_as_canonical_text(self) -> None:
+        self.assertEqual(
+            encode_brightness_set(47, 80),
+            b'{"cmd":"brightness_set","percent":"80","seq":"47","v":"1"}\n',
+        )
+        for percent in (True, -1, 101, 2.0, "80"):
+            with self.subTest(percent=percent), self.assertRaises(ValueError):
+                encode_brightness_set(47, percent)
+
+
 class OpenStatusTests(unittest.TestCase):
     def parse(self, **fields):
         data = {"name": '书桌 "额度" \\ 屏', "sec": True, "protocol": 1, "caps": ["usage.v1"]}
@@ -243,6 +255,15 @@ class OpenStatusTests(unittest.TestCase):
         for value in (3, -1, True, "2", 2.0):
             with self.subTest(value=value), self.assertRaises(ProtocolError):
                 self.parse(caps=["usage.v1", "alert.set.v1"], alert=value)
+
+    def test_brightness_is_optional_and_bounded(self):
+        self.assertIsNone(self.parse().brightness)
+        self.assertEqual(self.parse(caps=["usage.v1", "brightness.set.v1"], brightness=80).brightness, 80)
+        self.assertEqual(self.parse(caps=["usage.v1", "brightness.set.v1"], brightness=0).brightness, 0)
+        self.assertEqual(self.parse(caps=["usage.v1", "brightness.set.v1"], brightness=100).brightness, 100)
+        for value in (101, -1, True, "80", 80.0):
+            with self.subTest(value=value), self.assertRaises(ProtocolError):
+                self.parse(caps=["usage.v1", "brightness.set.v1"], brightness=value)
 
     def test_duplicate_decoded_keys_are_rejected_at_every_depth(self):
         for raw in (b'{"n":0,"n":1}\n', b'{"data":{"a":1,"\\u0061":2}}\n'):

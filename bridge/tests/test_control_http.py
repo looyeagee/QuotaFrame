@@ -23,7 +23,11 @@ from quotaframe_bridge.domain.models import (
     SourceState,
     UsageWindow,
 )
-from quotaframe_bridge.protocol.messages import ALERT_SET_CAPABILITY, DeviceStatus
+from quotaframe_bridge.protocol.messages import (
+    ALERT_SET_CAPABILITY,
+    BRIGHTNESS_SET_CAPABILITY,
+    DeviceStatus,
+)
 from quotaframe_bridge.service.multi_device import (
     SCREEN_PAGE_CAPABILITY,
     SCREEN_TOGGLE_CAPABILITY,
@@ -48,6 +52,7 @@ class ScreenTransport:
         connected: bool = True,
         secure: bool = True,
         alert: int | None = None,
+        brightness: int | None = None,
     ) -> None:
         self.connected = connected
         self.sent: list[tuple[bytes, str, int]] = []
@@ -61,6 +66,7 @@ class ScreenTransport:
             firmware_version="v1.2.1",
             target="waveshare_rlcd_42",
             alert=alert,
+            brightness=brightness,
         )
 
     async def send_command(self, payload: bytes, command: str, sequence: int) -> None:
@@ -85,15 +91,26 @@ class FakeSession:
         secure: bool = True,
         reason: str | None = None,
         alert: int | None = None,
+        brightness: int | None = None,
     ) -> None:
         self.label = label
         self.connected = connected
         self.transport = ScreenTransport(
-            capabilities, connected=connected, secure=secure, alert=alert
+            capabilities,
+            connected=connected,
+            secure=secure,
+            alert=alert,
+            brightness=brightness,
         )
         self._reason = reason
         self.exclusive_active = False
         self._exclusive_failure: Exception | None = None
+        # Commands the page dispatched, recorded the way the real session
+        # records its in-flight tasks.
+        self.toggles = 0
+        self.pages: list[int] = []
+        self.alerts: list[int] = []
+        self.brightness_writes: list[int] = []
 
     def screen_command_unavailable(self, capability: str) -> str | None:
         if self._reason is not None:
@@ -106,12 +123,43 @@ class FakeSession:
             return "missing_capability"
         return None
 
+    @property
+    def alert_command_pending(self) -> bool:
+        return False
+
+    @property
+    def brightness_command_pending(self) -> bool:
+        return False
+
     def alert_command_unavailable(self) -> str | None:
         return self.screen_command_unavailable(ALERT_SET_CAPABILITY)
+
+    def schedule_screen_toggle(self) -> None:
+        if self.screen_command_unavailable(SCREEN_TOGGLE_CAPABILITY) is None:
+            self.toggles += 1
+
+    def schedule_screen_page(self, previous: bool) -> None:
+        if self.screen_command_unavailable(SCREEN_PAGE_CAPABILITY) is None:
+            self.pages.append(-1 if previous else 1)
+
+    def schedule_alert_set(self, mode: int) -> None:
+        if self.alert_command_unavailable() is None:
+            self.alerts.append(mode)
+
+    def brightness_command_unavailable(self) -> str | None:
+        return self.screen_command_unavailable(BRIGHTNESS_SET_CAPABILITY)
+
+    def schedule_brightness_set(self, percent: int) -> None:
+        if self.brightness_command_unavailable() is None:
+            self.brightness_writes.append(percent)
 
     @property
     def alert_mode(self) -> int | None:
         return self.transport.status.alert
+
+    @property
+    def brightness(self) -> int | None:
+        return self.transport.status.brightness
 
     async def run_exclusive(self, operation, *, interrupt_connect: bool = False) -> None:
         if self._exclusive_failure is not None:
@@ -307,6 +355,21 @@ class ServiceControlTests(unittest.TestCase):
         self.assertFalse(devices[1]["alert"]["set"]["available"])
         self.assertEqual(devices[1]["alert"]["set"]["reason"], "missing_capability")
 
+    def test_state_reports_the_brightness_and_setting_availability(self) -> None:
+        capable = FakeSession(
+            "reporting", capabilities=frozenset({BRIGHTNESS_SET_CAPABILITY}), brightness=80
+        )
+        silent = FakeSession("silent")
+        control = ServiceControl(FakeService([capable, silent]), version="1.2.1")
+
+        devices = control.state()["devices"]
+
+        self.assertEqual(devices[0]["brightness"]["percent"], 80)
+        self.assertTrue(devices[0]["brightness"]["set"]["available"])
+        self.assertIsNone(devices[1]["brightness"]["percent"])
+        self.assertFalse(devices[1]["brightness"]["set"]["available"])
+        self.assertEqual(devices[1]["brightness"]["set"]["reason"], "missing_capability")
+
     def test_dispatch_reports_why_a_device_is_skipped(self) -> None:
         ready = FakeSession("ready")
         gone = FakeSession("gone", connected=False)
@@ -316,7 +379,8 @@ class ServiceControlTests(unittest.TestCase):
 
         result = control.toggle_screen()
 
-        self.assertEqual(service.toggles, 1)
+        self.assertEqual(ready.toggles, 1)
+        self.assertEqual(gone.toggles, 0)
         self.assertEqual(
             [(item["name"], item["accepted"], item["reason"]) for item in result["devices"]],
             [
@@ -770,37 +834,104 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(self.routes().handle(self.get("/api/unknown")).status, 404)
 
     def test_toggle_and_refresh_are_accepted(self) -> None:
-        service = FakeService([FakeSession("ready")])
+        session = FakeSession("ready")
+        service = FakeService([session])
         routes = self.routes(service=service)
         toggle = routes.handle(self.get("/api/screen/toggle", method="POST"))
         refresh = routes.handle(self.get("/api/refresh", method="POST"))
         self.assertEqual(toggle.status, 202)
         self.assertEqual(refresh.status, 202)
-        self.assertEqual(service.toggles, 1)
+        self.assertEqual(session.toggles, 1)
         self.assertEqual(service.refreshes, 1)
 
+    def test_brightness_command_reads_percent_from_body_or_query(self) -> None:
+        session = FakeSession("ready", capabilities=frozenset({BRIGHTNESS_SET_CAPABILITY}))
+        routes = self.routes(service=FakeService([session]))
+        body = json.dumps({"percent": 80}).encode()
+        accepted = routes.handle(self.get("/api/brightness", method="POST", body=body))
+        from_query = routes.handle(self.get("/api/brightness?percent=40", method="POST"))
+        self.assertEqual((accepted.status, from_query.status), (202, 202))
+        self.assertEqual(session.brightness_writes, [80, 40])
+
+    def test_brightness_command_rejects_a_missing_or_invalid_percent(self) -> None:
+        routes = self.routes()
+        self.assertEqual(
+            routes.handle(self.get("/api/brightness", method="POST")).status, 400)
+        for payload in ({"percent": 101}, {"percent": -5}, {"percent": "9x"},
+                        {"percent": True}, {"percent": 2.5}, {"percent": []}):
+            with self.subTest(payload=payload):
+                response = routes.handle(self.get(
+                    "/api/brightness", method="POST", body=json.dumps(payload).encode()))
+                self.assertEqual((response.status, json.loads(response.body)),
+                                 (400, {"error": "invalid_percent"}))
+        self.assertEqual(
+            self.routes().handle(self.get("/api/brightness", method="GET")).status, 405
+        )
+
+    def test_a_chosen_device_receives_the_command_alone(self) -> None:
+        capable = frozenset(
+            {SCREEN_TOGGLE_CAPABILITY, SCREEN_PAGE_CAPABILITY, ALERT_SET_CAPABILITY,
+             BRIGHTNESS_SET_CAPABILITY}
+        )
+        first = FakeSession("first", capabilities=capable, brightness=80)
+        second = FakeSession("second", capabilities=capable, brightness=60)
+        device = type("Device", (), {"session": first, "address": "AA:11"})()
+        graph = type("Graph", (), {"devices": (device,)})()
+        service = FakeService([first, second])
+        control = ServiceControl(service, graph=graph, version="1.2.1")
+
+        body = json.dumps({"address": "AA:11"}).encode()
+        toggle = control.toggle_screen("AA:11")
+        page = control.turn_page(1, "AA:11")
+        alert = control.set_alert(1, "AA:11")
+        brightness = control.set_brightness(40, "AA:11")
+
+        self.assertEqual(first.toggles, 1)
+        self.assertEqual(first.pages, [1])
+        self.assertEqual(first.alerts, [1])
+        self.assertEqual(first.brightness_writes, [40])
+        self.assertEqual(second.toggles, 0)
+        self.assertEqual(second.brightness_writes, [])
+        for result in (toggle, page, alert, brightness):
+            self.assertEqual([item["name"] for item in result["devices"]], ["first"])
+            self.assertTrue(result["devices"][0]["accepted"])
+
+    def test_an_unknown_address_is_reported_not_dispatched(self) -> None:
+        session = FakeSession("ready")
+        control = ServiceControl(FakeService([session]), version="1.2.1")
+
+        for action in (
+            lambda: control.toggle_screen("ZZ:99"),
+            lambda: control.turn_page(1, "ZZ:99"),
+            lambda: control.set_alert(0, "ZZ:99"),
+            lambda: control.set_brightness(40, "ZZ:99"),
+        ):
+            result = action()
+            self.assertEqual(result["devices"], [
+                {"name": "ZZ:99", "accepted": False, "reason": "unknown_device"}
+            ])
+        self.assertEqual(session.toggles, 0)
+        self.assertEqual(session.brightness_writes, [])
+
     def test_page_command_reads_direction_from_body_or_query(self) -> None:
-        service = FakeService([FakeSession("ready")])
-        routes = self.routes(service=service)
+        session = FakeSession("ready")
+        routes = self.routes(service=FakeService([session]))
         body = json.dumps({"direction": "next"}).encode()
         accepted = routes.handle(self.get("/api/screen/page", method="POST", body=body))
         previous = routes.handle(
             self.get("/api/screen/page?direction=previous", method="POST")
         )
         self.assertEqual((accepted.status, previous.status), (202, 202))
-        self.assertEqual(service.pages, [1, -1])
+        self.assertEqual(session.pages, [1, -1])
 
     def test_alert_command_reads_mode_from_body_or_query(self) -> None:
-        service = FakeService([
-            FakeSession("ready", capabilities=frozenset({ALERT_SET_CAPABILITY}))
-        ])
-        routes = self.routes(service=service)
+        session = FakeSession("ready", capabilities=frozenset({ALERT_SET_CAPABILITY}))
+        routes = self.routes(service=FakeService([session]))
         body = json.dumps({"mode": 2}).encode()
         accepted = routes.handle(self.get("/api/alert", method="POST", body=body))
         from_query = routes.handle(self.get("/api/alert?mode=0", method="POST"))
         self.assertEqual((accepted.status, from_query.status), (202, 202))
-        self.assertEqual(json.loads(accepted.body)["alert"], 2)
-        self.assertEqual(service.alerts, [2, 0])
+        self.assertEqual(session.alerts, [2, 0])
 
     def test_alert_command_rejects_a_missing_or_invalid_mode(self) -> None:
         routes = self.routes()

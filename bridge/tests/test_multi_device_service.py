@@ -366,6 +366,56 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
         await sessions[0]._alert_command_task
         self.assertEqual(json.loads(transports[0].sent[1][0])["mode"], "0")
 
+    async def test_brightness_set_targets_capable_sessions_and_persists_the_percent(self):
+        transports = [RecordingTransport(capabilities=frozenset(caps)) for caps in (
+            {"brightness.set.v1"}, {"brightness.set.v1"}, {"screen.toggle.v1"})]
+        sessions = tuple(DeviceSession(str(i), t) for i, t in enumerate(transports))
+        for session in sessions:
+            session._connected = True
+            session.transport.connected = True
+        sessions[1]._exclusive_active = True
+        for session in sessions:
+            session.schedule_brightness_set(80)
+        await asyncio.gather(*(s._brightness_command_task for s in sessions
+                               if s._brightness_command_task))
+        # A session that cannot take the command is not scheduled at all.
+        self.assertEqual(
+            [s._brightness_command_task is None for s in sessions], [False, True, True]
+        )
+        self.assertEqual(
+            json.loads(transports[0].sent[0][0]),
+            {"cmd": "brightness_set", "v": "1", "seq": "0", "percent": "80"},
+        )
+        self.assertEqual(transports[1].sent, [])
+        self.assertEqual(transports[2].sent, [])
+        for percent in (101, -1, True, 80.0):
+            with self.subTest(percent=percent), self.assertRaises(ValueError):
+                sessions[0].schedule_brightness_set(percent)
+        sessions[0].schedule_brightness_set(40)
+        await sessions[0]._brightness_command_task
+        self.assertEqual(json.loads(transports[0].sent[1][0])["percent"], "40")
+
+    async def test_brightness_reports_the_last_acknowledged_write(self):
+        transport = RecordingTransport(capabilities=frozenset({"brightness.set.v1"}))
+        transport.device_status = DeviceStatus(
+            name="Panel",
+            secure=True,
+            protocol=1,
+            page="overview",
+            capabilities=frozenset({"brightness.set.v1"}),
+            brightness=80,
+        )
+        session = DeviceSession("WS", transport)
+        session._connected = True
+        session.transport.connected = True
+        self.assertEqual(session.brightness, 80)
+        session.schedule_brightness_set(40)
+        await session._brightness_command_task
+        self.assertEqual(session.brightness, 40)
+        # A reconnect drops the cached write so the fresh status is authoritative.
+        session._brightness = None
+        self.assertEqual(session.brightness, 80)
+
     async def test_alert_mode_reports_the_last_acknowledged_write(self):
         transport = RecordingTransport(capabilities=frozenset({"alert.set.v1"}))
         transport.device_status = DeviceStatus(
