@@ -75,6 +75,9 @@ class ClaudeSessionStore:
                     "cwd": _text(raw.get("cwd")),
                     "project": _project_name(raw.get("cwd")),
                     "status": _text(raw.get("status")),
+                    # What a waiting session waits for; Claude Code states it
+                    # only while the session is waiting.
+                    "waiting_for": _text(raw.get("waitingFor")),
                     "version": _text(raw.get("version")),
                     "kind": _text(raw.get("kind")),
                     "entrypoint": _text(raw.get("entrypoint")),
@@ -83,7 +86,22 @@ class ClaudeSessionStore:
                     "alive": isinstance(pid, int) and _pid_alive(pid),
                 }
             )
-        sessions.sort(key=lambda entry: entry["started_at"] or 0, reverse=True)
+        # The roster leads with the session touched last, because the panel
+        # draws a few rows and the one that just moved is the one being
+        # watched. `updatedAt` is what Claude Code rewrites as a session
+        # changes, so an idle session started later sinks below an older one
+        # that is answering now. Ties fall back to the start time and then the
+        # id: a roster that reorders without a state change is a redraw the
+        # glass cannot show, and it defeats the dedupe in publish_sessions that
+        # keeps unchanged snapshots off the link.
+        sessions.sort(
+            key=lambda entry: (
+                entry["updated_at"] or entry["started_at"] or 0,
+                entry["started_at"] or 0,
+                entry["session_id"] or "",
+            ),
+            reverse=True,
+        )
         return sessions
 
     def _recent_transcripts(
@@ -125,7 +143,11 @@ class ClaudeSessionStore:
             }
             live = live_by_id.get(path.stem)
             if live is not None:
-                entry["live"] = {"status": live["status"], "alive": live["alive"]}
+                entry["live"] = {
+                    "status": live["status"],
+                    "waiting_for": live["waiting_for"],
+                    "alive": live["alive"],
+                }
             recent.append(entry)
         return recent
 

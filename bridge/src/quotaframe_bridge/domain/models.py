@@ -79,19 +79,76 @@ class NowPlayingPublication:
             raise ValueError("line_times_ms must address every line")
 
 
+class SessionState(str, Enum):
+    """How a running Claude Code session is spending its time.
+
+    The words are Claude Code's own: it publishes one of them in the state file
+    of a running session, and the panel draws the same words. A session that
+    waits is the one that spends the reader's time rather than its own.
+    """
+
+    # At an empty prompt, waiting for the next instruction.
+    IDLE = "idle"
+    # A turn is running.
+    BUSY = "busy"
+    # Blocked on its user: it cannot move until the request is answered.
+    WAITING = "waiting"
+    # The turn ended, but a background shell of the session still runs.
+    SHELL = "shell"
+
+
+class WaitingReason(str, Enum):
+    """What a waiting session waits for.
+
+    Claude Code states the reason in its own words; each one becomes a short
+    word on the panel. A reason Claude Code does not name yet is still a dialog
+    that holds the session, so it reads as one.
+    """
+
+    # The agent asked a question.
+    ASK = "ask"
+    # A tool or a plan waits for approval.
+    PERMISSION = "permission"
+    # A sandboxed command asks to reach outside its sandbox.
+    SANDBOX = "sandbox"
+    # A background worker asks for something.
+    WORKER = "worker"
+    # A proposed goal waits for approval.
+    GOAL = "goal"
+    # Another blocking dialog.
+    DIALOG = "dialog"
+
+
+@dataclass(frozen=True, slots=True)
+class LiveSession:
+    """One running session as a panel shows it."""
+
+    name: str
+    state: SessionState = SessionState.IDLE
+    # What the session waits for; only a waiting session states one.
+    waiting_for: WaitingReason | None = None
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("a live session needs a display name")
+        if self.waiting_for is not None and self.state is not SessionState.WAITING:
+            raise ValueError("only a waiting session states what it waits for")
+
+
 @dataclass(frozen=True, slots=True)
 class SessionsPublication:
     """Sanitized Claude Code session state for a panel's sessions page.
 
-    A panel shows which Claude Code sessions are live and what they are working
-    on. Only display text travels: the session name or its first prompt stands
-    in for the session, and session ids, working directories and transcripts
-    stay on the computer. `live` pairs each running session's name with whether
-    it is busy; `recent` lists the most recently active ended sessions.
+    A panel shows which Claude Code sessions are live and what they are doing.
+    Only display text travels: the session name or its first prompt stands in
+    for the session, and session ids, working directories and transcripts stay
+    on the computer. `live` lists the running sessions with the state Claude
+    Code reports for each; `recent` lists the most recently active ended
+    sessions.
     """
 
-    # (display name, busy) for every running session, newest first.
-    live: tuple[tuple[str, bool], ...] = ()
+    # Every running session, newest first.
+    live: tuple[LiveSession, ...] = ()
     recent: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -99,11 +156,9 @@ class SessionsPublication:
             raise ValueError("a publication carries at most four live sessions")
         if len(self.recent) > 3:
             raise ValueError("a publication carries at most three recent sessions")
-        for name, busy in self.live:
-            if not name:
+        for session in self.live:
+            if not session.name:
                 raise ValueError("a live session needs a display name")
-            if not isinstance(busy, bool):
-                raise ValueError("a live session's busy flag must be a bool")
         for title in self.recent:
             if not title:
                 raise ValueError("a recent session needs a title")

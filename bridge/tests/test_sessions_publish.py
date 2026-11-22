@@ -7,17 +7,27 @@ import json
 import unittest
 
 from quotaframe_bridge.domain.models import (
+    LiveSession,
     Provider,
     ProviderUsage,
+    SessionState,
     SessionsPublication,
     SourceState,
+    WaitingReason,
 )
-from quotaframe_bridge.protocol.messages import SESSIONS_CAPABILITY, DeviceStatus
+from quotaframe_bridge.protocol.messages import (
+    SESSIONS_CAPABILITY,
+    SESSIONS_STATES_CAPABILITY,
+    DeviceStatus,
+)
 from quotaframe_bridge.service.devices import DeviceSession
 from quotaframe_bridge.service.multi_device import MultiDeviceBridgeService
 
 PUBLICATION = SessionsPublication(
-    live=(("Claude Code Desktop 会话状态页面", True), ("修复列表滚动的问题", False)),
+    live=(
+        LiveSession("Claude Code Desktop 会话状态页面", SessionState.BUSY),
+        LiveSession("修复列表滚动的问题", SessionState.IDLE),
+    ),
 )
 
 
@@ -97,6 +107,7 @@ class ServicePublishTest(unittest.IsolatedAsyncioTestCase):
 
     def test_the_capability_token_is_stable(self) -> None:
         self.assertEqual(SESSIONS_CAPABILITY, "sessions.v1")
+        self.assertEqual(SESSIONS_STATES_CAPABILITY, "sessions.v2")
 
     async def _run(
         self,
@@ -176,7 +187,9 @@ class ServicePublishTest(unittest.IsolatedAsyncioTestCase):
     async def test_a_change_reaches_the_device_without_the_cadence(self) -> None:
         # The safety interval is 30 s: anything that arrives inside the wait was
         # triggered by the change, not by the timer.
-        changed = SessionsPublication(live=(("修复列表滚动的问题", True),))
+        changed = SessionsPublication(
+            live=(LiveSession("修复列表滚动的问题", SessionState.BUSY),)
+        )
         source = _StubSessionsSource(PUBLICATION, changed)
         transport = await self._run(
             frozenset({"usage.v1", SESSIONS_CAPABILITY}), source, until=2
@@ -185,6 +198,41 @@ class ServicePublishTest(unittest.IsolatedAsyncioTestCase):
         frames = self._frames(transport)
         self.assertEqual(len(frames), 2)
         self.assertEqual(frames[1]["states"], "busy")
+
+    async def test_a_device_with_the_extended_states_is_told_who_waits(self) -> None:
+        source = _StubSessionsSource(
+            SessionsPublication(
+                live=(
+                    LiveSession("等待回答", SessionState.WAITING, WaitingReason.ASK),
+                    LiveSession("忙碌中", SessionState.BUSY),
+                )
+            )
+        )
+        transport = await self._run(
+            frozenset({"usage.v1", SESSIONS_CAPABILITY, SESSIONS_STATES_CAPABILITY}),
+            source,
+        )
+
+        frames = self._frames(transport)
+        self.assertTrue(frames)
+        self.assertEqual(frames[0]["states"], "waiting/ask\nbusy")
+
+    async def test_a_device_without_them_gets_the_two_states(self) -> None:
+        source = _StubSessionsSource(
+            SessionsPublication(
+                live=(
+                    LiveSession("等待回答", SessionState.WAITING, WaitingReason.ASK),
+                    LiveSession("空闲中", SessionState.IDLE),
+                )
+            )
+        )
+        transport = await self._run(
+            frozenset({"usage.v1", SESSIONS_CAPABILITY}), source
+        )
+
+        frames = self._frames(transport)
+        self.assertTrue(frames)
+        self.assertEqual(frames[0]["states"], "busy\nidle")
 
     async def test_the_roster_goes_out_again_on_a_new_link(self) -> None:
         transport = _RecordingTransport(frozenset({"usage.v1", SESSIONS_CAPABILITY}))

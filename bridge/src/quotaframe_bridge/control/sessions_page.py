@@ -17,9 +17,17 @@ from quotaframe_bridge.i18n import language, tr
 _DYNAMIC_KEYS = (
     "sessions_busy",
     "sessions_idle",
+    "sessions_waiting",
+    "sessions_shell",
     "sessions_alive_false",
     "sessions_started",
     "sessions_last_active",
+    "sessions_wait_ask",
+    "sessions_wait_permission",
+    "sessions_wait_sandbox",
+    "sessions_wait_worker",
+    "sessions_wait_goal",
+    "sessions_wait_dialog",
     "control_send_failed",
 )
 
@@ -63,6 +71,7 @@ _TEMPLATE = """<!DOCTYPE html>
           border: 1px solid var(--line); color: var(--dim); }
   .pill.ok { color: var(--ok); border-color: currentColor; }
   .pill.warn { color: var(--warn); border-color: currentColor; }
+  .pill.busy { color: var(--accent); border-color: currentColor; }
   .dim { color: var(--dim); font-size: 13px; }
   .mono { font-variant-numeric: tabular-nums; }
   .empty { color: var(--dim); }
@@ -141,11 +150,33 @@ function statusText(live) {
   if (!live) return null;
   if (!live.alive) return LABELS.sessions_alive_false;
   if (live.status === "busy") return LABELS.sessions_busy;
+  if (live.status === "waiting") return LABELS.sessions_waiting;
+  if (live.status === "shell") return LABELS.sessions_shell;
   return LABELS.sessions_idle;
 }
 
+// A session that waits says what it waits for. A reason Claude Code has not
+// named yet is still a dialog that holds the session, so it reads as one.
+const WAIT_REASONS = {
+  "input needed": "sessions_wait_ask",
+  "permission prompt": "sessions_wait_permission",
+  "sandbox request": "sessions_wait_sandbox",
+  "worker request": "sessions_wait_worker",
+  "goal proposal": "sessions_wait_goal",
+};
+
+function reasonText(live) {
+  if (!live || live.status !== "waiting") return null;
+  return LABELS[WAIT_REASONS[live.waiting_for] || "sessions_wait_dialog"];
+}
+
+// A session waiting for its user is the one that spends the reader's time, so
+// it is the one the page marks in the warning colour.
 function statusClass(live) {
-  return live && live.alive && live.status !== "busy" ? "pill ok" : "pill warn";
+  if (!live || !live.alive) return "pill warn";
+  if (live.status === "waiting") return "pill warn";
+  if (live.status === "busy") return "pill busy";
+  return "pill ok";
 }
 
 function shortId(id) {
@@ -166,6 +197,8 @@ function renderLive(sessions, now) {
     row.append(element("span", statusClass(session), text));
     card.append(row);
     const detail = [];
+    const reason = reasonText(session);
+    if (reason) detail.push(reason);
     if (session.project) detail.push(session.project);
     if (session.version) detail.push("v" + session.version);
     if (session.entrypoint) detail.push(session.entrypoint);
@@ -190,6 +223,8 @@ function renderRecent(sessions, now) {
     if (text) row.append(element("span", statusClass(session.live), text));
     card.append(row);
     const detail = [];
+    const reason = reasonText(session.live);
+    if (reason) detail.push(reason);
     if (session.project) detail.push(session.project);
     if (session.branch) detail.push(session.branch);
     if (session.last_at) detail.push(LABELS.sessions_last_active + " " + ago(session.last_at, now));
@@ -203,7 +238,11 @@ function render(data) {
   const now = data.now || Math.floor(Date.now() / 1000);
   const live = data.live || [];
   const running = live.filter((session) => session.alive).length;
-  nodes.meta.textContent = running + " " + {{sessions_live_count}};
+  // A session waiting for its user is the one the page exists to show, so it
+  // is counted next to the running ones.
+  const waiting = live.filter((session) => session.alive && session.status === "waiting").length;
+  nodes.meta.textContent = running + " " + {{sessions_live_count}} +
+    (waiting ? " · " + waiting + " " + {{sessions_waiting_count}} : "");
   renderLive(live, now);
   renderRecent(data.recent || [], now);
 }
@@ -260,4 +299,5 @@ _JS_KEYS = (
     "sessions_live_none",
     "sessions_recent_none",
     "sessions_live_count",
+    "sessions_waiting_count",
 )

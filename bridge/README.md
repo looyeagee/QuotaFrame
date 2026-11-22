@@ -90,7 +90,7 @@ macOS 上 Bridge 还会把桌面端网易云音乐正在播放的歌曲推给声
 
 ## Claude Code 会话
 
-Bridge 读本机 `~/.claude` 下 Claude Code 自己的会话数据，把运行中的会话推给声明 `sessions.v1` 的面板：
+Bridge 读本机 `~/.claude` 下 Claude Code 自己的会话数据，把运行中的会话推给声明 `sessions.v1` 的面板；面板声明 `sessions.v2` 时还会收到等待用户的会话、它等的原因（提问、权限、沙箱、后台 worker、目标确认、其他对话框）以及有后台 shell 在跑的会话：
 
 - 运行中的会话来自 `~/.claude/sessions/<pid>.json`：会话名、忙碌 / 空闲状态和进程是否还活着。会话页画的就是这一份名单，已经结束的会话不进任何一帧。
 - 面板上只出现会话名和忙 / 闲状态；会话 ID、工作目录、git 分支、时间戳和对话内容都不离开电脑。

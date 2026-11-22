@@ -166,14 +166,19 @@ ACK 表示已入应用事件队列；不表示屏幕已完成刷新。未启用�
 
 Bridge 只在 macOS 上取数：网易云音乐桌面端把每次起播写进自己的本地数据库（`historyTracks`，只读打开），Bridge 由最新一行得到歌曲、歌手、时长与起播时刻；CoreAudio 的进程输出状态决定这次是播放还是暂停；歌词来自客户端自己使用的公开歌词接口，按歌曲缓存，换歌时才取一次。没有任何账号凭据离开电脑，面板上也只出现歌曲名、歌手、进度和歌词。
 
-## Claude Code 会话（sessions.v1）
+## Claude Code 会话（sessions.v1 / sessions.v2）
 
-设备在 `caps` 中声明 `sessions.v1` 后，Bridge 可发送本机 Claude Code 的会话状态：
+设备在 `caps` 中声明 `sessions.v1` 后，Bridge 可发送本机 Claude Code 的会话状态；再声明 `sessions.v2` 后，`states` 还会带来等待用户的会话和它等的原因：
 
 ```json
 {"cmd":"sessions","v":"1","seq":"46","live":"Claude Code Desktop 会话状态页面\n修复列表滚动的问题","states":"busy\nidle","recent":"给面板加一个秒表页"}
+{"cmd":"sessions","v":"1","seq":"48","live":"提问功能选项测试\nQuotaFrame bridge","states":"waiting/ask\nbusy"}
 ```
 
-`live` 是运行中会话的显示名，`states` 与之一一对应，每行 `busy` 或 `idle`；`recent` 是最近结束的会话标题，保留在协议里供旧 Bridge 兼容，面板不绘制它。三个字段都是 `\n` 分隔的字符串，行数与长度都有上限，所以一帧远小于 4096 字节。Bridge 只发送显示文字：会话名、忙 / 闲状态与会话标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不离开电脑。
+`live` 是运行中会话的显示名，按最近更新在前排列（Bridge 依 Claude Code 的 `updatedAt` 降序，缺失时退回 `startedAt`），`states` 与之一一对应：`idle`（空提示符等下一句）、`busy`（正在跑一轮）、`shell`（这一轮结束了，但会话的后台 shell 还在跑）、`waiting/<原因>`（阻塞在用户身上）。原因取自 Claude Code 自己的 `waitingFor`：`ask`、`permission`、`sandbox`、`worker`、`goal`、`dialog`；Bridge 不认识的原因发成 `dialog`，所以线上不会出现词表外的值。`recent` 是最近结束的会话标题，保留在协议里供旧 Bridge 兼容，面板不绘制它。三个字段都是 `\n` 分隔的字符串，行数与长度都有上限，所以一帧远小于 4096 字节。
 
-成功 ACK 为 `{"ack":"sessions","n":46,"ok":true}`；非法字段、行数不符的 `states` 或未知状态词返回 `invalid_request`，未声明该能力返回 `unsupported`，OTA 接收期间返回 `ota_busy`。该命令是快照而不是事件，Bridge 不重放历史；会话状态一变，Bridge 就下发新的一帧，内容与上一帧相同的帧不会重复发送。字段与隐私边界见[接入契约](open-device-access.md#7-claude-code-会话sessionsv1)。
+只有 `waiting` 是在等用户，所以它最值得看：`busy` 和 `waiting` 都表示这一轮没结束，面板据此把等待排在前面。只声明 `sessions.v1` 的设备拿到的是两态词表：Bridge 把 `waiting` 发成 `busy`、把 `shell` 发成 `idle`，旧固件因此不会拒绝整帧。
+
+Bridge 只发送显示文字：会话名、状态、等待原因与会话标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不离开电脑。
+
+成功 ACK 为 `{"ack":"sessions","n":46,"ok":true}`；非法字段、行数不符的 `states`、未知状态词或未知原因返回 `invalid_request`，未声明该能力返回 `unsupported`，OTA 接收期间返回 `ota_busy`。该命令是快照而不是事件，Bridge 不重放历史；会话状态一变，Bridge 就下发新的一帧，内容与上一帧相同的帧不会重复发送。字段与隐私边界见[接入契约](open-device-access.md#7-claude-code-会话sessionsv1--sessionsv2)。

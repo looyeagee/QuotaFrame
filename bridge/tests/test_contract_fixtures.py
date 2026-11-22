@@ -22,7 +22,17 @@ ALLOWED_KEYS = {
     "week_reset_at",
 }
 SESSIONS_ALLOWED_KEYS = {"cmd", "v", "seq", "live", "states", "recent"}
-SESSIONS_STATES = {"busy", "idle"}
+SESSIONS_STATES = {
+    "busy",
+    "idle",
+    "shell",
+    "waiting/ask",
+    "waiting/permission",
+    "waiting/sandbox",
+    "waiting/worker",
+    "waiting/goal",
+    "waiting/dialog",
+}
 
 
 class ContractFixtureTests(unittest.TestCase):
@@ -78,6 +88,25 @@ class ContractFixtureTests(unittest.TestCase):
         self.assertNotEqual(
             len(payload["states"].split("\n")), len(payload["live"].split("\n"))
         )
+
+    def test_the_extended_states_fixture_uses_only_known_words(self) -> None:
+        messages = LineDecoder(1024).feed((EXAMPLES / "sessions-v2.jsonl").read_bytes())
+        self.assertEqual(len(messages), 1)
+        payload = messages[0]
+        self.assertEqual(payload["cmd"], "sessions")
+        self.assertLessEqual(set(payload), SESSIONS_ALLOWED_KEYS)
+        self.assertEqual(len(payload["states"].split("\n")), len(payload["live"].split("\n")))
+        for state in payload["states"].split("\n"):
+            self.assertIn(state, SESSIONS_STATES)
+
+    def test_an_extended_state_fixture_with_an_unknown_reason_is_invalid(self) -> None:
+        payload = json.loads((EXAMPLES / "sessions-invalid-v2.jsonl").read_text())
+
+        states = payload["states"].split("\n")
+        # One row is a state the device knows and one names a reason it does not, so
+        # the frame is rejected as a whole rather than drawn with a state missing.
+        self.assertEqual(len(states), len(payload["live"].split("\n")))
+        self.assertTrue(any(state not in SESSIONS_STATES for state in states))
 
 
 if __name__ == "__main__":

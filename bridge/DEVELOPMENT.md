@@ -172,11 +172,13 @@ Bridge 每轮读取启用列表，只查询已启用的来源。两路并发、�
 Bridge 另有一路只读数据源，读本机 `~/.claude` 下 Claude Code 自己的会话数据：
 
 ```text
-~/.claude/sessions/<pid>.json      运行中会话：名称、忙碌状态、进程是否存活
+~/.claude/sessions/<pid>.json      运行中会话：名称、状态、等待原因、进程是否存活
 ~/.claude/projects/*/<id>.jsonl    会话记录，只读文件头提取标题
 ```
 
-`sources/claude_sessions.py` 把快照收成面板要显示的两样东西：运行中会话的（显示名，忙碌与否）和最近会话的标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不进入线上帧。转换后的 `sessions.v1` 帧由 `DeviceSession.publish_sessions()` 每 10 秒推给声明了该能力的设备；没有该能力的设备不受影响。
+会话文件的 `status` 是 Claude Code 自己的状态机：`idle` 空提示符、`busy` 正在跑一轮、`waiting` 阻塞在用户身上、`shell` 这一轮结束但后台 shell 还在跑。`waiting` 时文件里另有 `waitingFor`，说明在等什么（提问、权限、沙箱、后台 worker、目标确认或其他对话框）。`sources/claude_sessions.py` 把这些词原样映射成 `SessionState` 与 `WaitingReason`，不认识的原因按 `dialog` 处理——它同样挡住了会话。
+
+`sources/claude_sessions.py` 把快照收成面板要显示的两样东西：运行中会话的（显示名，状态，等待原因）和最近会话的标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不进入线上帧。转换后的 `sessions.v1` 帧由 `DeviceSession.publish_sessions()` 每 10 秒推给声明了该能力的设备；声明 `sessions.v2` 的设备额外收到 `waiting/<原因>` 与 `shell`，只声明 `sessions.v1` 的设备拿到两态词表（`waiting` → `busy`，`shell` → `idle`）。没有该能力的设备不受影响。
 
 `control/cc_sessions.py` 同时支撑本地控制页的 `/sessions` 页面与 `/api/cc/sessions` 接口，两者读的是同一份数据。
 

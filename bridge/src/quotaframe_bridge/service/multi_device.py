@@ -23,6 +23,7 @@ from quotaframe_bridge.protocol.messages import (
     MAX_INVERSE_CLOCK_SKEW_SECONDS,
     NOW_PLAYING_CAPABILITY,
     SESSIONS_CAPABILITY,
+    SESSIONS_STATES_CAPABILITY,
     Sequence,
     encode_alert_set,
     encode_brightness_set,
@@ -470,7 +471,14 @@ class DeviceSession:
                     self._sessions_sent = None
                     return False
                 sequence = self._sequence.next()
-                payload = encode_sessions(publication, sequence)
+                # A device that declares the extended states is told when a
+                # session waits for its user; one that does not gets the two
+                # states it knows.
+                payload = encode_sessions(
+                    publication,
+                    sequence,
+                    extended=SESSIONS_STATES_CAPABILITY in status.capabilities,
+                )
                 await self.transport.send_command(payload, "sessions", sequence)
         except TransportReset:
             self._sessions_sent = None

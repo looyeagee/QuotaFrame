@@ -4,11 +4,14 @@ import json
 import unittest
 
 from quotaframe_bridge.domain.models import (
+    LiveSession,
     Provider,
     ProviderUsage,
+    SessionState,
     SessionsPublication,
     SourceState,
     UsageWindow,
+    WaitingReason,
 )
 from quotaframe_bridge.protocol.lines import LineDecodeError, LineDecoder
 from quotaframe_bridge.protocol.messages import (
@@ -282,7 +285,10 @@ class OpenStatusTests(unittest.TestCase):
 class SessionsEncodingTests(unittest.TestCase):
     def test_sessions_encoder_has_exact_allowlisted_keys(self) -> None:
         publication = SessionsPublication(
-            live=(("Panel session", True), ("Idle session", False)),
+            live=(
+                LiveSession("Panel session", SessionState.BUSY),
+                LiveSession("Idle session", SessionState.IDLE),
+            ),
             recent=("修复列表滚动的问题",),
         )
         line = encode_sessions(publication, seq=46)
@@ -303,7 +309,7 @@ class SessionsEncodingTests(unittest.TestCase):
 
     def test_long_names_are_cut_at_a_whole_character(self) -> None:
         name = "字" * 60
-        publication = SessionsPublication(live=((name, True),))
+        publication = SessionsPublication(live=(LiveSession(name, SessionState.BUSY),))
         line = encode_sessions(publication, seq=1)
 
         payload = json.loads(line)
@@ -311,7 +317,8 @@ class SessionsEncodingTests(unittest.TestCase):
 
     def test_a_name_with_a_line_break_stays_one_entry(self) -> None:
         publication = SessionsPublication(
-            live=(("第一行\n第二行", True),), recent=("标题\n也是一行",)
+            live=(LiveSession("第一行\n第二行", SessionState.BUSY),),
+            recent=("标题\n也是一行",),
         )
         line = encode_sessions(publication, seq=2)
 
@@ -319,6 +326,46 @@ class SessionsEncodingTests(unittest.TestCase):
         self.assertEqual(payload["live"], "第一行 第二行")
         self.assertEqual(payload["recent"], "标题 也是一行")
         self.assertEqual(len(payload["states"].split("\n")), 1)
+
+    def test_the_extended_states_carry_the_waiting_reason(self) -> None:
+        publication = SessionsPublication(
+            live=(
+                LiveSession("Waiting session", SessionState.WAITING, WaitingReason.ASK),
+                LiveSession("Working session", SessionState.BUSY),
+                LiveSession("Background session", SessionState.SHELL),
+                LiveSession("Idle session", SessionState.IDLE),
+            )
+        )
+        line = encode_sessions(publication, seq=48, extended=True)
+
+        payload = json.loads(line)
+        self.assertEqual(
+            payload["states"], "waiting/ask\nbusy\nshell\nidle"
+        )
+
+    def test_a_waiting_session_without_a_reason_reads_as_a_dialog(self) -> None:
+        publication = SessionsPublication(
+            live=(LiveSession("Waiting session", SessionState.WAITING),)
+        )
+        line = encode_sessions(publication, seq=49, extended=True)
+
+        payload = json.loads(line)
+        self.assertEqual(payload["states"], "waiting/dialog")
+
+    def test_a_device_without_the_extended_states_gets_two_states(self) -> None:
+        publication = SessionsPublication(
+            live=(
+                LiveSession("Waiting session", SessionState.WAITING, WaitingReason.PERMISSION),
+                LiveSession("Background session", SessionState.SHELL),
+                LiveSession("Idle session", SessionState.IDLE),
+            )
+        )
+        line = encode_sessions(publication, seq=50)
+
+        payload = json.loads(line)
+        # A turn that waits for its user has not ended, and a background shell
+        # produces nothing: the two states a first panel knows say as much.
+        self.assertEqual(payload["states"], "busy\nidle\nidle")
 
 
 if __name__ == "__main__":

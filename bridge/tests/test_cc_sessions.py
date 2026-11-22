@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from quotaframe_bridge.control.cc_sessions import TITLE_CHARS, ClaudeSessionStore
 from quotaframe_bridge.control.page import render_page
 from quotaframe_bridge.control.routes import ControlRoutes, Request
+from quotaframe_bridge.domain.models import LiveSession, SessionState, WaitingReason
 from quotaframe_bridge.sources.claude_sessions import ClaudeSessionsSource
 
 TOKEN = "test-token-0123456789"
@@ -85,7 +86,10 @@ class StoreTests(unittest.TestCase):
         assert isinstance(recent, list)
         self.assertEqual(recent[0]["title"], "修复列表滚动的问题 第二行")
         self.assertEqual(recent[0]["branch"], "main")
-        self.assertEqual(recent[0]["live"], {"status": "busy", "alive": True})
+        self.assertEqual(
+            recent[0]["live"],
+            {"status": "busy", "waiting_for": "", "alive": True},
+        )
         self.assertTrue(snapshot["now"])
 
     def test_a_transcript_without_a_live_process_reads_as_ended(self) -> None:
@@ -207,6 +211,73 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(snapshot["live"], [])
         self.assertEqual(snapshot["recent"], [])
 
+    def test_live_sessions_order_by_last_update_not_by_start(self) -> None:
+        # Started first, answered last: the panel leads with it even though the
+        # two other sessions were created after it.
+        self.write_live(
+            "100.json",
+            {"pid": os.getpid(), "sessionId": "old-but-active", "name": "Old but active",
+             "status": "busy", "startedAt": 1795330000000, "updatedAt": 1795339000000},
+        )
+        self.write_live(
+            "200.json",
+            {"pid": os.getpid(), "sessionId": "newest-idle", "name": "Newest idle",
+             "status": "idle", "startedAt": 1795338000000, "updatedAt": 1795338100000},
+        )
+        self.write_live(
+            "300.json",
+            {"pid": os.getpid(), "sessionId": "middle", "name": "Middle",
+             "status": "waiting", "waitingFor": "input needed",
+             "startedAt": 1795334000000, "updatedAt": 1795335000000},
+        )
+
+        live = self.store().snapshot()["live"]
+        assert isinstance(live, list)
+
+        self.assertEqual(
+            [entry["session_id"] for entry in live],
+            ["old-but-active", "newest-idle", "middle"],
+        )
+
+    def test_a_live_session_without_an_update_time_falls_back_to_its_start(self) -> None:
+        self.write_live(
+            "400.json",
+            {"pid": os.getpid(), "sessionId": "dated-both", "name": "Both",
+             "status": "idle", "startedAt": 1795335000000, "updatedAt": 1795335500000},
+        )
+        self.write_live(
+            "500.json",
+            {"pid": os.getpid(), "sessionId": "start-only", "name": "Start only",
+             "status": "idle", "startedAt": 1795336000000},
+        )
+
+        live = self.store().snapshot()["live"]
+        assert isinstance(live, list)
+
+        self.assertEqual(
+            [entry["session_id"] for entry in live], ["start-only", "dated-both"]
+        )
+
+    def test_live_sessions_sharing_a_timestamp_keep_one_order(self) -> None:
+        # Same update time: the roster still has to come out the same way twice,
+        # or the bridge republishes a rotation the panel has nothing to show for.
+        for index, session_id in enumerate(("bbb", "aaa")):
+            self.write_live(
+                f"60{index}.json",
+                {"pid": os.getpid(), "sessionId": session_id, "name": session_id,
+                 "status": "idle", "startedAt": 1795335000000, "updatedAt": 1795335000000},
+            )
+
+        store = self.store()
+        first = store.snapshot()["live"]
+        second = store.snapshot()["live"]
+
+        assert isinstance(first, list) and isinstance(second, list)
+        self.assertEqual(
+            [entry["session_id"] for entry in first],
+            [entry["session_id"] for entry in second],
+        )
+
 
 class SourceTests(unittest.TestCase):
     """The adapter reduces the store's snapshot to what the panel draws."""
@@ -232,7 +303,7 @@ class SourceTests(unittest.TestCase):
         sessions.mkdir(parents=True, exist_ok=True)
         (sessions / name).write_text(json.dumps(payload), encoding="utf-8")
 
-    def test_live_sessions_reduce_to_a_name_and_a_busy_flag(self) -> None:
+    def test_live_sessions_reduce_to_a_name_and_a_state(self) -> None:
         session_id = "aaaaaaaa-1111-2222-3333-444444444444"
         self.write_transcript(
             session_id,
@@ -248,9 +319,65 @@ class SourceTests(unittest.TestCase):
 
         publication = asyncio.run(self.source().collect())
 
-        self.assertEqual(publication.live, (("Demo session", True),))
+        self.assertEqual(
+            publication.live,
+            (LiveSession("Demo session", SessionState.BUSY),),
+        )
         # The panel draws the running roster only; the transcript is not read.
         self.assertEqual(publication.recent, ())
+
+    def test_a_waiting_session_keeps_the_reason_it_waits_for(self) -> None:
+        self.write_live(
+            "4242.json",
+            {"pid": os.getpid(), "sessionId": "aaaaaaaa-1111-2222-3333-444444444444",
+             "cwd": "/tmp/demo", "name": "提问功能选项测试", "status": "waiting",
+             "waitingFor": "input needed", "startedAt": 1795330905785,
+             "updatedAt": 1795330961861},
+        )
+
+        publication = asyncio.run(self.source().collect())
+
+        self.assertEqual(
+            publication.live,
+            (
+                LiveSession(
+                    "提问功能选项测试",
+                    SessionState.WAITING,
+                    WaitingReason.ASK,
+                ),
+            ),
+        )
+
+    def test_a_reason_claude_code_does_not_name_reads_as_a_dialog(self) -> None:
+        self.write_live(
+            "4242.json",
+            {"pid": os.getpid(), "sessionId": "aaaaaaaa-1111-2222-3333-444444444444",
+             "cwd": "/tmp/demo", "name": "Demo", "status": "waiting",
+             "waitingFor": "a reason from the future", "startedAt": 1795330905785,
+             "updatedAt": 1795330961861},
+        )
+
+        publication = asyncio.run(self.source().collect())
+
+        self.assertEqual(
+            publication.live,
+            (LiveSession("Demo", SessionState.WAITING, WaitingReason.DIALOG),),
+        )
+
+    def test_a_background_shell_is_a_state_of_its_own(self) -> None:
+        self.write_live(
+            "4242.json",
+            {"pid": os.getpid(), "sessionId": "aaaaaaaa-1111-2222-3333-444444444444",
+             "cwd": "/tmp/demo", "name": "Demo", "status": "shell",
+             "startedAt": 1795330905785, "updatedAt": 1795330961861},
+        )
+
+        publication = asyncio.run(self.source().collect())
+
+        self.assertEqual(
+            publication.live,
+            (LiveSession("Demo", SessionState.SHELL),),
+        )
 
     def test_a_session_without_a_name_falls_back_to_the_project(self) -> None:
         session_id = "aaaaaaaa-1111-2222-3333-444444444444"
@@ -262,7 +389,7 @@ class SourceTests(unittest.TestCase):
 
         publication = asyncio.run(self.source().collect())
 
-        self.assertEqual(publication.live, (("demo", False),))
+        self.assertEqual(publication.live, (LiveSession("demo", SessionState.IDLE),))
 
     def test_ended_sessions_do_not_reach_the_panel(self) -> None:
         self.write_transcript(

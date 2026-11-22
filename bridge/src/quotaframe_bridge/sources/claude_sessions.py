@@ -3,8 +3,9 @@
 The store in `control.cc_sessions` reads `~/.claude`; this adapter reduces its
 running sessions to the display pairs a panel's sessions page draws, and watches
 the directory Claude publishes them in, so a change reaches the panel while it
-happens instead of on a timer. Names and busy states travel to the panel; session
-ids, working directories, timestamps and transcript contents stay on the computer.
+happens instead of on a timer. Names and states travel to the panel; session
+ids, working directories, timestamps and transcript contents stay on the
+computer.
 """
 
 from __future__ import annotations
@@ -13,7 +14,12 @@ import asyncio
 from pathlib import Path
 
 from quotaframe_bridge.control.cc_sessions import ClaudeSessionStore
-from quotaframe_bridge.domain.models import SessionsPublication
+from quotaframe_bridge.domain.models import (
+    LiveSession,
+    SessionState,
+    SessionsPublication,
+    WaitingReason,
+)
 
 # The publication bounds are the protocol's; the adapter cuts before encoding.
 from quotaframe_bridge.protocol.messages import MAX_LIVE_SESSIONS
@@ -34,6 +40,26 @@ SETTLE_SECONDS = 0.15
 # shipped without the watch wheel still follows the sessions instead of freezing
 # at the first snapshot.
 FALLBACK_POLL_SECONDS = 2.0
+
+# The state Claude Code publishes for a running session. A session that waits
+# for its user is the one that spends the reader's time rather than its own, so
+# it keeps a state of its own instead of joining the working ones.
+SESSION_STATES = {
+    "idle": SessionState.IDLE,
+    "busy": SessionState.BUSY,
+    "waiting": SessionState.WAITING,
+    "shell": SessionState.SHELL,
+}
+
+# What a waiting session waits for, in Claude Code's words. A reason it does
+# not name yet is still a dialog that holds the session, so it reads as one.
+WAITING_REASONS = {
+    "input needed": WaitingReason.ASK,
+    "permission prompt": WaitingReason.PERMISSION,
+    "sandbox request": WaitingReason.SANDBOX,
+    "worker request": WaitingReason.WORKER,
+    "goal proposal": WaitingReason.GOAL,
+}
 
 
 if FileSystemEventHandler is not None:
@@ -73,15 +99,16 @@ class ClaudeSessionsSource:
         # Reading the directory stats every state file, so it runs off the loop
         # that drives the devices.
         live = await asyncio.to_thread(self._store.live_snapshot)
-        pairs = tuple(
-            (
-                entry["name"] or entry["project"] or entry["session_id"][:8],
-                entry["status"] == "busy",
+        sessions = [
+            LiveSession(
+                name=entry["name"] or entry["project"] or entry["session_id"][:8],
+                state=_state(entry["status"]),
+                waiting_for=_waiting_reason(entry["status"], entry["waiting_for"]),
             )
             for entry in live
             if entry["alive"]
-        )
-        return SessionsPublication(live=pairs[:MAX_LIVE_SESSIONS])
+        ]
+        return SessionsPublication(live=tuple(sessions[:MAX_LIVE_SESSIONS]))
 
     async def wait_for_change(self, timeout: float) -> None:
         """Return once the running sessions may have changed, or after `timeout`.
@@ -132,3 +159,17 @@ class ClaudeSessionsSource:
         self._observer = observer
         self._changes = signal
         return signal
+
+
+def _state(status: str) -> SessionState:
+    """The state of a running session; a word Claude Code has not used is idle."""
+
+    return SESSION_STATES.get(status, SessionState.IDLE)
+
+
+def _waiting_reason(status: str, waiting_for: str) -> WaitingReason | None:
+    """What a waiting session waits for; only a waiting session has one."""
+
+    if status != "waiting":
+        return None
+    return WAITING_REASONS.get(waiting_for, WaitingReason.DIALOG)

@@ -11,10 +11,13 @@ from quotaframe_bridge.versioning import SemVer, VersionError
 
 from quotaframe_bridge.protocol.validation import validate_name, validate_identifier, validate_token
 from quotaframe_bridge.domain.models import (
+    LiveSession,
     NowPlayingPublication,
     Provider,
     ProviderUsage,
+    SessionState,
     SessionsPublication,
+    WaitingReason,
 )
 from quotaframe_bridge.protocol.ota_messages import OtaMessageError, OtaStatus, parse_ota_status
 
@@ -25,8 +28,12 @@ MAX_U32 = 0xFFFFFFFF
 MAX_INVERSE_CLOCK_SKEW_SECONDS = 300
 # Capability a device declares when it renders the now-playing command.
 NOW_PLAYING_CAPABILITY = "nowplaying.v1"
-# Capability a device declares when it renders the sessions command.
+# # Capability a device declares when it renders the sessions command.
 SESSIONS_CAPABILITY = "sessions.v1"
+# Capability a device declares when it understands the extended session states:
+# a session that waits for its user, the background shell of one that ended,
+# and the reason a waiting session waits.
+SESSIONS_STATES_CAPABILITY = "sessions.v2"
 # Capability a device declares when the alert mode can be set over the link.
 ALERT_SET_CAPABILITY = "alert.set.v1"
 # Capability a device declares when the display brightness can be set over the link.
@@ -321,14 +328,40 @@ def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
     ).encode("utf-8")
 
 
-def encode_sessions(publication: SessionsPublication, seq: int) -> bytes:
+def _session_state_token(session: LiveSession, *, extended: bool) -> str:
+    """The state word of one live session.
+
+    A device that only knows the first vocabulary is told that a waiting
+    session is busy: its turn has not ended, and two states cannot say more
+    than that. A background shell produces nothing, so it reads as idle.
+    """
+
+    if not extended:
+        if session.state is SessionState.WAITING:
+            return "busy"
+        return "busy" if session.state is SessionState.BUSY else "idle"
+    if session.state is SessionState.WAITING:
+        # The reason travels with the state, so the two cannot disagree about
+        # which session waits for what.
+        reason = session.waiting_for or WaitingReason.DIALOG
+        return f"waiting/{reason.value}"
+    return session.state.value
+
+
+def encode_sessions(
+    publication: SessionsPublication, seq: int, *, extended: bool = False
+) -> bytes:
     """Encode one sessions publication for a panel's sessions page.
 
-    The live names and their busy states travel as two parallel newline-joined
+    The live names and their states travel as two parallel newline-joined
     strings, like the lyric lines and their start times do: the command view of
     the device reads strings, so a short list travels without adding an array
     type to the protocol. An empty list stays off the wire rather than sending
     a frame the device would count as one empty entry.
+
+    `extended` sends the states a device declaring `sessions.v2` understands:
+    a session that waits for its user, the background shell of one that ended,
+    and the reason a waiting session waits.
     """
 
     sequence = _u32(seq, "seq")
@@ -341,11 +374,11 @@ def encode_sessions(publication: SessionsPublication, seq: int) -> bytes:
     }
     if live:
         payload["live"] = "\n".join(
-            _truncate_utf8(_single_line(name), MAX_SESSION_TEXT_BYTES)
-            for name, _busy in live
+            _truncate_utf8(_single_line(session.name), MAX_SESSION_TEXT_BYTES)
+            for session in live
         )
         payload["states"] = "\n".join(
-            "busy" if busy else "idle" for _name, busy in live
+            _session_state_token(session, extended=extended) for session in live
         )
     if recent:
         payload["recent"] = "\n".join(
