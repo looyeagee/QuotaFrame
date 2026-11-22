@@ -5,15 +5,15 @@ namespace usage_panel::zltech {
 /**
  * The inks this glass paints, in RGB565, in the order `Palette` declares them.
  *
- * The same five inks as the AMOLED target, so a page reads the same on both panels: near black
+ * The same six inks as the AMOLED target, so a page reads the same on both panels: near black
  * for text, white paper, amber for a session that is working, a cool grey for counts and
- * hairlines, green for one that is up and waiting. Read as colours these are #12181D, #FFFFFF,
- * #FF9E1B, #66727C and #00B37E.
+ * hairlines, green for one that is up and waiting, and red for one that waits for its reader.
+ * Read as colours these are #12181D, #FFFFFF, #FF9E1B, #66727C, #00B37E and #E5484D.
  *
  * No byte swap is needed here: the controller is put in little-endian pixel order, which is the
  * order a `uint16_t` already has in memory.
  */
-constexpr Palette kPalette{0x10C3, 0xFFFF, 0xFCE3, 0x638F, 0x058F};
+constexpr Palette kPalette{0x10C3, 0xFFFF, 0xFCE3, 0x638F, 0x058F, 0xE249};
 
 /**
  * The drawing surface of the 240 x 240 colour panel.

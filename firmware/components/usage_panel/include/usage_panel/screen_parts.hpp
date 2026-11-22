@@ -134,6 +134,30 @@ void percent_digits(int percent, char *out, size_t size);
 /** Status text for the header: PAIRING, UPDATING, LINKED or OFFLINE. */
 const char *link_status(const View &view);
 
+/**
+ * The word a panel shows for the state of a running session.
+ *
+ * The words are the ones the Bridge sends: a session that waits for its
+ * reader says so, and one whose background shell still runs says that.
+ */
+const char *session_state_word(SessionState state);
+
+/**
+ * The ink a panel marks the state of a running session with.
+ *
+ * A session that waits is drawn in the warning ink: it is the one state that
+ * spends the reader's time rather than its own.
+ */
+Ink session_state_ink(SessionState state);
+
+/**
+ * The word a panel shows for what a waiting session waits for.
+ *
+ * Empty when the session states no reason. The words are short, because they
+ * share the row with the session's name.
+ */
+const char *waiting_reason_word(WaitingReason reason);
+
 /** Rounds a float to the nearest whole pixel. */
 inline int round_px(float value) { return static_cast<int>(std::lround(value)); }
 

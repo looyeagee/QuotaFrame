@@ -16,3 +16,7 @@ inline constexpr char kSessions[] =
     R"fixture(@SESSIONS_JSON@)fixture" "\n";
 inline constexpr char kSessionsInvalid[] =
     R"fixture(@SESSIONS_INVALID_JSON@)fixture" "\n";
+inline constexpr char kSessionsV2[] =
+    R"fixture(@SESSIONS_V2_JSON@)fixture" "\n";
+inline constexpr char kSessionsInvalidV2[] =
+    R"fixture(@SESSIONS_INVALID_V2_JSON@)fixture" "\n";

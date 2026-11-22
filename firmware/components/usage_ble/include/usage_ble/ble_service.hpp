@@ -37,8 +37,9 @@ struct BleServiceConfig {
     bool enable_screen_toggle = false;
     bool enable_screen_page = false;
     bool enable_now_playing = false;
-    // Advertises sessions.v1; a target without a sessions page must not
-    // declare it, or the Bridge would send frames nothing draws.
+    // Advertises sessions.v1 and the extended states of sessions.v2; a target
+    // without a sessions page must not declare them, or the Bridge would send
+    // frames nothing draws.
     bool enable_sessions = false;
     // Advertises alert.set.v1; the getter reports the value saved by the device so
     // status and the remote setting cannot drift apart.

@@ -178,6 +178,8 @@ uint16_t CanvasSurface::color_for(Ink ink) const {
         return palette_.muted;
     case Ink::Good:
         return palette_.good;
+    case Ink::Warn:
+        return palette_.warn;
     case Ink::Black:
         break;
     }

@@ -125,6 +125,24 @@ int main(int argc, char **argv) {
     v = design_view();
     v.page = Page::Clock;
     render(v, "05_clock");
+    v.page = Page::Sessions;
+    v.sessions = {};
+    v.sessions_valid = true;
+    snprintf(v.sessions.live[0].name, sizeof(v.sessions.live[0].name), "提问功能选项测试");
+    v.sessions.live[0].state = SessionState::Waiting;
+    v.sessions.live[0].waiting_for = WaitingReason::Ask;
+    snprintf(v.sessions.live[1].name, sizeof(v.sessions.live[1].name), "QuotaFrame bridge");
+    v.sessions.live[1].state = SessionState::Busy;
+    snprintf(v.sessions.live[2].name, sizeof(v.sessions.live[2].name), "整理发布文档");
+    v.sessions.live[2].state = SessionState::Idle;
+    v.sessions.live_count = 3;
+    render(v, "06a_sessions");
+
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    v.page = Page::Sessions;
+    render(v, "06b_sessions_portrait");
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Landscape);
+
     v.page = Page::Settings;
     v.focus = 1;
     v.settings.cycle = 1;

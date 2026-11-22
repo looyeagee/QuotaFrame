@@ -63,20 +63,28 @@ void apply_now_playing(View &v, const char *title, const char *artist, uint32_t 
         snprintf(v.music.lines[i], sizeof(v.music.lines[i]), "%s", lines[i]);
 }
 
+/** One live session of the preview roster. */
+struct SessionSample {
+    const char *name;
+    SessionState state;
+    WaitingReason reason;
+};
+
 /**
- * Fills the live session list the sessions page draws, `true` marking a working session.
+ * Fills the live session list the sessions page draws.
  * The roster holds at most `kMaxLiveSessions`, which is what a publication can carry, so a
  * longer list is cut there instead of writing past the array.
  */
-void apply_sessions(View &v, std::initializer_list<std::pair<const char *, bool>> live) {
+void apply_sessions(View &v, std::initializer_list<SessionSample> live) {
     v.sessions = {};
     v.sessions_valid = true;
     int i = 0;
     for (const auto &s : live) {
         if (i >= kMaxLiveSessions)
             break;
-        snprintf(v.sessions.live[i].name, sizeof(v.sessions.live[i].name), "%s", s.first);
-        v.sessions.live[i].state = s.second ? SessionState::Busy : SessionState::Idle;
+        snprintf(v.sessions.live[i].name, sizeof(v.sessions.live[i].name), "%s", s.name);
+        v.sessions.live[i].state = s.state;
+        v.sessions.live[i].waiting_for = s.reason;
         ++i;
     }
     v.sessions.live_count = static_cast<uint8_t>(i);
@@ -133,24 +141,43 @@ int main(int argc, char **argv) {
 
     v = design_view();
     v.page = Page::Sessions;
-    apply_sessions(v, {{"问候", false}});
+    apply_sessions(v, {{"问候", SessionState::Idle, WaitingReason::None}});
     render(v, "02_sessions_one");
 
     v = design_view();
     v.page = Page::Sessions;
-    apply_sessions(v, {{"重构会话页", true}, {"QuotaFrame bridge", true}});
+    apply_sessions(v, {{"重构会话页", SessionState::Busy, WaitingReason::None},
+                       {"QuotaFrame bridge", SessionState::Busy, WaitingReason::None}});
     render(v, "03_sessions_working");
 
     v = design_view();
     v.page = Page::Sessions;
-    apply_sessions(v, {{"重构会话页", true}, {"修 BLE 重连", false}, {"QuotaFrame bridge", true},
-                       {"整理发布文档", false}});
+    apply_sessions(v, {{"重构会话页", SessionState::Busy, WaitingReason::None},
+                       {"修 BLE 重连", SessionState::Waiting, WaitingReason::Ask},
+                       {"QuotaFrame bridge", SessionState::Busy, WaitingReason::None},
+                       {"整理发布文档", SessionState::Idle, WaitingReason::None}});
     render(v, "04_sessions_four");
 
     v = design_view();
     v.page = Page::Sessions;
     apply_sessions(v, {});
     render(v, "05_sessions_empty");
+
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v, {{"提问功能选项测试", SessionState::Waiting, WaitingReason::Ask},
+                       {"等待授权", SessionState::Waiting, WaitingReason::Permission}});
+    render(v, "05_sessions_waiting");
+
+    // Every state the protocol carries, so the widest state word sets the chip column and
+    // the colours of the bars can be compared on one page.
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v, {{"重构会话页", SessionState::Busy, WaitingReason::None},
+                       {"问答等待", SessionState::Waiting, WaitingReason::Ask},
+                       {"后台命令", SessionState::Shell, WaitingReason::None},
+                       {"整理发布文档", SessionState::Idle, WaitingReason::None}});
+    render(v, "05_sessions_states");
 
     v = design_view();
     v.page = Page::Minimax;

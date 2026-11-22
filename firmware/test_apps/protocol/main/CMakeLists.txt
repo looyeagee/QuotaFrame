@@ -8,6 +8,8 @@ set(PROTOCOL_FIXTURES
     "${FIXTURE_DIR}/now-playing-invalid.jsonl"
     "${FIXTURE_DIR}/sessions.jsonl"
     "${FIXTURE_DIR}/sessions-invalid.jsonl"
+    "${FIXTURE_DIR}/sessions-v2.jsonl"
+    "${FIXTURE_DIR}/sessions-invalid-v2.jsonl"
 )
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROTOCOL_FIXTURES})
 file(READ "${FIXTURE_DIR}/usage-ok.jsonl" USAGE_OK_JSON)
@@ -24,8 +26,12 @@ string(STRIP "${NOW_PLAYING_JSON}" NOW_PLAYING_JSON)
 string(STRIP "${NOW_PLAYING_INVALID_JSON}" NOW_PLAYING_INVALID_JSON)
 file(READ "${FIXTURE_DIR}/sessions.jsonl" SESSIONS_JSON)
 file(READ "${FIXTURE_DIR}/sessions-invalid.jsonl" SESSIONS_INVALID_JSON)
+file(READ "${FIXTURE_DIR}/sessions-v2.jsonl" SESSIONS_V2_JSON)
+file(READ "${FIXTURE_DIR}/sessions-invalid-v2.jsonl" SESSIONS_INVALID_V2_JSON)
 string(STRIP "${SESSIONS_JSON}" SESSIONS_JSON)
 string(STRIP "${SESSIONS_INVALID_JSON}" SESSIONS_INVALID_JSON)
+string(STRIP "${SESSIONS_V2_JSON}" SESSIONS_V2_JSON)
+string(STRIP "${SESSIONS_INVALID_V2_JSON}" SESSIONS_INVALID_V2_JSON)
 configure_file(
     "${CMAKE_CURRENT_LIST_DIR}/fixture_data.hpp.in"
     "${CMAKE_CURRENT_BINARY_DIR}/fixture_data.hpp"

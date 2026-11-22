@@ -40,3 +40,5 @@ Waveshare AMOLED 1.8 的会话页与按目标设置行数改动（`v1.2.1-42-gd1
 同一候选版本需记录源码版本、平台、硬件、配置、Bridge/固件/manifest 的 SHA-256、操作和结果。重新构建的同版本文件应重新核对，不能沿用其他字节的验收结论。
 
 仍需覆盖各维护目标（以[目标注册表](../bridge/src/quotaframe_bridge/targets.py)为准）的传输中断、损坏摘要、供电中断、失败后重试及启动失败回滚；正常升级成功不等于故障路径通过。完整清单见[软件与发布验收](validation/software-acceptance.md)。
+
+Claude Code 会话页的扩展状态（`sessions.v2`：等待用户、等待原因、后台 shell）只做了软件层验证，玻璃上的观感仍待确认。Bridge 侧 `sessions.v1` / `sessions.v2` 两种编码、`waitingFor` 的六个原因与未知原因退化到 `dialog` 由单测覆盖；固件解析器（`usage_protocol/src/sessions_command.cpp`）用真实源码在主机上编译，依次喂入 Bridge 编码出的帧与 `protocol/examples/sessions-v2.jsonl`、`sessions-invalid-v2.jsonl`：三态词表、六个原因、裸 `waiting`、`shell`、超长名字的整字符截断都按预期解析，两个非法夹具整帧拒绝。三块面板的会话页用主机渲染核对：ZLTech 1.54 TFT 的四行混排与两行全等待、AMOLED 1.8 的两行全等待、RLCD 4.2 的横竖两版都渲染出计数、状态条、芯片与名字后的原因。三个目标与两个测试工程在 ESP-IDF v6.1.1 下构建通过（协议测试工程已把两个新夹具编译进镜像，但芯片上的 Unity 用例未执行）。AMOLED 1.8 已用 `idf.py flash` 刷入该固件并复位：串口日志确认 v6.1.1 引导、面板、触摸与 RTC/PMIC 就绪，Bridge 记录到设备能力从 `sessions.v1` 变为 `sessions.v1,sessions.v2`，随后按扩展词表下发，没有出现被拒绝的帧；等待态的实际观感仍未确认。只声明 `sessions.v1` 的旧固件仍收到两态词表，显示不受影响。

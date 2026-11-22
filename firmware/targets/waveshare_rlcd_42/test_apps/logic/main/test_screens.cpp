@@ -471,8 +471,34 @@ TEST_CASE("the sessions page shows the roster and its states", "[render]")
     TEST_ASSERT_EQUAL_MESSAGE(0, below_ink, "The page drew rows beyond the roster");
 }
 
-TEST_CASE("the sessions page explains itself before any publication arrives", "[render]")
+TEST_CASE("a session that waits says so and names what it waits for", "[render]")
 {
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Sessions;
+    v.link = {true, true, false, 0};
+    v.sessions_valid = true;
+    v.sessions.live_count = 2;
+    snprintf(v.sessions.live[0].name, sizeof(v.sessions.live[0].name), "\u63d0\u95ee\u529f\u80fd\u9009\u9879");
+    v.sessions.live[0].state = SessionState::Waiting;
+    v.sessions.live[0].waiting_for = WaitingReason::Ask;
+    snprintf(v.sessions.live[1].name, sizeof(v.sessions.live[1].name), "\u4fee\u590d\u5217\u8868\u6eda\u52a8");
+    v.sessions.live[1].state = SessionState::Idle;
+    screens.render(v);
+
+    // The waiting row carries an inverted chip, like the working one.
+    for (int y = 69; y < 72; ++y)
+        for (int x = 12; x < 62; ++x)
+            TEST_ASSERT_TRUE_MESSAGE(black(x, y), "The waiting chip is missing");
+    // The reason sits at the far end of the row: "ASK" is drawn there.
+    int reason_ink = 0;
+    for (int y = 72; y < 84; ++y)
+        for (int x = 360; x < 390; ++x)
+            reason_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(10, reason_ink, "The waiting reason is missing");
+}
+
+TEST_CASE("the sessions page explains itself before any publication arrives", "[render]"){
     Screens screens(canvas);
     View v;
     v.page = Page::Sessions;

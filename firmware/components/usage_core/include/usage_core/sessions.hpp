@@ -17,12 +17,28 @@ constexpr uint8_t kMaxRecentSessions = 3;
  */
 constexpr uint16_t kMaxSessionTextBytes = 96;
 
-/** Whether a live session is working or waiting for its user. */
-enum class SessionState : uint8_t { Idle, Busy };
+/**
+ * How a live session is spending its time.
+ *
+ * The words are the ones the Bridge sends, and they are the ones Claude Code
+ * publishes for a running session. A session that waits is the one that spends
+ * the reader's time rather than its own, so it keeps a state of its own.
+ */
+enum class SessionState : uint8_t { Idle, Busy, Waiting, Shell };
+
+/**
+ * What a waiting session waits for.
+ *
+ * Each reason becomes a short word on the panel. A reason the Bridge does not
+ * name yet is still a dialog that holds the session, so it reads as one.
+ */
+enum class WaitingReason : uint8_t { None, Ask, Permission, Sandbox, Worker, Goal, Dialog };
 
 struct SessionLive {
     char name[kMaxSessionTextBytes + 1]{};
     SessionState state = SessionState::Idle;
+    // What the session waits for; only a waiting session states one.
+    WaitingReason waiting_for = WaitingReason::None;
 };
 
 struct SessionRecent {

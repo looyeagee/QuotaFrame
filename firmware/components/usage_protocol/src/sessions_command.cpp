@@ -53,6 +53,62 @@ size_t copy_recent_list(SessionRecent (&entries)[kMaxRecentSessions], const char
     return count;
 }
 
+/** The reason a waiting session waits for, from the word the Bridge sends. */
+WaitingReason waiting_reason(const char* word, size_t length) {
+    if (length == 3 && memcmp(word, "ask", 3) == 0)
+        return WaitingReason::Ask;
+    if (length == 10 && memcmp(word, "permission", 10) == 0)
+        return WaitingReason::Permission;
+    if (length == 7 && memcmp(word, "sandbox", 7) == 0)
+        return WaitingReason::Sandbox;
+    if (length == 6 && memcmp(word, "worker", 6) == 0)
+        return WaitingReason::Worker;
+    if (length == 4 && memcmp(word, "goal", 4) == 0)
+        return WaitingReason::Goal;
+    if (length == 6 && memcmp(word, "dialog", 6) == 0)
+        return WaitingReason::Dialog;
+    return WaitingReason::None;
+}
+
+/**
+ * Reads one state word of the roster.
+ *
+ * A word is a state, or a waiting state with the reason it waits for:
+ * `busy`, `idle`, `shell`, `waiting` or `waiting/<reason>`. The reason is
+ * part of the word, so the two cannot disagree about which session waits for
+ * what. A word that names neither is not a state of this protocol, and the
+ * frame is rejected.
+ * @return whether the word names a state.
+ */
+bool read_state(SessionLive& entry, const char* word, size_t length) {
+    if (length == 4 && memcmp(word, "busy", 4) == 0) {
+        entry.state = SessionState::Busy;
+        return true;
+    }
+    if (length == 4 && memcmp(word, "idle", 4) == 0) {
+        entry.state = SessionState::Idle;
+        return true;
+    }
+    if (length == 5 && memcmp(word, "shell", 5) == 0) {
+        entry.state = SessionState::Shell;
+        return true;
+    }
+    if (length == 7 && memcmp(word, "waiting", 7) == 0) {
+        entry.state = SessionState::Waiting;
+        entry.waiting_for = WaitingReason::Dialog;
+        return true;
+    }
+    if (length > 8 && memcmp(word, "waiting/", 8) == 0) {
+        const WaitingReason reason = waiting_reason(word + 8, length - 8);
+        if (reason == WaitingReason::None)
+            return false;
+        entry.state = SessionState::Waiting;
+        entry.waiting_for = reason;
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 SessionsParseResult parse_sessions_command(
@@ -81,7 +137,7 @@ SessionsParseResult parse_sessions_command(
     if (has_live && has_states) {
         const size_t names = copy_live_list(result.update.live, live);
         // The state list is matched entry by entry: a shorter or longer one,
-        // or a word that is neither busy nor idle, does not describe this roster.
+        // or a word that names no state, does not describe this roster.
         size_t counted = 0;
         const char* cursor = states;
         while (*cursor) {
@@ -89,11 +145,7 @@ SessionsParseResult parse_sessions_command(
             const size_t length = end ? static_cast<size_t>(end - cursor) : strlen(cursor);
             if (counted >= names)
                 return result;
-            if (length == 4 && memcmp(cursor, "busy", 4) == 0)
-                result.update.live[counted].state = SessionState::Busy;
-            else if (length == 4 && memcmp(cursor, "idle", 4) == 0)
-                result.update.live[counted].state = SessionState::Idle;
-            else
+            if (!read_state(result.update.live[counted], cursor, length))
                 return result;
             ++counted;
             if (!end)

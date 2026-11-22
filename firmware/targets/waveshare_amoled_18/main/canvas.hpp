@@ -19,11 +19,12 @@ constexpr uint16_t wire_order(uint16_t rgb565) {
  * Near black instead of pure black for the ink: on an AMOLED pure black is an unlit pixel,
  * and text at that value reads as a hole in the layout rather than as a stroke. Amber marks
  * a session that is working, a cool grey carries the counts and hairlines, and green marks
- * one that is up and waiting. Read as colours these are #12181D, #FFFFFF, #FF9E1B, #66727C
- * and #00B37E.
+ * one that is up and waiting. Red marks a session that waits for its reader, which is the
+ * one state that spends the reader's time rather than its own. Read as colours these are
+ * #12181D, #FFFFFF, #FF9E1B, #66727C, #00B37E and #E5484D.
  */
 constexpr Palette kPalette{wire_order(0x10C3), wire_order(0xFFFF), wire_order(0xFCE3),
-                           wire_order(0x638F), wire_order(0x058F)};
+                           wire_order(0x638F), wire_order(0x058F), wire_order(0xE249)};
 
 /**
  * The drawing surface of the 368 x 448 colour panel.

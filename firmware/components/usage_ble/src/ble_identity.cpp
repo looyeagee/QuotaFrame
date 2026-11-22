@@ -95,7 +95,13 @@ bool make_status_json(
         if (enable_alert_set) cJSON_AddItemToArray(caps, cJSON_CreateString("alert.set.v1"));
         if (enable_brightness_set)
             cJSON_AddItemToArray(caps, cJSON_CreateString("brightness.set.v1"));
-        if (enable_sessions) cJSON_AddItemToArray(caps, cJSON_CreateString("sessions.v1"));
+        if (enable_sessions) {
+            cJSON_AddItemToArray(caps, cJSON_CreateString("sessions.v1"));
+            // The extended states: a session that waits for its user, the
+            // background shell of one that ended, and the reason a waiting
+            // session waits.
+            cJSON_AddItemToArray(caps, cJSON_CreateString("sessions.v2"));
+        }
     }
     cJSON_AddStringToObject(root, "firmware_project", "quotaframe");
     cJSON_AddStringToObject(root, "fw", firmware_version);

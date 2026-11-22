@@ -1,4 +1,5 @@
 #include <cstring>
+#include <string>
 
 #include "esp_desktop_buddy/esp_desktop_buddy.h"
 #include "esp_desktop_buddy/transport_port.h"
@@ -175,4 +176,90 @@ TEST_CASE("more live sessions than the panel keeps are dropped", "[protocol]")
 
     TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
     TEST_ASSERT_EQUAL_UINT8(kMaxLiveSessions, capture.update.live_count);
+}
+
+TEST_CASE("the extended states fixture carries a waiting session and its reason", "[protocol]")
+{
+    Capture capture{};
+    char reply[200]{};
+    feed_line(kSessionsV2, capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+    TEST_ASSERT_EQUAL_UINT8(2, capture.update.live_count);
+    TEST_ASSERT_EQUAL_STRING("Claude Code Desktop 会话状态页面", capture.update.live[0].name);
+    TEST_ASSERT_EQUAL(SessionState::Waiting, capture.update.live[0].state);
+    TEST_ASSERT_EQUAL(WaitingReason::Ask, capture.update.live[0].waiting_for);
+    TEST_ASSERT_EQUAL_STRING("修复列表滚动的问题", capture.update.live[1].name);
+    TEST_ASSERT_EQUAL(SessionState::Busy, capture.update.live[1].state);
+    TEST_ASSERT_EQUAL(WaitingReason::None, capture.update.live[1].waiting_for);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"ok\":true"));
+}
+
+TEST_CASE("an extended state with a reason the protocol does not name is rejected", "[protocol]")
+{
+    Capture capture{};
+    char reply[200]{};
+    feed_line(kSessionsInvalidV2, capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(0, capture.accepted);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"ok\":false"));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"error\":\"invalid_request\""));
+}
+
+TEST_CASE("a background shell is a state of its own", "[protocol]")
+{
+    Capture capture{};
+    char reply[256]{};
+    feed_line(
+        "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"53\",\"live\":\"a\","
+        "\"states\":\"shell\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+    TEST_ASSERT_EQUAL(SessionState::Shell, capture.update.live[0].state);
+    TEST_ASSERT_EQUAL(WaitingReason::None, capture.update.live[0].waiting_for);
+}
+
+TEST_CASE("a waiting session without a reason reads as a dialog", "[protocol]")
+{
+    Capture capture{};
+    char reply[256]{};
+    feed_line(
+        "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"54\",\"live\":\"a\",\"states\":\"waiting\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+    TEST_ASSERT_EQUAL(SessionState::Waiting, capture.update.live[0].state);
+    TEST_ASSERT_EQUAL(WaitingReason::Dialog, capture.update.live[0].waiting_for);
+}
+
+TEST_CASE("every reason of the protocol is read", "[protocol]")
+{
+    const char *reasons[] = {"ask", "permission", "sandbox", "worker", "goal", "dialog"};
+    for (uint32_t i = 0; i < sizeof(reasons) / sizeof(reasons[0]); ++i) {
+        Capture capture{};
+        char reply[256]{};
+        std::string frame = "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"55\",\"live\":\"a\",";
+        frame += "\"states\":\"waiting/";
+        frame += reasons[i];
+        frame += "\"}\n";
+        feed_line(frame.c_str(), capture, reply, sizeof(reply));
+
+        TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+        TEST_ASSERT_EQUAL(SessionState::Waiting, capture.update.live[0].state);
+        TEST_ASSERT_NOT_EQUAL(WaitingReason::None, capture.update.live[0].waiting_for);
+    }
+}
+
+TEST_CASE("a reason the protocol does not name is rejected", "[protocol]")
+{
+    Capture capture{};
+    char reply[256]{};
+    feed_line(
+        "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"56\",\"live\":\"a\","
+        "\"states\":\"waiting/unknown\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(0, capture.accepted);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"error\":\"invalid_request\""));
 }

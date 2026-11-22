@@ -9,7 +9,7 @@ namespace usage_panel {
  * black on it. A colour surface resolves each of them against its palette, which is how a
  * page marks a state without carrying colour types through the layout code.
  */
-enum class Ink : uint8_t { Black, White, Accent, Muted, Good };
+enum class Ink : uint8_t { Black, White, Accent, Muted, Good, Warn };
 
 /** The colours a colour surface paints the inks with, in RGB565. */
 struct Palette {
@@ -18,6 +18,7 @@ struct Palette {
     uint16_t accent = 0xFD20; // A state that is doing something.
     uint16_t muted = 0x8410;  // Secondary text: counts, captions, hairlines.
     uint16_t good = 0x0640;   // A state that is healthy and waiting.
+    uint16_t warn = 0xF800;   // A state that waits for its reader.
 };
 
 /**

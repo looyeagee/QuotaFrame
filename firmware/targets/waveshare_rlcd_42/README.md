@@ -159,10 +159,13 @@ always has one line of context above the highlight and four below it.
 
 The Sessions page shows the Claude Code sessions running on the computer. The Bridge reads
 `~/.claude/sessions` on the host and sends the display name of every running session with its
-state; a change reaches the panel as soon as Claude writes it. A busy session carries an inverted
-BUSY chip, an idle one a plain IDLE; the summary line counts how many sessions run and how many
-are busy. The page holds four running sessions, the same bound the Bridge applies. Sessions that
-have ended are not drawn. Only the display names and the busy flag travel: session ids, working
+state; a change reaches the panel as soon as Claude writes it. A session that is working or
+waiting for its reader carries an inverted chip (BUSY or WAIT), one that is up a plain IDLE and
+one whose background shell still runs a plain SHELL. A waiting session also names what it waits
+for at the far end of its row (ASK, PERM, SANDBOX, WORKER, GOAL, DIALOG), and the summary line
+counts the sessions that wait first, because those are the ones spending the reader's time. The
+page holds four running sessions, the same bound the Bridge applies. Sessions that have ended are
+not drawn. Only the display names, the state and the reason travel: session ids, working
 directories, git branches and the conversations themselves stay on the computer.
 
 The page is only in the ring once a publication has arrived, so a panel whose Bridge sends no

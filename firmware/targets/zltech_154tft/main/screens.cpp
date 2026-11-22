@@ -455,26 +455,36 @@ void Screens::sessions(const View &v) {
         return;
     }
     int busy = 0;
-    for (int i = 0; i < v.sessions.live_count; ++i)
-        busy += v.sessions.live[i].state == SessionState::Busy ? 1 : 0;
+    int waiting = 0;
+    for (int i = 0; i < v.sessions.live_count; ++i) {
+        if (v.sessions.live[i].state == SessionState::Busy)
+            busy += 1;
+        else if (v.sessions.live[i].state == SessionState::Waiting)
+            waiting += 1;
+    }
 
     // The count leads the page, as it does on the AMOLED target: it answers the question the
     // page exists for, and its colour says whether anything is working before a word is read.
     char count[4];
     snprintf(count, sizeof(count), "%d", static_cast<int>(v.sessions.live_count));
+    // A session that waits for its reader is the one that spends the reader's time, so the
+    // count takes the warning colour before anything else is said about it.
     const Ink lead = v.sessions.live_count == 0 ? Ink::Muted
-                     : busy > 0                ? Ink::Accent
-                                               : Ink::Good;
+                     : waiting > 0               ? Ink::Warn
+                     : busy > 0                 ? Ink::Accent
+                                                : Ink::Good;
     c_.text(kLeft, kSessionsCountTop, count, kSessionsCountScale, lead);
     const int label_x = kLeft + Canvas::text_width(count, kSessionsCountScale) + kSessionsGap;
     c_.text(label_x, kSessionsCountTop + 2, "LIVE", 2);
     char detail[24];
     if (v.sessions.live_count == 0)
         snprintf(detail, sizeof(detail), "NOTHING RUNNING");
+    else if (waiting > 0)
+        snprintf(detail, sizeof(detail), "%d NEED YOU", waiting);
     else if (busy > 0)
         snprintf(detail, sizeof(detail), "%d WORKING", busy);
     else
-        snprintf(detail, sizeof(detail), "ALL WAITING");
+        snprintf(detail, sizeof(detail), "ALL IDLE");
     c_.text(label_x, kSessionsDetailTop, detail, 2, Ink::Muted);
 
     if (v.sessions.live_count == 0) {
@@ -496,29 +506,43 @@ void Screens::sessions(const View &v) {
     const int name_bottom = CjkText::line_height(kSessionsNameScale);
     const int pad = chip_pad(kSessionsChipScale);
     const int chip_h = chip_height(kSessionsChipScale);
+    // The chips share one width, so the rows stay in a column whatever states they carry.
+    int chip_text = 0;
+    for (int i = 0; i < live; ++i)
+        chip_text = std::max(
+            chip_text,
+            Canvas::text_width(session_state_word(v.sessions.live[i].state), kSessionsChipScale));
+    const int chip_w = chip_text + 2 * pad;
     for (int i = 0; i < live; ++i) {
-        const bool is_busy = v.sessions.live[i].state == SessionState::Busy;
-        const Ink state_ink = is_busy ? Ink::Accent : Ink::Good;
+        const SessionState state = v.sessions.live[i].state;
+        const Ink state_ink = session_state_ink(state);
         c_.fill(kLeft, top, kSessionsBarWidth, kSessionsCardHeight, state_ink);
         // The state is drawn twice on purpose: the bar is read at a glance, the word answers
-        // the same question with the page in hand. A filled chip marks work in progress, an
-        // outlined one a session that is up and waiting, so the two never read as equal.
-        const char *word = is_busy ? "BUSY" : "IDLE";
-        const int chip_w = Canvas::text_width(word, kSessionsChipScale) + 2 * pad;
+        // the same question with the page in hand. A filled chip marks work in progress or a
+        // session that waits for its reader, an outlined one a session that is up, so the two
+        // never read as equal.
+        const char *word = session_state_word(state);
         const int chip_left = right - chip_w;
         const int chip_top = top + (kSessionsCardHeight - chip_h) / 2;
-        if (is_busy) {
-            chip(chip_left + pad, chip_top + pad, word, Ink::Accent, kSessionsChipScale);
+        if (state == SessionState::Busy || state == SessionState::Waiting) {
+            chip(chip_left + pad, chip_top + pad, word, state_ink, kSessionsChipScale);
         } else {
-            c_.frame(chip_left, chip_top, chip_w, chip_h, 2, Ink::Good);
-            c_.text(chip_left + pad, chip_top + pad, word, kSessionsChipScale, Ink::Good);
+            c_.frame(chip_left, chip_top, chip_w, chip_h, 2, state_ink);
+            c_.text(chip_left + pad, chip_top + pad, word, kSessionsChipScale, state_ink);
         }
         const int name_x = kLeft + kSessionsBarWidth + kSessionsGap;
+        // A session that waits says what it waits for, between its name and its chip.
+        const char *reason = waiting_reason_word(v.sessions.live[i].waiting_for);
+        const int reason_w = reason[0] ? CjkText::width(reason, 1) : 0;
+        const int reason_x = chip_left - kSessionsChipGap - reason_w;
+        const int name_top = top + (kSessionsCardHeight - name_bottom) / 2;
         char fitted[kMaxSessionTextBytes + 4];
         CjkText::fit(fitted, sizeof(fitted), v.sessions.live[i].name,
-                     chip_left - kSessionsChipGap - name_x, kSessionsNameScale);
-        CjkText::draw(c_, name_x, top + (kSessionsCardHeight - name_bottom) / 2, fitted,
-                      kSessionsNameScale);
+                     reason_x - kSessionsChipGap - name_x, kSessionsNameScale);
+        CjkText::draw(c_, name_x, name_top, fitted, kSessionsNameScale);
+        if (reason_w)
+            CjkText::draw(c_, reason_x, name_top + name_bottom - CjkText::line_height(1), reason, 1,
+                          Ink::Muted);
         // A hairline in the gap between cards, aligned with the names rather than the bars.
         if (i + 1 < live)
             c_.fill(name_x, top + kSessionsCardHeight + 3, right - name_x, 1, Ink::Muted);

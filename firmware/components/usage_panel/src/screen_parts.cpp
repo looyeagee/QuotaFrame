@@ -134,4 +134,52 @@ const char *link_status(const View &v) {
     return v.link.encrypted ? "LINKED" : "OFFLINE";
 }
 
+const char *session_state_word(SessionState state) {
+    switch (state) {
+    case SessionState::Busy:
+        return "BUSY";
+    case SessionState::Waiting:
+        return "WAIT";
+    case SessionState::Shell:
+        return "SHELL";
+    case SessionState::Idle:
+        break;
+    }
+    return "IDLE";
+}
+
+Ink session_state_ink(SessionState state) {
+    switch (state) {
+    case SessionState::Busy:
+        return Ink::Accent;
+    case SessionState::Waiting:
+        return Ink::Warn;
+    case SessionState::Shell:
+        return Ink::Muted;
+    case SessionState::Idle:
+        break;
+    }
+    return Ink::Good;
+}
+
+const char *waiting_reason_word(WaitingReason reason) {
+    switch (reason) {
+    case WaitingReason::Ask:
+        return "ASK";
+    case WaitingReason::Permission:
+        return "PERM";
+    case WaitingReason::Sandbox:
+        return "SANDBOX";
+    case WaitingReason::Worker:
+        return "WORKER";
+    case WaitingReason::Goal:
+        return "GOAL";
+    case WaitingReason::Dialog:
+        return "DIALOG";
+    case WaitingReason::None:
+        break;
+    }
+    return "";
+}
+
 } // namespace usage_panel

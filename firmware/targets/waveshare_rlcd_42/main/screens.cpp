@@ -738,7 +738,6 @@ void Screens::music_portrait(const View &v) {
 void Screens::sessions(const View &v) {
     header(v, "SESSIONS", ring_index(v, Page::Sessions));
     const int right = c_.width() - kLeft;
-    const int content = right - kLeft;
     if (!v.sessions_valid) {
         c_.text(kLeft, kContentTop, v.link.encrypted ? "WAITING FOR DATA" : "NO SESSIONS", 2);
         return;
@@ -748,27 +747,50 @@ void Screens::sessions(const View &v) {
     const int row_top = summary_top + kLine + 2 * kChipPad + 4;
     const int pitch = portrait ? 30 : 26;
     int busy = 0;
-    for (int i = 0; i < v.sessions.live_count; ++i)
-        busy += v.sessions.live[i].state == SessionState::Busy ? 1 : 0;
+    int waiting = 0;
+    for (int i = 0; i < v.sessions.live_count; ++i) {
+        if (v.sessions.live[i].state == SessionState::Busy)
+            busy += 1;
+        else if (v.sessions.live[i].state == SessionState::Waiting)
+            waiting += 1;
+    }
     char summary[44];
-    snprintf(summary, sizeof(summary), "%d LIVE / %d BUSY", v.sessions.live_count, busy);
+    // A session that waits for its reader is the one that spends the reader's time, so the
+    // summary counts those first and the working ones only when none waits.
+    if (waiting > 0)
+        snprintf(summary, sizeof(summary), "%d LIVE / %d WAIT", v.sessions.live_count, waiting);
+    else
+        snprintf(summary, sizeof(summary), "%d LIVE / %d BUSY", v.sessions.live_count, busy);
     c_.text(kLeft, summary_top, summary, 2);
-    // A busy session is an inverted chip like the status chips; an idle one keeps
-    // the same geometry as plain text, so the names line up across both states.
-    const int chip_w = Canvas::text_width("BUSY", 2) + 2 * kChipPad;
+    // A session that is working or waiting is an inverted chip like the status chips; one
+    // that is up keeps the same geometry as plain text, so the names line up across states.
+    // The chips share one width, so the rows stay in a column.
+    int chip_text = 0;
+    for (int i = 0; i < v.sessions.live_count; ++i)
+        chip_text = std::max(
+            chip_text, Canvas::text_width(session_state_word(v.sessions.live[i].state), 2));
+    const int chip_w = chip_text + 2 * kChipPad;
+    const int name_x = kLeft + chip_w + kSessionsRowGap;
     for (int i = 0; i < v.sessions.live_count; ++i) {
         const int top = row_top + pitch * i;
-        const bool is_busy = v.sessions.live[i].state == SessionState::Busy;
-        if (is_busy) {
-            chip(kLeft, top, "BUSY");
+        const SessionState state = v.sessions.live[i].state;
+        const char *word = session_state_word(state);
+        if (state == SessionState::Busy || state == SessionState::Waiting) {
+            chip(kLeft, top, word);
         } else {
-            c_.text(kLeft, top, "IDLE", 2);
+            c_.text(kLeft, top, word, 2);
         }
+        // A session that waits says what it waits for, at the far end of its row.
+        const char *reason = waiting_reason_word(v.sessions.live[i].waiting_for);
+        const int reason_w = reason[0] ? CjkText::width(reason, 1) : 0;
+        const int reason_x = right - reason_w;
         char fitted[kMaxSessionTextBytes + 4];
         // The name shares the label's top, so the two rows of the block line up.
         CjkText::fit(fitted, sizeof(fitted), v.sessions.live[i].name,
-                     content - chip_w - kSessionsRowGap, 1);
-        CjkText::draw(c_, kLeft + chip_w + kSessionsRowGap, top, fitted, 1);
+                     reason_x - name_x - (reason_w ? kSessionsRowGap : 0), 1);
+        CjkText::draw(c_, name_x, top, fitted, 1);
+        if (reason_w)
+            CjkText::draw(c_, reason_x, top, reason, 1);
     }
 }
 

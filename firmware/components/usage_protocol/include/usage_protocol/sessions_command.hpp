@@ -21,6 +21,11 @@ struct SessionsParseResult {
  * copied in whole UTF-8 characters, and the lists must agree in length, so a
  * frame whose states do not address its names is answered with
  * `invalid_request` instead of reaching the display.
+ *
+ * A state is `busy`, `idle`, `shell`, or `waiting` with the reason it waits
+ * for as `waiting/<reason>`. A frame whose state names neither is rejected,
+ * and the reason travels inside the state word, so a roster cannot claim that
+ * one session waits for something another one waits for.
  */
 SessionsParseResult parse_sessions_command(
     const esp_desktop_buddy_command_view_t* request);

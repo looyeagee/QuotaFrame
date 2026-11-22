@@ -99,7 +99,7 @@ Flash，出厂固件不可恢复，除非事先备份。
 | RTC | PCF85063A | PCF85063A | 无 |
 | 电量 | AXP2101 电量计 | ADC 分压 | ADC 分压 |
 | 提示音 | 静音（ES8311 未接线） | ES8311 | 静音 |
-| Claude Code 会话页 | ✅ `sessions.v1` | ✅ `sessions.v1` | 不声明 |
+| Claude Code 会话页 | ✅ `sessions.v1` / `sessions.v2` | ✅ `sessions.v1` / `sessions.v2` | 不声明 |
 
 ## 硬件验收清单
 
@@ -110,6 +110,6 @@ Flash，出厂固件不可恢复，除非事先备份。
 3. BOOT 键：短按回主页、长按 800 ms 进设置；
 4. Bridge 配对：屏幕显示 6 位配对码，输入后进入 LINKED；
 5. 真实 `usage.v1` 数据下的主页、DeepSeek 页、MiniMax 页；
-6. 会话页：Bridge 下发 `sessions.v1` 后页面进入环，顶部计数、状态色条、会话名与忙 / 闲芯片互不重叠；
+6. 会话页：Bridge 下发 `sessions.v1` 后页面进入环，顶部计数、状态色条、会话名与状态芯片互不重叠；会话提问时芯片变红 WAIT 并在名字后给出等待原因；
 7. 电量读数与 AXP2101 电量计读数对照（`battery_percent`）；
 8. OTA：`ota.folder.v1` 全流程 + 物理确认 + 回滚确认。
