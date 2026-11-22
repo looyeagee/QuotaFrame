@@ -13,12 +13,17 @@ enum class AlertMode : uint8_t { Off, Invert, Beep };
 
 /** Persisted display settings; values index the option lists shown on the Settings page. */
 struct Settings {
-    uint8_t cycle = 0;    // Auto page cycle: OFF, 30 s, 1 min, 5 min.
-    uint8_t alert = 2;    // AlertMode.
-    uint8_t seconds = 1;  // 1 shows seconds on countdowns and the clock.
-    uint8_t rotation = 0; // Rotation.
+    uint8_t cycle = 0;      // Auto page cycle: OFF, 30 s, 1 min, 5 min.
+    uint8_t alert = 2;      // AlertMode.
+    uint8_t seconds = 1;    // 1 shows seconds on countdowns and the clock.
+    uint8_t rotation = 0;   // Rotation.
+    uint8_t brightness = 80; // Display brightness in percent; every target clamps it.
 };
-constexpr int kSettingRows = 4;
+constexpr int kSettingRows = 5;
+
+/** Brightness steps the Settings page cycles through; the Bridge may set any percent. */
+constexpr uint8_t kBrightnessLevels[] = {20, 40, 60, 80, 100};
+constexpr int kBrightnessLevelCount = 5;
 
 struct LinkState {
     bool connected = false, encrypted = false, has_passkey = false;

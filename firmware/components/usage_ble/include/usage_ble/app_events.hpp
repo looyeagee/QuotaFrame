@@ -10,7 +10,15 @@
 
 namespace usage_panel {
 
-enum class AppEventType : uint8_t { Usage, Link, TimeSync, ScreenToggle, ScreenPage, AlertSet };
+enum class AppEventType : uint8_t {
+    Usage,
+    Link,
+    TimeSync,
+    ScreenToggle,
+    ScreenPage,
+    AlertSet,
+    BrightnessSet,
+};
 
 /** Latest BLE link/security state published to the application loop. */
 struct LinkUpdate {
@@ -34,6 +42,8 @@ struct AppEvent {
     bool previous_page = false;
     // Alert mode 0..2 from alert_set; the application validates it again before saving.
     uint8_t alert_mode = 0;
+    // Brightness percent 0..100 from brightness_set; validated again before saving.
+    uint8_t brightness = 0;
 };
 
 /**
@@ -53,6 +63,7 @@ public:
     bool send_screen_toggle();
     bool send_screen_page(bool previous);
     bool send_alert_set(uint8_t mode);
+    bool send_brightness_set(uint8_t percent);
 
     /** Receives one event, waiting at most `wait` FreeRTOS ticks. */
     bool receive(AppEvent& event, TickType_t wait = 0);

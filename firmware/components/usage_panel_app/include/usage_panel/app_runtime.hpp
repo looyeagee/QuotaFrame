@@ -39,6 +39,8 @@ class PanelTarget {
     virtual void render(const View &view) = 0;
     /** Plays the alert sound. */
     virtual void beep() = 0;
+    /** Applies the display brightness percent to the panel hardware. */
+    virtual void apply_brightness(uint8_t percent) = 0;
 };
 
 /** The identity a target publishes to the Bridge and to the OTA backend. */
@@ -82,6 +84,7 @@ class PanelRuntime {
 
     static const char *page_name(void *context);
     static uint8_t alert_mode(void *context);
+    static uint8_t brightness_value(void *context);
     void apply_ota(const OtaSnapshot &snapshot);
     void run_loop();
 };

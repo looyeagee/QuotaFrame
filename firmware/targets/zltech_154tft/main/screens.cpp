@@ -425,17 +425,19 @@ void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
         const char *label;
-        const char *options[4];
+        const char *options[5];
     };
     static const Row rows[kSettingRows] = {
         {"AUTO CYCLE", {"OFF", "30S", "1M", "5M"}},
         {"ALERT 95%", {"OFF", "PAGE", "+BEEP"}},
         {"SECONDS", {"ON", "OFF"}},
         {"ROTATION", {"0°", "90°", "180°"}},
+        {"BRIGHTNESS", {"20%", "40%", "60%", "80%", "100%"}},
     };
     const auto &s = v.settings;
     const int right = c_.width() - kLeft;
-    const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation};
+    const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation,
+                                        brightness_level_index(s.brightness)};
     // Four rows of a label and an option strip, each row 42 px tall.
     for (int r = 0; r < kSettingRows; ++r) {
         const int y = 34 + 42 * r;

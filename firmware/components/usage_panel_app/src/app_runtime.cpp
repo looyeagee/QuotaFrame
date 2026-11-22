@@ -50,6 +50,12 @@ uint8_t PanelRuntime::alert_mode(void *context) {
     return runtime->view_.settings.alert;
 }
 
+uint8_t PanelRuntime::brightness_value(void *context) {
+    // Read from the BLE callback; a single byte is published without tearing.
+    const auto *runtime = static_cast<const PanelRuntime *>(context);
+    return runtime->view_.settings.brightness;
+}
+
 void PanelRuntime::apply_ota(const OtaSnapshot &s) {
     view_.ota.stage = static_cast<OtaStage>(s.phase);
     view_.ota.offset = s.offset;
@@ -62,6 +68,8 @@ void PanelRuntime::run() {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(target_.begin() ? ESP_OK : ESP_FAIL);
     view_.settings = target_.load();
+    // The panel boots at its own default; the persisted brightness takes over here.
+    target_.apply_brightness(view_.settings.brightness);
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_BT);
     snprintf(view_.device_name, sizeof(view_.device_name), "%s%02X%02X", identity_.advertising_prefix,
@@ -73,7 +81,7 @@ void PanelRuntime::run() {
     // whether USB power is present, so a voltage threshold would block updates on USB power.
     BleServiceConfig config{identity_.advertising_prefix, identity_.status_name,
                             identity_.bridge_target, true, &ota_, page_name, this, true, true,
-                            true, true, alert_mode, this};
+                            true, true, alert_mode, this, true, brightness_value, this};
     ESP_ERROR_CHECK(ble_.start(events_, config));
     run_loop();
 }
@@ -149,6 +157,15 @@ void PanelRuntime::run_loop() {
                     view_.save_error = !target_.save(view_.settings);
                 }
                 break;
+            case AppEventType::BrightnessSet:
+                // The same persistence contract as AlertSet: the percent lands in NVS and on
+                // the panel, and a rejected write keeps the previous brightness in force.
+                if (!ota_.busy()) {
+                    view_.settings.brightness = event.brightness;
+                    view_.save_error = !target_.save(view_.settings);
+                    target_.apply_brightness(view_.settings.brightness);
+                }
+                break;
             }
         }
 
@@ -181,8 +198,12 @@ void PanelRuntime::run_loop() {
                     ble_.reset_pairing();
             } else {
                 const NavResult r = nav_.input(input, view_, view_.now_ms);
-                if (r.save)
+                if (r.save) {
                     view_.save_error = !target_.save(view_.settings);
+                    // The Settings page may have changed the brightness; every other row
+                    // writes the same value back, which the panel treats as a no-op.
+                    target_.apply_brightness(view_.settings.brightness);
+                }
             }
         }
         if (!ota_.busy() && !view_.link.has_passkey)

@@ -108,6 +108,23 @@ esp_desktop_buddy_command_extension_result_t route_alert_set_command(
     return ack(true, sequence);
 }
 
+esp_desktop_buddy_command_extension_result_t route_brightness_set_command(
+    const esp_desktop_buddy_command_view_t* request,
+    bool enabled, bool ota_busy, AppEventQueue* queue)
+{
+    uint32_t sequence = 0, version = 0, percent = 0;
+    if (get_decimal_u32(request, "seq", sequence) != FieldResult::Valid)
+        return ack(false, 0, "invalid_request");
+    if (get_decimal_u32(request, "v", version) != FieldResult::Valid || version != 1 ||
+        get_decimal_u32(request, "percent", percent) != FieldResult::Valid || percent > 100)
+        return ack(false, sequence, "invalid_request");
+    if (!enabled) return ack(false, sequence, "unsupported");
+    if (ota_busy) return ack(false, sequence, "ota_busy");
+    if (!queue || !queue->send_brightness_set(static_cast<uint8_t>(percent)))
+        return ack(false, sequence, "queue_full");
+    return ack(true, sequence);
+}
+
 esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config)
 {
     if (!copy_identity(
@@ -129,6 +146,10 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
     enable_alert_set_ = config.enable_alert_set;
     get_alert_mode_ = config.get_alert_mode;
     alert_context_ = config.alert_context;
+    enable_brightness_set_ = config.enable_brightness_set;
+    get_brightness_ = config.get_brightness;
+    brightness_context_ = config.brightness_context;
+    alert_context_ = config.alert_context;
     if (enable_now_playing_ && !now_playing_.begin())
         return ESP_ERR_NO_MEM;
     ota_commands_.bind(*ota_);
@@ -138,7 +159,8 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
             app ? app->version : "unknown", target_, ota_->snapshot(),
             enable_time_sync_,
             status_json_, sizeof(status_json_), enable_screen_toggle_, boot_valid_.load(), enable_screen_page_,
-            enable_now_playing_, enable_alert_set_, alert_mode_value())) {
+            enable_now_playing_, enable_alert_set_, alert_mode_value(),
+            enable_brightness_set_, brightness_value())) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -166,6 +188,7 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
         {"screen_toggle", &BleService::screen_toggle_trampoline},
         {"screen_page", &BleService::screen_page_trampoline},
         {"alert_set", &BleService::alert_set_trampoline},
+        {"brightness_set", &BleService::brightness_set_trampoline},
         {"ota_abort", &BleService::ota_abort_trampoline},
         {"char_begin", &BleService::folder_push_trampoline},
         {"file", &BleService::folder_push_trampoline},
@@ -295,6 +318,13 @@ int BleService::alert_mode_value() const
     return mode <= 2 ? static_cast<int>(mode) : -1;
 }
 
+int BleService::brightness_value() const
+{
+    if (!enable_brightness_set_ || !get_brightness_) return -1;
+    const uint8_t percent = get_brightness_(brightness_context_);
+    return percent <= 100 ? static_cast<int>(percent) : -1;
+}
+
 esp_desktop_buddy_status_reply_t BleService::status()
 {
     esp_desktop_buddy_transport_ble_state_t state{};
@@ -307,7 +337,8 @@ esp_desktop_buddy_status_reply_t BleService::status()
             app ? app->version : "unknown", target_,
             ota_ ? ota_->snapshot() : OtaSnapshot{}, enable_time_sync_,
             status_json_, sizeof(status_json_), enable_screen_toggle_, boot_valid_.load(), enable_screen_page_,
-            enable_now_playing_, enable_alert_set_, alert_mode_value())) {
+            enable_now_playing_, enable_alert_set_, alert_mode_value(),
+            enable_brightness_set_, brightness_value())) {
         return esp_desktop_buddy_status_err(
             ESP_ERR_INVALID_ARG, "status_invalid");
     }
@@ -347,6 +378,15 @@ esp_desktop_buddy_command_extension_result_t BleService::alert_set_trampoline(
     auto* self = static_cast<BleService*>(context);
     return route_alert_set_command(
         request, self->enable_alert_set_, self->ota_commands_.busy(), self->queue_);
+}
+
+esp_desktop_buddy_command_extension_result_t BleService::brightness_set_trampoline(
+    void* context, esp_desktop_buddy_t*,
+    const esp_desktop_buddy_command_view_t* request)
+{
+    auto* self = static_cast<BleService*>(context);
+    return route_brightness_set_command(
+        request, self->enable_brightness_set_, self->ota_commands_.busy(), self->queue_);
 }
 
 esp_desktop_buddy_command_extension_result_t BleService::time_sync_trampoline(

@@ -191,4 +191,7 @@ uint32_t cycle_interval_ms(uint8_t cycle);
 
 /** Number of options on a Settings row. */
 int setting_options(int row);
+
+/** Nearest kBrightnessLevels position for a percent, so the Settings page can step from it. */
+int brightness_level_index(uint8_t percent);
 } // namespace usage_panel

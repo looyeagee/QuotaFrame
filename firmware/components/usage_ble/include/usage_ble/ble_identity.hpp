@@ -29,6 +29,7 @@ bool make_status_json(
     char* output, size_t output_size, bool enable_screen_toggle = false,
     bool boot_valid = false, bool enable_screen_page = false,
     bool enable_now_playing = false, bool enable_alert_set = false,
-    int alert_mode = -1);
+    int alert_mode = -1, bool enable_brightness_set = false,
+    int brightness = -1);
 
 }  // namespace usage_panel

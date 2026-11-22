@@ -55,6 +55,14 @@ bool AppEventQueue::send_alert_set(uint8_t mode)
     return queue_ && xQueueSend(queue_, &event, 0) == pdTRUE;
 }
 
+bool AppEventQueue::send_brightness_set(uint8_t percent)
+{
+    AppEvent event{};
+    event.type = AppEventType::BrightnessSet;
+    event.brightness = percent;
+    return queue_ && xQueueSend(queue_, &event, 0) == pdTRUE;
+}
+
 bool AppEventQueue::receive(AppEvent& event, TickType_t wait)
 {
     return queue_ && xQueueReceive(queue_, &event, wait) == pdTRUE;

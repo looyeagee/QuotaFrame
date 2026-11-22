@@ -47,6 +47,7 @@ class PanelTargetImpl : public PanelTarget {
         panel_.show(canvas_);
     }
     void beep() override { beeper_.alert(); }
+    void apply_brightness(uint8_t percent) override { panel_.set_brightness(percent); }
 
   private:
     PanelIdentity identity_;

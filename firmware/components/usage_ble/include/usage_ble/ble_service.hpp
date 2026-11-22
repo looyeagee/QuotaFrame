@@ -19,6 +19,9 @@ using UiLocationGetter = const char* (*)(void*);
 /** Returns the persisted alert mode (0 off, 1 alert page, 2 page and beep). */
 using AlertModeGetter = uint8_t (*)(void*);
 
+/** Returns the persisted display brightness in percent (0..100). */
+using BrightnessGetter = uint8_t (*)(void*);
+
 /** Configuration copied or retained by BleService::start(). */
 struct BleServiceConfig {
     // Identity strings are copied into fixed service-owned buffers during start.
@@ -38,6 +41,10 @@ struct BleServiceConfig {
     bool enable_alert_set = false;
     AlertModeGetter get_alert_mode = nullptr;
     void* alert_context = nullptr;
+    // Advertises brightness.set.v1 with the same status-drift guarantee as alert.set.v1.
+    bool enable_brightness_set = false;
+    BrightnessGetter get_brightness = nullptr;
+    void* brightness_context = nullptr;
 };
 
 /**
@@ -65,6 +72,14 @@ esp_desktop_buddy_command_extension_result_t route_screen_page_command(
  * OTA owns the device while receiving, so a setting change is refused then.
  */
 esp_desktop_buddy_command_extension_result_t route_alert_set_command(
+    const esp_desktop_buddy_command_view_t* request,
+    bool enabled, bool ota_busy, AppEventQueue* queue);
+
+/**
+ * Validates brightness_set percent 0..100 and queues it for the application loop.
+ * OTA owns the device while receiving, so a setting change is refused then.
+ */
+esp_desktop_buddy_command_extension_result_t route_brightness_set_command(
     const esp_desktop_buddy_command_view_t* request,
     bool enabled, bool ota_busy, AppEventQueue* queue);
 
@@ -123,6 +138,8 @@ private:
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t alert_set_trampoline(
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
+    static esp_desktop_buddy_command_extension_result_t brightness_set_trampoline(
+        void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t time_sync_trampoline(
         void*, esp_desktop_buddy_t*, const esp_desktop_buddy_command_view_t*);
     static esp_desktop_buddy_command_extension_result_t folder_push_trampoline(
@@ -133,6 +150,8 @@ private:
         void*, const esp_desktop_buddy_transport_ble_event_t*);
     /** Current persisted alert mode for status, or -1 when the device reports none. */
     int alert_mode_value() const;
+    /** Current persisted brightness percent for status, or -1 when the device reports none. */
+    int brightness_value() const;
     bool reset_folder_push();
 
     AppEventQueue* queue_ = nullptr;
@@ -155,6 +174,9 @@ private:
     bool enable_alert_set_ = false;
     AlertModeGetter get_alert_mode_ = nullptr;
     void* alert_context_ = nullptr;
+    bool enable_brightness_set_ = false;
+    BrightnessGetter get_brightness_ = nullptr;
+    void* brightness_context_ = nullptr;
     NowPlayingMailbox now_playing_{};
     OtaSession* ota_ = nullptr;
     OtaCommandRouter ota_commands_{};

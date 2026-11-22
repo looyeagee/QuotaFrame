@@ -102,13 +102,13 @@ bool St7789::begin() {
         return false;
     }
     memset(displayed_, 0, kFrameBytes);
-    set_backlight(kBacklightPercent);
+    set_brightness(kBacklightPercent);
     ESP_LOGI(kTag, "panel ready %dx%d, %d-row bands, backlight %d%%", kPanelWidth, kPanelHeight,
              kBandRows, kBacklightPercent);
     return true;
 }
 
-void St7789::set_backlight(int percent) {
+void St7789::set_brightness(int percent) {
     if (!backlight_ready_)
         return;
     const int clamped = percent < 0 ? 0 : percent > 100 ? 100 : percent;

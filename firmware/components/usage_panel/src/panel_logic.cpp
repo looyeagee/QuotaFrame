@@ -93,8 +93,20 @@ uint32_t cycle_interval_ms(uint8_t cycle) {
 }
 
 int setting_options(int row) {
-    constexpr int options[kSettingRows] = {4, 3, 2, 3};
+    constexpr int options[kSettingRows] = {4, 3, 2, 3, kBrightnessLevelCount};
     return row >= 0 && row < kSettingRows ? options[row] : 0;
+}
+
+int brightness_level_index(uint8_t percent) {
+    // The Bridge may hold any percent; the Settings page edits the nearest step.
+    int best = 0;
+    for (int i = 1; i < kBrightnessLevelCount; ++i) {
+        const int here = std::abs(static_cast<int>(kBrightnessLevels[i]) - percent);
+        const int there = std::abs(static_cast<int>(kBrightnessLevels[best]) - percent);
+        if (here < there)
+            best = i;
+    }
+    return best;
 }
 
 namespace {
@@ -316,13 +328,24 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
                 r.save = true;
             } else {
                 auto &s = v.settings;
-                uint8_t *values[kSettingRows] = {&s.cycle, &s.alert, &s.seconds, &s.rotation};
+                uint8_t *values[kSettingRows] = {&s.cycle, &s.alert, &s.seconds, &s.rotation,
+                                                 &s.brightness};
                 const int options = setting_options(v.focus);
-                // SECONDS lists ON before OFF, so its option index is the inverse of the flag.
-                int index = v.focus == 2 ? (s.seconds ? 0 : 1) : *values[v.focus];
+                // SECONDS lists ON before OFF, so its option index is the inverse of the flag;
+                // BRIGHTNESS stores a percent the Bridge may have set to any value, so it
+                // steps from the nearest level instead of from a stored index.
+                int index;
+                if (v.focus == 2)
+                    index = s.seconds ? 0 : 1;
+                else if (v.focus == 4)
+                    index = brightness_level_index(s.brightness);
+                else
+                    index = *values[v.focus];
                 index = (index + (in == Input::Forward ? 1 : options - 1)) % options;
                 if (v.focus == 2)
                     s.seconds = index == 0 ? 1 : 0;
+                else if (v.focus == 4)
+                    s.brightness = kBrightnessLevels[index];
                 else
                     *values[v.focus] = static_cast<uint8_t>(index);
                 r.save = true;

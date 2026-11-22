@@ -244,12 +244,14 @@ Settings Board::load() {
         nvs_get_u8(n, "alert", &s.alert);
         nvs_get_u8(n, "seconds", &s.seconds);
         nvs_get_u8(n, "rotation", &s.rotation);
+        nvs_get_u8(n, "brightness", &s.brightness);
         nvs_close(n);
     }
     s.cycle = std::min<uint8_t>(s.cycle, 3);
     s.alert = std::min<uint8_t>(s.alert, 2);
     s.seconds = s.seconds ? 1 : 0;
     s.rotation = std::min<uint8_t>(s.rotation, 2);
+    s.brightness = std::min<uint8_t>(s.brightness, 100);
     rotation_ = s.rotation;
     return s;
 }
@@ -262,7 +264,9 @@ bool Board::save(const Settings &s) {
     const bool ok = nvs_set_u8(n, "cycle", s.cycle) == ESP_OK &&
                     nvs_set_u8(n, "alert", s.alert) == ESP_OK &&
                     nvs_set_u8(n, "seconds", s.seconds) == ESP_OK &&
-                    nvs_set_u8(n, "rotation", rotation_) == ESP_OK && nvs_commit(n) == ESP_OK;
+                    nvs_set_u8(n, "rotation", rotation_) == ESP_OK &&
+                    nvs_set_u8(n, "brightness", std::min<uint8_t>(s.brightness, 100)) == ESP_OK &&
+                    nvs_commit(n) == ESP_OK;
     nvs_close(n);
     return ok;
 }

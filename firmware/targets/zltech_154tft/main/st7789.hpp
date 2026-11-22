@@ -26,7 +26,7 @@ class St7789 {
     /** Brings up the backlight, SPI3 and the controller. @return false on the first error. */
     bool begin();
     /** Sets the backlight in percent, clamped to [0, 100]. */
-    void set_backlight(int percent);
+    void set_brightness(int percent);
     /**
      * Transfers `canvas` unless it matches the last submitted frame.
      * Every band is awaited before the next is composed, so a slow bus never leaves part of
