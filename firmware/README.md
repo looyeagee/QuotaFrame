@@ -18,6 +18,8 @@ Git 来源组件的锁文件哈希会受 checkout 行尾配置影响。本项目
 - `usage_ota`：物理确认、ESP-IDF OTA 写入/校验、rollback 状态和 Folder Push OTA sink；
 - `usage_ble`：事件队列、BLE Secure Connections、Bonding、协议处理和状态响应；
 - `usage_rtc`：PCF85063A 本地日历读写与 BCD 编解码，挂在目标自有的 I2C 总线上；
+- `usage_panel`：面板视图模型、页面环与导航、配额 pace 与告警、一位图绘制表面、点阵字体和屏幕通用片段；
+- `usage_panel_app`：所有面板共用的应用：BLE 链路、OTA 会话、事件循环、渲染节奏，以及目标实现的 `PanelTarget` 接口；
 - `esp_desktop_buddy_folder_push`：固定到上游 `b6bac05d` 的 Folder Push 源码快照；
 
 Folder Push 本地快照原因见 [UPSTREAM.md](components/esp_desktop_buddy_folder_push/UPSTREAM.md)；核心 Buddy 和 BLE transport 由 Component Manager 锁定获取。

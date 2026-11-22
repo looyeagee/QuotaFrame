@@ -51,6 +51,8 @@ firmware/
 │  ├─ usage_ble/
 │  ├─ usage_ota/
 │  ├─ usage_rtc/
+│  ├─ usage_panel/
+│  ├─ usage_panel_app/
 │  └─ esp_desktop_buddy_folder_push/
 └─ targets/
    └─ <new-target>/
@@ -73,7 +75,8 @@ Use the shared components for behavior that is intentionally hardware-independen
 | Component | Responsibility |
 | --- | --- |
 | `usage_core` | usage model, last-known values, connection and data availability state, countdown formatting |
-| `usage_panel_state` | page cycling, OTA touch routing, screensaver state, render scheduling, battery banding, persisted display settings |
+| `usage_panel` | panel view model, page ring and navigation, quota pace and warnings, the one-bit drawing surface, the bitmap fonts and the reusable parts of a screen |
+| `usage_panel_app` | the application every panel runs: BLE link, OTA session, event loop, render cadence and the target interface behind them |
 | `usage_json` | strict raw JSON, UTF-8, duplicate-key and public name/version validation |
 | `usage_protocol` | `usage.v1` parsing and validation |
 | `usage_ble` | secure BLE session, bonding, event queues, protocol dispatch |
@@ -91,6 +94,8 @@ The following should normally remain target-owned unless real duplication across
 - brightness and power management;
 - RTC, battery gauge, IMU, audio, SD, and other optional peripherals;
 - layout and presentation decisions tied to screen geometry.
+
+The maintained panels share what two boards have in common, so a change lands once: `usage_panel` holds the logic and the drawing, `usage_panel_app` holds the loop, and a target keeps its drivers, its keys and its screen layout. A target implements `usage_panel::PanelTarget` — begin, load/save, poll, sync, key, render, beep — and hands it to `usage_panel::PanelRuntime`; `usage_panel::PanelTargetImpl` already wires that interface to a board, a display, an alert path and a screen layout, so a target only names its own types.
 
 ## Vendor power-management libraries
 

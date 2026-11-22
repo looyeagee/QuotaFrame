@@ -1,8 +1,7 @@
-#include "panel_logic.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include "unity.h"
 
 using namespace usage_panel;
-using namespace usage_panel::rlcd;
 
 namespace {
 constexpr uint32_t kNow = 1790253127;

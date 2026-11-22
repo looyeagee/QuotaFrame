@@ -1,11 +1,13 @@
 // Host preview of the RLCD 4.2 screens. Writes one PBM per state into the output directory.
 // Build from the repository root:
 //   g++ -std=c++17 -O2 -Ifirmware/components/usage_core/include
+//       -Ifirmware/components/usage_panel/include
 //       -Ifirmware/targets/waveshare_rlcd_42/main tools/rlcd42/render_preview.cpp
-//       firmware/targets/waveshare_rlcd_42/main/{canvas,cjk_font,cjk_font_data,panel_logic,screens}.cpp
+//       firmware/targets/waveshare_rlcd_42/main/screens.cpp
+//       firmware/components/usage_panel/src/{canvas,cjk_font,cjk_font_data,panel_logic,screen_parts}.cpp
 //       firmware/components/usage_core/src/usage_state.cpp -o rlcd42_preview
 #include "canvas.hpp"
-#include "panel_logic.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include "screens.hpp"
 #include <cmath>
 #include <cstdio>

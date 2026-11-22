@@ -74,8 +74,10 @@ ROTATION 只把成品画面在玻璃上转 0°/90°/180°，逻辑坐标不变�
 
 ```text
 g++ -std=c++17 -O2 -Ifirmware/components/usage_core/include \
+    -Ifirmware/components/usage_panel/include \
     -Ifirmware/targets/zltech_154tft/main tools/zl154/render_preview.cpp \
-    firmware/targets/zltech_154tft/main/{canvas,cjk_font,cjk_font_data,panel_logic,screens}.cpp \
+    firmware/targets/zltech_154tft/main/screens.cpp \
+    firmware/components/usage_panel/src/{canvas,cjk_font,cjk_font_data,panel_logic,screen_parts}.cpp \
     firmware/components/usage_core/src/usage_state.cpp -o zl154_preview
 ./zl154_preview <输出目录>
 python3 tools/rlcd42/pbm_to_png.py <输出目录> --scale 2

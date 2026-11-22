@@ -1,9 +1,9 @@
-#include "canvas.hpp"
-#include "view.hpp"
+#include "usage_panel/canvas.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
-namespace usage_panel::rlcd {
+namespace usage_panel {
 namespace {
 // 5 x 7 glyph rows, bit 4 = leftmost column. ASCII 32-95; lowercase maps to uppercase.
 // Punctuation dots are one column wide in the centre column, so the space before and after
@@ -116,16 +116,27 @@ int char_width(char c, int w, int t) {
 }
 } // namespace
 
-void Canvas::begin(uint8_t rotation, bool black_background) {
-    rotation_ = rotation;
-    const bool portrait = rotation == static_cast<uint8_t>(Rotation::Portrait);
-    width_ = portrait ? kNativeHeight : kNativeWidth;
-    height_ = portrait ? kNativeWidth : kNativeHeight;
+void CanvasSurface::attach(uint8_t *buffer, int native_width, int native_height) {
+    bits_ = buffer;
+    native_width_ = native_width;
+    native_height_ = native_height;
+    width_ = native_width;
+    height_ = native_height;
     reset_clip();
-    memset(bits_, black_background ? 0xff : 0x00, sizeof(bits_));
 }
 
-void Canvas::clip(int x, int y, int w, int h) {
+void CanvasSurface::begin(uint8_t rotation, bool black_background) {
+    rotation_ = rotation;
+    // The portrait layout turns the panel a quarter clockwise, so the logical width and height
+    // are the native ones the other way round.
+    const bool portrait = rotation == static_cast<uint8_t>(Rotation::Portrait);
+    width_ = portrait ? native_height_ : native_width_;
+    height_ = portrait ? native_width_ : native_height_;
+    reset_clip();
+    memset(bits_, black_background ? 0xff : 0x00, native_width_ * native_height_ / 8);
+}
+
+void CanvasSurface::clip(int x, int y, int w, int h) {
     // Empty or off-panel rectangles collapse to a window nothing lands in.
     clip_x_ = std::max(0, x);
     clip_y_ = std::max(0, y);
@@ -133,27 +144,27 @@ void Canvas::clip(int x, int y, int w, int h) {
     clip_h_ = std::max(0, std::min(h, height_ - clip_y_));
 }
 
-void Canvas::reset_clip() {
+void CanvasSurface::reset_clip() {
     clip_x_ = 0;
     clip_y_ = 0;
     clip_w_ = width_;
     clip_h_ = height_;
 }
 
-void Canvas::pixel(int x, int y, Ink ink) {
+void CanvasSurface::pixel(int x, int y, Ink ink) {
     if (x < clip_x_ || y < clip_y_ || x >= clip_x_ + clip_w_ || y >= clip_y_ + clip_h_)
         return;
     const bool black = ink == Ink::Black;
     int nx = x, ny = y;
     if (rotation_ == static_cast<uint8_t>(Rotation::Portrait)) {
         // Portrait is the landscape panel turned 90 degrees clockwise.
-        nx = kNativeWidth - 1 - y;
+        nx = native_width_ - 1 - y;
         ny = x;
     } else if (rotation_ == static_cast<uint8_t>(Rotation::Flipped)) {
-        nx = kNativeWidth - 1 - x;
-        ny = kNativeHeight - 1 - y;
+        nx = native_width_ - 1 - x;
+        ny = native_height_ - 1 - y;
     }
-    const int n = ny * kNativeWidth + nx;
+    const int n = ny * native_width_ + nx;
     const uint8_t mask = 0x80 >> (n & 7);
     if (black)
         bits_[n >> 3] |= mask;
@@ -161,30 +172,30 @@ void Canvas::pixel(int x, int y, Ink ink) {
         bits_[n >> 3] &= ~mask;
 }
 
-void Canvas::fill(int x, int y, int w, int h, Ink ink) {
+void CanvasSurface::fill(int x, int y, int w, int h, Ink ink) {
     for (int j = std::max(0, y); j < std::min(height_, y + h); ++j)
         for (int i = std::max(0, x); i < std::min(width_, x + w); ++i)
             pixel(i, j, ink);
 }
 
-void Canvas::frame(int x, int y, int w, int h, int t, Ink ink) {
+void CanvasSurface::frame(int x, int y, int w, int h, int t, Ink ink) {
     fill(x, y, w, t, ink);
     fill(x, y + h - t, w, t, ink);
     fill(x, y, t, h, ink);
     fill(x + w - t, y, t, h, ink);
 }
 
-void Canvas::dotted(int x, int y, int w, int t, Ink ink) {
+void CanvasSurface::dotted(int x, int y, int w, int t, Ink ink) {
     for (int i = x; i + t <= x + w; i += 2 * t)
         fill(i, y, t, t, ink);
 }
 
-int Canvas::text_width(const char *s, int scale) {
+int CanvasSurface::text_width(const char *s, int scale) {
     const int n = glyph_count(s);
     return n ? (n * kCell - 1) * scale : 0;
 }
 
-int Canvas::text(int x, int top, const char *s, int scale, Ink ink) {
+int CanvasSurface::text(int x, int top, const char *s, int scale, Ink ink) {
     int pen = x;
     for (auto *p = reinterpret_cast<const unsigned char *>(s); *p;) {
         const uint8_t *g = glyph_for(next_codepoint(p));
@@ -199,11 +210,11 @@ int Canvas::text(int x, int top, const char *s, int scale, Ink ink) {
     return pen - x;
 }
 
-int Canvas::text_right(int right, int top, const char *s, int scale, Ink ink) {
+int CanvasSurface::text_right(int right, int top, const char *s, int scale, Ink ink) {
     return text(right - text_width(s, scale), top, s, scale, ink);
 }
 
-void Canvas::segment(int left, int top, int w, int h, int t, int index, Ink ink) {
+void CanvasSurface::segment(int left, int top, int w, int h, int t, int index, Ink ink) {
     // Segments are hexagons with 45-degree tips and a 1 px gap to their neighbours. A segment
     // spans rows (or columns) c - half to c - half + t - 1 around its centre line c, so the
     // outer segments are placed to fill the cell exactly to its last row and column.
@@ -229,14 +240,14 @@ void Canvas::segment(int left, int top, int w, int h, int t, int index, Ink ink)
     }
 }
 
-int Canvas::segments_width(const char *s, int w, int t) {
+int CanvasSurface::segments_width(const char *s, int w, int t) {
     int width = 0;
     for (const char *p = s; *p; ++p)
         width += char_width(*p, w, t) + (p[1] ? digit_gap(t) : 0);
     return width;
 }
 
-int Canvas::segments(int x, int top, const char *s, int w, int h, int t, Ink ink) {
+int CanvasSurface::segments(int x, int top, const char *s, int w, int h, int t, Ink ink) {
     int pen = x;
     for (const char *p = s; *p; ++p) {
         const char c = *p;
@@ -261,4 +272,4 @@ int Canvas::segments(int x, int top, const char *s, int w, int h, int t, Ink ink
     }
     return pen - x;
 }
-} // namespace usage_panel::rlcd
+} // namespace usage_panel

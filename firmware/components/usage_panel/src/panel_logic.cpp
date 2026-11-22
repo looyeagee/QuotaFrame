@@ -1,10 +1,10 @@
-#include "panel_logic.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-namespace usage_panel::zltech {
+namespace usage_panel {
 Pace compute_pace(const UsageWindow &window, uint32_t now_epoch, uint32_t window_s) {
     Pace pace;
     if (!window.present || !window.has_reset || !now_epoch || window.reset_at <= now_epoch)
@@ -326,7 +326,7 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
             v.page = return_page_;
             normalize(v);
         } else if (in == Input::Home) {
-            // The home key moves the focus to the next row.
+            // The home action moves the focus to the next row.
             v.focus = (v.focus + 1) % kSettingRows;
         } else if (in == Input::Forward || in == Input::Back) {
             if (v.save_error) {
@@ -391,4 +391,4 @@ bool Navigator::auto_cycle(View &v, uint64_t now_ms) {
     v.page = next(v.page, v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait));
     return true;
 }
-} // namespace usage_panel::zltech
+} // namespace usage_panel

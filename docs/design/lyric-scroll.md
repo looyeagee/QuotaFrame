@@ -1,6 +1,6 @@
 # 歌词滚动算法
 
-本文说明 RLCD 4.2 面板如何在放不下时显示一整句歌词，以及每个参数为什么取这个值。实现见 `firmware/targets/waveshare_rlcd_42/main` 的 `screens.cpp`（`lyric_row`）、`panel_logic.cpp`（`lyric_scroll_offset`、`apply_now_playing`）和 `cjk_font.cpp`（`boundary_at_or_before`、`window_width`、`tail_start`）。
+本文说明 RLCD 4.2 面板如何在放不下时显示一整句歌词，以及每个参数为什么取这个值。实现见 `firmware/targets/waveshare_rlcd_42/main/screens.cpp`（`lyric_row`）与公共包 `firmware/components/usage_panel` 的 `panel_logic.cpp`（`lyric_scroll_offset`、`apply_now_playing`）和 `cjk_font.cpp`（`boundary_at_or_before`、`window_width`、`tail_start`）。
 
 ## 约束
 

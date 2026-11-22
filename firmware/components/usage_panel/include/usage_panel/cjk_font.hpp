@@ -3,9 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "canvas.hpp"
+#include "usage_panel/canvas.hpp"
 
-namespace usage_panel::zltech {
+namespace usage_panel {
 
 /**
  * Text drawing that covers Chinese as well as ASCII.
@@ -48,7 +48,7 @@ class CjkText {
      * Draws `text` with its line top at `top`.
      * @return the advance width in pixels.
      */
-    static int draw(Canvas &canvas, int x, int top, const char *text, int scale,
+    static int draw(CanvasSurface &canvas, int x, int top, const char *text, int scale,
                     Ink ink = Ink::Black);
 
   private:
@@ -57,4 +57,4 @@ class CjkText {
     static int lookup(uint32_t codepoint);
 };
 
-}  // namespace usage_panel::zltech
+}  // namespace usage_panel

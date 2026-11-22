@@ -1,7 +1,7 @@
 #pragma once
 #include "canvas.hpp"
-#include "panel_logic.hpp"
-#include "view.hpp"
+#include "usage_panel/panel_logic.hpp"
+#include "usage_panel/view.hpp"
 namespace usage_panel::zltech {
 /**
  * Composes one complete frame for a view. Pure drawing; no hardware access.

@@ -34,7 +34,7 @@ The repository includes the [Apache-2.0 license text](../../components/esp-mosai
 - Source version: [Fusion Pixel Font 12px monospaced, zh_hans](https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.11.10), release `2026.11.10`.
 - Source file: `fusion-pixel-12px-monospaced-zh_hans.ttf` from the `fusion-pixel-font-12px-monospaced-ttf-v2026.11.10.zip` release asset.
 - License: [SIL Open Font License 1.1](FONT_LICENSE.txt), Copyright 2023 TakWolf and the Fusion Pixel contributors.
-- Local implementation: [main/cjk_font.cpp](main/cjk_font.cpp), [main/cjk_font_data.cpp](main/cjk_font_data.cpp), generator [tools/rlcd42/gen_cjk_font.py](../../../tools/rlcd42/gen_cjk_font.py).
+- Local implementation: [cjk_font.cpp](../../components/usage_panel/src/cjk_font.cpp), [cjk_font_data.cpp](../../components/usage_panel/src/cjk_font_data.cpp), generator [tools/rlcd42/gen_cjk_font.py](../../../tools/rlcd42/gen_cjk_font.py).
 
 The generator rasterises printable ASCII, GB2312 level 1 and 2 hanzi plus the full-width
 punctuation rows on the twelve pixel grid the font was drawn for, packs each glyph as twelve

@@ -1,9 +1,9 @@
 #pragma once
-#include "view.hpp"
+#include "usage_panel/view.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
-namespace usage_panel::rlcd {
+namespace usage_panel {
 /**
  * Window lengths used for pace markers. usage.v1 publishes only reset times, so the
  * lengths are fixed: MiniMax resets its five-hour window four times a day and its
@@ -144,17 +144,11 @@ bool week_present(const ProviderSnapshot &s, bool encrypted);
 /**
  * Panel input.
  *
- * The board's KEY button (GPIO18) sits left of the case and its BOOT button (GPIO0) right
- * of it. The PWR button between them switches the power circuit and reaches no GPIO, so
- * the action of the middle button is taken from the chord of both keys.
+ * Back and Forward are the two keys that step through the page ring. Home is the middle
+ * action: the chord of both keys on a board that has two, a key of its own on a board that
+ * has three. Hold is any key held for 800 ms.
  */
-enum class Input : uint8_t {
-    None,
-    Back,    // Left key (KEY, GPIO18).
-    Forward, // Right key (BOOT, GPIO0).
-    Home,    // Both keys together, the stand-in for the middle button.
-    Hold,    // Either key held for 800 ms.
-};
+enum class Input : uint8_t { None, Back, Forward, Home, Hold };
 
 /** Effects of one navigation step that the application loop must carry out. */
 struct NavResult {
@@ -162,7 +156,7 @@ struct NavResult {
     bool save = false; // Settings changed and must be persisted.
 };
 
-/** Page ring, alert dismissal and auto cycling for the two-key panel. */
+/** Page ring, alert dismissal and auto cycling. */
 class Navigator {
   public:
     /**
@@ -201,4 +195,4 @@ uint32_t cycle_interval_ms(uint8_t cycle);
 
 /** Number of options on a Settings row. */
 int setting_options(int row);
-} // namespace usage_panel::rlcd
+} // namespace usage_panel

@@ -3,13 +3,9 @@ idf_component_register(
         "test_main.cpp"
         "test_panel_logic.cpp"
         "test_screens.cpp"
-        "../../../main/canvas.cpp"
-        "../../../main/cjk_font.cpp"
-        "../../../main/cjk_font_data.cpp"
-        "../../../main/panel_logic.cpp"
         "../../../main/screens.cpp"
     INCLUDE_DIRS "../../../main"
-    REQUIRES unity usage_core
+    REQUIRES unity usage_core usage_panel
     WHOLE_ARCHIVE
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

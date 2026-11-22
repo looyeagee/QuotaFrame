@@ -1,5 +1,5 @@
 #include "board.hpp"
-#include "panel_logic.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"

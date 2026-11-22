@@ -1,7 +1,7 @@
 #pragma once
 #include "canvas.hpp"
-#include "panel_logic.hpp"
-#include "view.hpp"
+#include "usage_panel/panel_logic.hpp"
+#include "usage_panel/view.hpp"
 namespace usage_panel::rlcd {
 /** Composes one complete frame for a view. Pure drawing; no hardware access. */
 class Screens {
@@ -76,7 +76,4 @@ class Screens {
     void pairing(const View &v);
     void ota(const View &v);
 };
-
-/** Status text for the header: PAIRING, UPDATING, LINKED or OFFLINE. */
-const char *link_status(const View &view);
 } // namespace usage_panel::rlcd

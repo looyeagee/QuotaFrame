@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace usage_panel::rlcd {
+namespace usage_panel {
 
 /**
  * Tables of the 12 x 12 CJK bitmap font.
@@ -22,4 +22,4 @@ extern const int kCjkGlyphCount;
 
 }  // namespace cjk_data
 
-}  // namespace usage_panel::rlcd
+}  // namespace usage_panel

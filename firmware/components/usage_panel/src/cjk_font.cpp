@@ -1,10 +1,10 @@
-#include "cjk_font.hpp"
+#include "usage_panel/cjk_font.hpp"
 
 #include <cstring>
 
-#include "cjk_font_data.hpp"
+#include "usage_panel/cjk_font_data.hpp"
 
-namespace usage_panel::zltech {
+namespace usage_panel {
 namespace {
 
 constexpr int kGlyphPixels = 12;
@@ -161,7 +161,7 @@ void CjkText::fit(char *out, size_t out_size, const char *text, int max_width, i
     std::memcpy(out + kept, kEllipsis, sizeof(kEllipsis));
 }
 
-int CjkText::draw(Canvas &canvas, int x, int top, const char *text, int scale, Ink ink) {
+int CjkText::draw(CanvasSurface &canvas, int x, int top, const char *text, int scale, Ink ink) {
     int pen = x;
     for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p;) {
         const uint32_t codepoint = next_codepoint(p);
@@ -193,4 +193,4 @@ int CjkText::draw(Canvas &canvas, int x, int top, const char *text, int scale, I
     return pen - x;
 }
 
-}  // namespace usage_panel::zltech
+}  // namespace usage_panel

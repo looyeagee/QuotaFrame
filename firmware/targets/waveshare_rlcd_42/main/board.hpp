@@ -2,10 +2,10 @@
 #include "driver/i2c_master.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_oneshot.h"
-#include "panel_logic.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include "usage_protocol/time_sync.hpp"
 #include "usage_rtc/rtc_clock.hpp"
-#include "view.hpp"
+#include "usage_panel/view.hpp"
 namespace usage_panel::rlcd {
 /** ESP32-S3-RLCD-4.2 peripherals other than the display and the speaker. */
 class Board {

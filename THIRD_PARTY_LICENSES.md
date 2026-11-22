@@ -257,7 +257,7 @@ For ESP Component Registry entries, `Registry license` is the API value for the 
 - Version: `2026.11.10`
 - Source: https://github.com/TakWolf/fusion-pixel-font/releases/tag/2026.11.10 (`fusion-pixel-12px-monospaced-zh_hans.ttf`)
 - SPDX: `OFL-1.1`
-- Generated subset: 12 x 12 bitmap glyphs for GB2312 level 1 and 2 plus full-width punctuation, embedded as `firmware/targets/waveshare_rlcd_42/main/cjk_font_data.cpp`
+- Generated subset: 12 x 12 bitmap glyphs for GB2312 level 1 and 2 plus full-width punctuation, embedded as `firmware/components/usage_panel/src/cjk_font_data.cpp`
 - Copyright/notice: `firmware/targets/waveshare_rlcd_42/FONT_LICENSE.txt`
 - Local integration: [UPSTREAM.md](firmware/targets/waveshare_rlcd_42/UPSTREAM.md)
 

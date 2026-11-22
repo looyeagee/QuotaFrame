@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 namespace usage_panel::rlcd {
+class Board;
 /**
  * Alert tone through the ES8311 codec and the speaker amplifier.
  *
@@ -14,10 +15,11 @@ namespace usage_panel::rlcd {
 class Beeper {
   public:
     /**
-     * Configures the codec, I2S channel and playback task. `bus` must remain valid for this
-     * object's lifetime. Returns false on codec, I2S or task initialization failure.
+     * Configures the codec, I2S channel and playback task. The codec hangs off the board's I2C
+     * bus, which has to remain valid for this object's lifetime. Returns false on codec, I2S or
+     * task initialization failure.
      */
-    bool begin(i2c_master_bus_handle_t bus);
+    bool begin(const Board &board);
     /** Queues one alert pattern; requests during playback are coalesced. No effect unless ready. */
     void alert();
     bool ready() const { return task_ != nullptr; }

@@ -1,6 +1,6 @@
 #include "canvas.hpp"
-#include "cjk_font.hpp"
-#include "panel_logic.hpp"
+#include "usage_panel/cjk_font.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include "screens.hpp"
 #include "unity.h"
 #include <cstdio>

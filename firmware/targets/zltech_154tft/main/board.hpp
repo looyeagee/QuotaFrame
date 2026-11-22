@@ -1,9 +1,9 @@
 #pragma once
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_oneshot.h"
-#include "panel_logic.hpp"
+#include "usage_panel/panel_logic.hpp"
 #include "usage_protocol/time_sync.hpp"
-#include "view.hpp"
+#include "usage_panel/view.hpp"
 namespace usage_panel::zltech {
 /**
  * Board peripherals other than the display: the three keys, the battery sense and the clock.

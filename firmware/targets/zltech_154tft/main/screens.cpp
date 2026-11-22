@@ -1,13 +1,12 @@
 #include "screens.hpp"
-#include "cjk_font.hpp"
-#include "panel_logic.hpp"
+#include "usage_panel/cjk_font.hpp"
+#include "usage_panel/panel_logic.hpp"
+#include "usage_panel/screen_parts.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 namespace usage_panel::zltech {
 namespace {
-constexpr const char *kNames[2] = {"DEEPSEEK", "MINIMAX"};
-constexpr const char *kDays[7] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
 // Content sits 6 px inside the 2 px bezel frame drawn 4 px from the panel edge.
 constexpr int kLeft = 10, kBezel = 4;
 // Pixel-font line height at the label scale.
@@ -34,212 +33,10 @@ constexpr int kMusicLyricsTop = 100, kMusicLyricPitch = 24, kMusicLyricRows = 5;
 // The inverted lyric row extends this far past the text margin, like the status chips.
 constexpr int kMusicTextInset = 4;
 
-Provider provider_of(int i) { return provider_for(i); }
-
-/** Whether the cached balance may be drawn: retained values survive a disconnect. */
-bool balance_present(const ProviderSnapshot &s, bool encrypted) {
-    return s.has_valid_data && s.has_balance && (s.latest_balance_present || !encrypted);
-}
-
-/**
- * Formats a balance in whole cents as "12.34".
- *
- * From 1000 units the decimals are dropped: the segment field for five glyphs would not fit
- * the 220 px content column.
- */
-void format_balance(uint32_t cents, char *out, size_t size) {
-    if (cents >= 100000)
-        snprintf(out, size, "%lu", static_cast<unsigned long>((cents + 50) / 100));
-    else
-        snprintf(out, size, "%lu.%02lu", static_cast<unsigned long>(cents / 100),
-                 static_cast<unsigned long>(cents % 100));
-}
-
-/**
- * Segment height that keeps the amount of `s` and its currency inside `max_width` at the
- * 5:9 cell ratio, never taller than `max_height`.
- */
-int balance_height(const ProviderSnapshot &s, int max_width, int max_height) {
-    char amount[24];
-    format_balance(s.balance_cents, amount, sizeof(amount));
-    const int cur_w = Canvas::text_width(s.currency, 2);
-    for (int h : {72, 64, 56, 48, 44, 40, 36, 32, 28, 24}) {
-        if (h > max_height)
-            continue;
-        const int w = h * 5 / 9;
-        // The currency sits 6 px after the amount, so both have to fit.
-        if (Canvas::segments_width(amount, w, std::max(3, h / 8)) + 6 + cur_w <= max_width)
-            return h;
-    }
-    return 24;
-}
-
-/**
- * Draws the balance amount and its currency with the figure top at `top`.
- *
- * @return the figure height, so a caller can align the currency or a label with it.
- */
-int draw_balance(Canvas &c, int x, int top, const ProviderSnapshot &s, int max_width,
-                 int max_height = 72) {
-    char amount[24];
-    format_balance(s.balance_cents, amount, sizeof(amount));
-    const int h = balance_height(s, max_width, max_height);
-    const int w = h * 5 / 9, t = std::max(3, h / 8);
-    const int width = c.segments(x, top, amount, w, h, t);
-    const int cur_w = Canvas::text_width(s.currency, 2);
-    if (width + 6 + cur_w <= max_width)
-        c.text(x + width + 6, top + h - kLine, s.currency, 2);
-    return h;
-}
-
-int round_px(float v) { return static_cast<int>(std::lround(v)); }
-
-/**
- * Draws the balance in the pixel font at (`x`, `top`) with its currency 6 px after the amount.
- *
- * The amount keeps the label's line height, so the provider name and its balance read as one
- * caption row. The currency drops to the small scale when a six-glyph amount would otherwise
- * not fit before `max_width`; it is then bottom-aligned with the label's line box.
- */
-void draw_inline_balance(Canvas &c, int x, int top, const ProviderSnapshot &s, int max_width) {
-    char amount[24];
-    format_balance(s.balance_cents, amount, sizeof(amount));
-    const int width = c.text(x, top, amount, 2);
-    const int currency_x = x + width + 6;
-    if (width + 6 + Canvas::text_width(s.currency, 2) <= max_width)
-        c.text(currency_x, top, s.currency, 2);
-    else
-        c.text(currency_x, top + kLine - 7, s.currency, 1);
-}
-
-/** Playhead as "1:05 / 4:35", or with an hours field for long tracks. */
-void format_playhead(uint32_t position, uint32_t duration, char *out, size_t size) {
-    // Longest form: two ten-digit fields around " / " plus the colon separators.
-    char text[40];
-    if (duration == 0) {
-        snprintf(text, sizeof(text), "-:-- / -:--");
-    } else if (duration >= 3600) {
-        snprintf(text, sizeof(text), "%lu:%02lu:%02lu / %lu:%02lu:%02lu",
-                 static_cast<unsigned long>(position / 3600),
-                 static_cast<unsigned long>(position / 60 % 60),
-                 static_cast<unsigned long>(position % 60),
-                 static_cast<unsigned long>(duration / 3600),
-                 static_cast<unsigned long>(duration / 60 % 60),
-                 static_cast<unsigned long>(duration % 60));
-    } else {
-        snprintf(text, sizeof(text), "%lu:%02lu / %lu:%02lu",
-                 static_cast<unsigned long>(position / 60),
-                 static_cast<unsigned long>(position % 60),
-                 static_cast<unsigned long>(duration / 60),
-                 static_cast<unsigned long>(duration % 60));
-    }
-    snprintf(out, size, "%s", text);
-}
-
-/** Balance in cents for the balance service, or -1 when it has none to show. */
-long long compact_balance(const View &v, int i) {
-    const auto &s = v.model.snapshot(provider_of(i));
-    return balance_present(s, v.link.encrypted) ? static_cast<long long>(s.balance_cents) : -1;
-}
-
-/** Empty-row message when neither window has a value. */
-const char *empty_message(const View &v) {
-    return v.link.encrypted ? "WAITING FOR DATA" : "NO DATA";
-}
-
-/** Offline or absent windows have no live reset countdown. */
-void reset_countdown(const View &v, int i, bool week, char *out, size_t size) {
-    const auto provider = provider_of(i);
-    const auto &s = v.model.snapshot(provider);
-    const bool present = week ? week_present(s, v.link.encrypted)
-                              : short_present(s, v.link.encrypted);
-    if (!v.link.encrypted || !present) {
-        snprintf(out, size, "--");
-        return;
-    }
-    const uint32_t epoch = v.model.estimated_epoch(provider, v.now_ms);
-    if (week)
-        format_week_countdown(s.week_window, epoch, out, size);
-    else
-        format_short_countdown(s.short_window, epoch, v.settings.seconds, out, size);
-}
-
-/** Sample age label; false when the sample is under a minute old and needs no label. */
-bool age_label(const View &v, int i, char *out, size_t size) {
-    const auto &s = v.model.snapshot(provider_of(i));
-    if (!s.has_valid_data) {
-        snprintf(out, size, "NO DATA");
-        return true;
-    }
-    const uint32_t epoch = v.model.estimated_epoch(provider_of(i), v.now_ms);
-    const uint32_t age = epoch > s.sampled_at ? epoch - s.sampled_at : 0;
-    format_age(age, out, size);
-    return age >= 60;
-}
-
-/** Pace markers for the two windows of one provider; invalid while offline or absent. */
-struct Paces {
-    Pace short_pace, week_pace;
-};
-Paces paces(const View &v, int i, bool sp, bool wp) {
-    const auto p = provider_of(i);
-    const auto &s = v.model.snapshot(p);
-    const bool enc = v.link.encrypted;
-    const uint32_t epoch = v.model.estimated_epoch(p, v.now_ms);
-    return {enc && sp ? compute_pace(s.short_window, epoch, kShortWindowSeconds) : Pace{},
-            enc && wp ? compute_pace(s.week_window, epoch, kWeekWindowSeconds) : Pace{}};
-}
-
-float marker(const Pace &pace) { return pace.valid ? pace_fraction(pace) : -1.f; }
-
-struct Digits {
-    int w, t;
-};
-/** Seven-segment proportions for a given digit height. */
-Digits digits_for(int h) { return {h * 5 / 9, std::max(3, h / 10)}; }
-/** The percent sign is 3/8 of a digit wide plus one stroke, bottom-aligned. */
-int percent_width(int h) { return digits_for(h).w * 3 / 8 + digits_for(h).t; }
-/**
- * Space between the digit field and the percent sign: a third of a digit, so a 1 in the last
- * cell (lit on the right-hand side of its cell) does not read as touching the sign.
- */
-int percent_gap(int h) { return digits_for(h).w / 3; }
-
-/** Percent sign drawn with the stroke thickness of the digits: two square dots and a diagonal. */
-void percent_sign(Canvas &c, int x, int bottom, int h, Ink ink) {
-    const Digits d = digits_for(h);
-    const int w = percent_width(h), height = h * 45 / 100, top = bottom - height;
-    const int dot = d.t;
-    c.fill(x, top, dot, dot, ink);
-    c.fill(x + w - dot, bottom - dot, dot, dot, ink);
-    const int stroke = d.t;
-    for (int y = top; y < bottom; ++y) {
-        const int cx = x + (w - stroke) * (bottom - 1 - y) / (height - 1);
-        c.fill(cx, y, stroke, 1, ink);
-    }
-}
-
-/**
- * A fixed field of a hundreds half digit and two digit cells, right-aligned like a segment LCD:
- * 5 shows as a lone digit in the last cell, 100 lights the half digit.
- */
-void percent_digits(int percent, char *out, size_t size) {
-    if (percent < 0)
-        snprintf(out, size, "h--");
-    else if (percent >= 100)
-        snprintf(out, size, "H00");
-    else
-        snprintf(out, size, "h%2d", percent);
-}
+// Segment heights the balance figure tries, largest first; the smallest one is the
+// fallback when none of them fits.
+constexpr int kBalanceHeights[] = {72, 64, 56, 48, 44, 40, 36, 32, 28, 24};
 } // namespace
-
-const char *link_status(const View &v) {
-    if (v.link.has_passkey)
-        return "PAIRING";
-    if (v.ota.stage != OtaStage::Idle)
-        return "UPDATING";
-    return v.link.encrypted ? "LINKED" : "OFFLINE";
-}
 
 int Screens::battery(const View &v, int right, Ink ink) {
     char pct[8];
@@ -335,14 +132,14 @@ void Screens::home(const View &v) {
     header(v, nullptr);
     const int right = c_.width() - kLeft;
     char b[32];
-    const auto &d = v.model.snapshot(provider_of(0));
-    const auto &m = v.model.snapshot(provider_of(1));
+    const auto &d = v.model.snapshot(provider_for(0));
+    const auto &m = v.model.snapshot(provider_for(1));
 
     // DeepSeek block: the caption row and the figure underneath it.
-    c_.text(kLeft, kContentTop, kNames[0], 2);
+    c_.text(kLeft, kContentTop, kProviderNames[0], 2);
     if (balance_present(d, v.link.encrypted)) {
-        const int h = balance_height(d, right - kLeft, 40);
-        draw_balance(c_, kLeft, 50, d, right - kLeft, h);
+        const int h = balance_height(d, right - kLeft, 40, kBalanceHeights);
+        draw_balance(c_, kLeft, 50, d, right - kLeft, h, kBalanceHeights);
     } else {
         c_.text(kLeft, 52, empty_message(v), 2);
     }
@@ -351,7 +148,7 @@ void Screens::home(const View &v) {
     c_.dotted(kLeft, 96, right - kLeft);
 
     // MiniMax block: both windows as a label row, a bar under it, then the weekly window.
-    c_.text(kLeft, 102, kNames[1], 2);
+    c_.text(kLeft, 102, kProviderNames[1], 2);
     const bool sp = short_present(m, v.link.encrypted), wp = week_present(m, v.link.encrypted);
     if (!sp && !wp) {
         c_.text(kLeft, 124, empty_message(v), 2);
@@ -376,18 +173,18 @@ void Screens::home(const View &v) {
 }
 
 void Screens::balance_page(const View &v) {
-    const auto &s = v.model.snapshot(provider_of(0));
+    const auto &s = v.model.snapshot(provider_for(0));
     const int right = c_.width() - kLeft;
     char b[32];
-    header(v, kNames[0]);
+    header(v, kProviderNames[0]);
     c_.text(kLeft, kContentTop, "BALANCE", 2);
     if (!balance_present(s, v.link.encrypted)) {
         c_.text(kLeft, 74, empty_message(v), 2);
         return;
     }
     // The figure sits under its caption and ends well above the footer.
-    const int h = balance_height(s, right - kLeft, 88);
-    draw_balance(c_, kLeft, 52, s, right - kLeft, h);
+    const int h = balance_height(s, right - kLeft, 88, kBalanceHeights);
+    draw_balance(c_, kLeft, 52, s, right - kLeft, h, kBalanceHeights);
     if (age_label(v, 0, b, sizeof(b)))
         c_.text(kLeft, 156, b, 2);
     c_.dotted(kLeft, 172, right - kLeft);
@@ -397,10 +194,10 @@ void Screens::balance_page(const View &v) {
 }
 
 void Screens::windows_page(const View &v) {
-    const auto &s = v.model.snapshot(provider_of(1));
+    const auto &s = v.model.snapshot(provider_for(1));
     const int right = c_.width() - kLeft;
     char b[32];
-    header(v, kNames[1]);
+    header(v, kProviderNames[1]);
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
     if (!sp && !wp) {
         c_.text(kLeft, kContentTop, empty_message(v), 2);
@@ -449,18 +246,18 @@ void Screens::windows_page(const View &v) {
 void Screens::alert(const View &v) {
     // Only MiniMax publishes a quota threshold; the balance service raises no alert.
     constexpr int kProvider = 1;
-    const auto p = provider_of(kProvider);
+    const auto p = provider_for(kProvider);
     const auto &s = v.model.snapshot(p);
     const uint32_t epoch = v.model.estimated_epoch(p, v.now_ms);
     const int w = c_.width(), h = c_.height(), right = w - kLeft;
     const bool exhausted = s.short_window.used_percent >= 100;
     char b[32];
-    c_.text(kLeft, 12, kNames[kProvider], 2, Ink::White);
+    c_.text(kLeft, 12, kProviderNames[kProvider], 2, Ink::White);
     const float balance = static_cast<float>(compact_balance(v, 0));
     if (balance >= 0)
-        snprintf(b, sizeof(b), "%s %.2f", kNames[0], static_cast<double>(balance) / 100.0);
+        snprintf(b, sizeof(b), "%s %.2f", kProviderNames[0], static_cast<double>(balance) / 100.0);
     else
-        snprintf(b, sizeof(b), "%s --", kNames[0]);
+        snprintf(b, sizeof(b), "%s --", kProviderNames[0]);
     c_.text_right(right, 12, b, 1, Ink::White);
     big_percent(kLeft, 34, s.short_window.used_percent, 132, Ink::White);
     c_.text(kLeft, 174, exhausted ? "5H EXHAUSTED" : "5H NEAR LIMIT", 2, Ink::White);
@@ -481,7 +278,7 @@ void Screens::clock(const View &v) {
     const bool offline = !v.link.encrypted && !v.link.has_passkey;
     char b[32];
     if (v.clock.valid)
-        snprintf(b, sizeof(b), "%s %02u/%02u", kDays[v.clock.weekday % 7], v.clock.month,
+        snprintf(b, sizeof(b), "%s %02u/%02u", kDayNames[v.clock.weekday % 7], v.clock.month,
                  v.clock.day);
     else
         snprintf(b, sizeof(b), "NO DATE");
@@ -507,10 +304,10 @@ void Screens::clock(const View &v) {
 
     // The quota band: MiniMax on top, the balance underneath.
     c_.dotted(kLeft, 132, right - kLeft);
-    const auto &s = v.model.snapshot(provider_of(1));
+    const auto &s = v.model.snapshot(provider_for(1));
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
     const Paces pace = paces(v, 1, sp, wp);
-    c_.text(kLeft, 140, kNames[1], 1);
+    c_.text(kLeft, 140, kProviderNames[1], 1);
     if (sp)
         snprintf(b, sizeof(b), "%d%%", s.short_window.used_percent);
     else
@@ -528,9 +325,9 @@ void Screens::clock(const View &v) {
     bar(kLeft, 192, right - kLeft, 10, wp ? s.week_window.used_percent : -1,
         marker(pace.week_pace));
 
-    const auto &d = v.model.snapshot(provider_of(0));
-    c_.text(kLeft, 210, kNames[0], 1);
-    const int balance_x = kLeft + Canvas::text_width(kNames[0], 1) + 8;
+    const auto &d = v.model.snapshot(provider_for(0));
+    c_.text(kLeft, 210, kProviderNames[0], 1);
+    const int balance_x = kLeft + Canvas::text_width(kProviderNames[0], 1) + 8;
     if (balance_present(d, v.link.encrypted))
         draw_inline_balance(c_, balance_x, 206, d, right - balance_x);
     else

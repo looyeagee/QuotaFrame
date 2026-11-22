@@ -1,6 +1,7 @@
 // Codec register configuration adapted from Espressif esp_codec_dev 1.3.5.
 // Copyright 2023 Espressif Systems (Shanghai) CO LTD. Apache-2.0; see ../UPSTREAM.md.
 #include "beeper.hpp"
+#include "board.hpp"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include <cmath>
@@ -47,7 +48,8 @@ bool Beeper::write(uint8_t reg, uint8_t value) {
     return i2c_master_transmit(codec_, bytes, sizeof(bytes), 100) == ESP_OK;
 }
 
-bool Beeper::begin(i2c_master_bus_handle_t bus) {
+bool Beeper::begin(const Board &board) {
+    const i2c_master_bus_handle_t bus = board.bus();
     if (i2c_master_probe(bus, kCodecAddress, 100) != ESP_OK)
         return false;
     i2c_device_config_t device{};

@@ -1,5 +1,6 @@
 #pragma once
 namespace usage_panel::zltech {
+class Board;
 /**
  * Alert tone placeholder for this board.
  *
@@ -10,7 +11,8 @@ namespace usage_panel::zltech {
  */
 class Beeper {
   public:
-    bool begin();
+    /** There is no audio path on this board, so there is nothing to bring up. */
+    bool begin(const Board &board);
     void alert();
     bool ready() const { return false; }
 };

@@ -212,10 +212,11 @@ so the display would sometimes contradict the LED.
 
 ## Glyphs and preview
 
-The pixel font and the seven-segment digits are defined in `main/canvas.cpp`. Chinese text
-needs a font of its own, so `main/cjk_font.cpp` draws a generated 12 x 12 bitmap font:
+The pixel font and the seven-segment digits are defined in the shared package, in
+`firmware/components/usage_panel/src/canvas.cpp`. Chinese text needs a font of its own, so
+`firmware/components/usage_panel/src/cjk_font.cpp` draws a generated 12 x 12 bitmap font:
 `tools/rlcd42/gen_cjk_font.py` rasterises the Fusion Pixel 12px font (OFL-1.1) into
-`main/cjk_font_data.cpp`, which holds 7024 glyphs (printable ASCII, GB2312 level 1 and 2, and
+`firmware/components/usage_panel/src/cjk_font_data.cpp`, which holds 7024 glyphs (printable ASCII, GB2312 level 1 and 2, and
 the full-width punctuation) as twelve rows of twelve pixels each, about 180 KB of flash. ASCII
 is drawn from that table in the six pixel cell of the built-in font, so a Latin word or a number
 keeps the width it always had while sitting on the baseline of the hanzi beside it; the built-in

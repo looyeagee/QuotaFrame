@@ -4,8 +4,8 @@
 #include <array>
 #include <cstdint>
 // The view and renderer depend only on usage_core so the screens can be rendered on a host.
-namespace usage_panel::rlcd {
-/** Pages in navigation order; Settings sits outside the KEY ring. */
+namespace usage_panel {
+/** Pages in navigation order; Settings sits outside the page ring. */
 enum class Page : uint8_t { Home, Deepseek, Minimax, Music, Clock, Settings };
 
 enum class Rotation : uint8_t { Landscape, Portrait, Flipped };
@@ -70,4 +70,4 @@ struct View {
     uint64_t now_ms = 0;
     char device_name[24]{};
 };
-} // namespace usage_panel::rlcd
+} // namespace usage_panel
