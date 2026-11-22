@@ -1,0 +1,119 @@
+dependencies:
+  esp_desktop_buddy:
+    component_hash: f1305e181359597ab959383220bf260f9ce6611a6c15a9945439dd759b670946
+    dependencies:
+    - name: idf
+      version: '>=5.4'
+    - name: espressif/cjson
+      version: 1.7.19~2
+    source:
+      git: https://github.com/espressif/esp-desktop-buddy.git
+      path: components/esp_desktop_buddy
+      type: git
+    version: b6bac05db208717676e70180e5269d79f32b2d68
+  esp_desktop_buddy_transport_ble:
+    component_hash: d27a5886b6ff0d053acacaf6b10749627e5176f4679790ae560ab0b2012b5516
+    dependencies:
+    - name: idf
+      version: '>=5.4'
+    source:
+      git: https://github.com/espressif/esp-desktop-buddy.git
+      path: components/esp_desktop_buddy_transport_ble
+      type: git
+    version: b6bac05db208717676e70180e5269d79f32b2d68
+  espressif/cjson:
+    component_hash: e788323270d90738662d66fffa910bfe1fba019bba087f01557e70c40485b469
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.7.19~2
+  espressif/cmake_utilities:
+    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 0.5.3
+  espressif/esp_io_expander:
+    component_hash: 7b7f91270172e46ca4597e3874f48d8412e280e8c295559f5922ec38656e3e5f
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.4.2'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.2.1
+  espressif/esp_io_expander_tca9554:
+    component_hash: ee94a439ade1c17129a491efe572c600899306a2ffadbde491852d95333e28b4
+    dependencies:
+    - name: espressif/esp_io_expander
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^1.2.0
+    - name: idf
+      require: private
+      version: '>=5.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.0.3
+  espressif/esp_lcd_sh8601:
+    component_hash: 18245cd23204eefb67f61b362405f78364fa13b13cdedda5f7546d89701c506b
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: idf
+      require: private
+      version: '>=5.3'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.0.1~1
+  espressif/esp_lcd_touch:
+    component_hash: 3f85a7d95af876f1a6ecca8eb90a81614890d0f03a038390804e5a77e2caf862
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.4.2'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.2.1
+  espressif/esp_lcd_touch_ft5x06:
+    component_hash: d49f3dec3ae89617c31d96ac6f31bbc3212a0f049354eabd55c9457e454c56ae
+    dependencies:
+    - name: espressif/esp_lcd_touch
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^1.2.0
+    - name: idf
+      require: private
+      version: '>=5.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.1.1
+  idf:
+    source:
+      type: idf
+    version: 6.1.1
+direct_dependencies:
+- esp_desktop_buddy
+- esp_desktop_buddy_transport_ble
+- espressif/esp_io_expander_tca9554
+- espressif/esp_lcd_sh8601
+- espressif/esp_lcd_touch_ft5x06
+- idf
+manifest_hash: 0dfe9c1843b36631a43f73cd12dbaa12f3e9645b914bd3b8f880d1400d8adc23
+target: esp32s3
+version: 3.0.0

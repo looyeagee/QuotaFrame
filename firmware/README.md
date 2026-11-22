@@ -28,6 +28,7 @@ Folder Push 本地快照原因见 [UPSTREAM.md](components/esp_desktop_buddy_fol
 | 目标设备 | 状态 | UI / 输入栈 |
 | --- | --- | --- |
 | ESP32-S3-RLCD-4.2 | 已维护 | 自绘帧缓冲、ST7305 驱动、KEY / BOOT 按键 |
+| Waveshare AMOLED 1.8 (V1) | hardware bring-up | 自绘帧缓冲、SH8601 QSPI 驱动、触摸滑动翻页、BOOT 按键 |
 | ZLTech 1.54 TFT | hardware bring-up | 自绘帧缓冲、ST7789 驱动、KEY = VOL+ / BOOT 按键、背光 PWM |
 
 各目标的实机验收范围见 [verification.md](../docs/verification.md)。
@@ -52,6 +53,7 @@ eim run "idf.py -C firmware/targets/<target> merge-bin -o <full-image>" v6.1
 | `<target>` | OTA app 镜像 | `<full-image>` |
 | --- | --- | --- |
 | `waveshare_rlcd_42` | `ws_rlcd_42.bin` | `ws_rlcd_42_full.bin` |
+| `waveshare_amoled_18` | `ws_amoled_18.bin` | `ws_amoled_18_full.bin` |
 | `zltech_154tft` | `zltech_154tft.bin` | `zltech_154tft_full.bin` |
 
 

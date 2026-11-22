@@ -59,6 +59,17 @@ TARGETS: tuple[TargetDefinition, ...] = (
         ),
     ),
     TargetDefinition(
+        id="waveshare_amoled_18",
+        label="Waveshare AMOLED 1.8",
+        firmware_project="firmware/targets/waveshare_amoled_18",
+        idf_version="6.1",
+        ota_image="ws_amoled_18.bin",
+        full_image="ws_amoled_18_full.bin",
+        release_stem="waveshare-esp32-s3-touch-amoled-18",
+        image_chip_id=9,
+        ota_partition_bytes=7 * 1024 * 1024,
+    ),
+    TargetDefinition(
         id="zltech_154tft",
         label="ZLTech 1.54 TFT",
         firmware_project="firmware/targets/zltech_154tft",

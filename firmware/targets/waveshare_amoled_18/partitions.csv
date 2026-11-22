@@ -1,0 +1,10 @@
+# Name,     Type, SubType, Offset,   Size,     Flags
+# 16 MB flash, two equal OTA slots and a spare data slot. The board ships with a vendor
+# image; flashing this target replaces the whole chip, so nothing here is laid out to match
+# the vendor's partition offsets.
+nvs,        data, nvs,     0x9000,   0x6000,
+otadata,    data, ota,     0xf000,   0x2000,
+phy_init,   data, phy,     0x11000,  0x1000,
+ota_0,      app,  ota_0,   0x20000,  0x700000,
+ota_1,      app,  ota_1,   0x720000, 0x700000,
+storage,    data, spiffs,  0xe20000, 0x1e0000,

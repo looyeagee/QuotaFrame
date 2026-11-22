@@ -35,11 +35,19 @@ class TargetRegistryTests(unittest.TestCase):
                 "zltech_154tft_full.bin",
                 "zltech-esp32-s3-154tft",
             ),
+            "waveshare_amoled_18": (
+                "Waveshare AMOLED 1.8",
+                "firmware/targets/waveshare_amoled_18",
+                "6.1",
+                "ws_amoled_18.bin",
+                "ws_amoled_18_full.bin",
+                "waveshare-esp32-s3-touch-amoled-18",
+            ),
         }
         self.assertEqual(set(expected), set(TARGETS_BY_ID))
         self.assertEqual(
             {target.id: target.image_chip_id for target in TARGETS},
-            {"waveshare_rlcd_42": 9, "zltech_154tft": 9},
+            {"waveshare_rlcd_42": 9, "waveshare_amoled_18": 9, "zltech_154tft": 9},
         )
         for target_id, contract in expected.items():
             target = TARGETS_BY_ID[target_id]

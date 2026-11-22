@@ -79,6 +79,13 @@ For ESP Component Registry entries, `Registry license` is the API value for the 
 - Registry license / SPDX: `Apache-2.0`
 - Copyright/notice: https://components-file.espressif.com/components/espressif/esp_io_expander/1.2.1/license.txt
 
+## `espressif/esp_io_expander_tca9554`
+
+- Version: `2.0.3`
+- Source: https://components.espressif.com/components/espressif/esp_io_expander_tca9554/versions/2.0.3
+- Registry license / SPDX: `Apache-2.0`
+- Copyright/notice: https://components-file.espressif.com/components/espressif/esp_io_expander_tca9554/2.0.3/license.txt
+
 ## `espressif/esp_lcd_co5300`
 
 - Version: `2.1.0`
@@ -95,12 +102,26 @@ For ESP Component Registry entries, `Registry license` is the API value for the 
 - Registry license / SPDX: `Apache-2.0`
 - Copyright/notice: https://components-file.espressif.com/components/espressif/esp_lcd_panel_io_additions/1.0.1~1/license.txt
 
+## `espressif/esp_lcd_sh8601`
+
+- Version: `2.0.1~1`
+- Source: https://components.espressif.com/components/espressif/esp_lcd_sh8601/versions/2.0.1~1
+- Registry license / SPDX: `Apache-2.0`
+- Copyright/notice: https://components-file.espressif.com/components/espressif/esp_lcd_sh8601/2.0.1~1/license.txt
+
 ## `espressif/esp_lcd_touch`
 
 - Version: `1.2.1`
 - Source: https://components.espressif.com/components/espressif/esp_lcd_touch/versions/1.2.1
 - Registry license / SPDX: `Apache-2.0`
 - Copyright/notice: https://components-file.espressif.com/components/espressif/esp_lcd_touch/1.2.1/license.txt
+
+## `espressif/esp_lcd_touch_ft5x06`
+
+- Version: `1.1.1`
+- Source: https://components.espressif.com/components/espressif/esp_lcd_touch_ft5x06/versions/1.1.1
+- Registry license: `Custom`; SPDX conclusion: `Apache-2.0`
+- Copyright/notice: https://components-file.espressif.com/components/espressif/esp_lcd_touch_ft5x06/1.1.1/license.txt
 
 ## `espressif/esp_lv_decoder`
 
