@@ -1,9 +1,11 @@
-// Host preview of the Waveshare AMOLED 1.8 screens. Writes one PBM per state into the
-// output directory.
-// Build from the repository root:
+// Host preview of the Waveshare AMOLED 1.8 screens. Writes one PPM per state into the
+// output directory, in panel-native order, so the file shows what the glass shows.
+// Build from the repository root (the target's canvas.cpp needs ESP-IDF, so the host uses
+// its own stand-in):
 //   g++ -std=c++17 -O2 -Ifirmware/components/usage_core/include
 //       -Ifirmware/components/usage_panel/include
 //       -Ifirmware/targets/waveshare_amoled_18/main tools/wsamoled18/render_preview.cpp
+//       tools/wsamoled18/host_canvas.cpp
 //       firmware/targets/waveshare_amoled_18/main/screens.cpp
 //       firmware/components/usage_panel/src/{canvas,cjk_font,cjk_font_data,panel_logic,screen_parts}.cpp
 //       firmware/components/usage_core/src/usage_state.cpp -o wsamoled18_preview
@@ -13,7 +15,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <string>
+#include <utility>
 using namespace usage_panel;
 using namespace usage_panel::amoled;
 namespace {
@@ -60,6 +64,19 @@ void apply_now_playing(View &v, const char *title, const char *artist, uint32_t 
         snprintf(v.music.lines[i], sizeof(v.music.lines[i]), "%s", lines[i]);
 }
 
+/** Fills the live session list the sessions page draws, `true` marking a working session. */
+void apply_sessions(View &v, std::initializer_list<std::pair<const char *, bool>> live) {
+    v.sessions = {};
+    v.sessions_valid = true;
+    v.sessions.live_count = static_cast<uint8_t>(live.size());
+    int i = 0;
+    for (const auto &s : live) {
+        snprintf(v.sessions.live[i].name, sizeof(v.sessions.live[i].name), "%s", s.first);
+        v.sessions.live[i].state = s.second ? SessionState::Busy : SessionState::Idle;
+        ++i;
+    }
+}
+
 View design_view() {
     View v;
     v.link = {true, true, false, 0};
@@ -77,18 +94,28 @@ View design_view() {
     return v;
 }
 
+/**
+ * Writes one frame as a PPM.
+ *
+ * The palette is held in the panel's byte order, so each pixel is turned back into RGB565
+ * before it is expanded to three bytes; rows go out in native order, which is the order the
+ * glass receives them in.
+ */
 void write(const Canvas &c, const std::string &dir, const char *name) {
-    const std::string path = dir + "/" + name + ".pbm";
+    const std::string path = dir + "/" + name + ".ppm";
     FILE *f = fopen(path.c_str(), "wb");
     if (!f)
         return;
-    fprintf(f, "P1\n%d %d\n", c.width(), c.height());
-    for (int y = 0; y < c.height(); ++y) {
-        for (int x = 0; x < c.width(); ++x) {
-            const int n = y * Canvas::kNativeWidth + x;
-            fputc((c.data()[n >> 3] & (0x80 >> (n & 7))) ? '1' : '0', f);
+    fprintf(f, "P6\n%d %d\n255\n", Canvas::kNativeWidth, Canvas::kNativeHeight);
+    const uint16_t *frame = c.color_data();
+    for (int y = 0; y < Canvas::kNativeHeight; ++y) {
+        for (int x = 0; x < Canvas::kNativeWidth; ++x) {
+            const uint16_t wire = frame[y * Canvas::kNativeWidth + x];
+            const uint16_t v = static_cast<uint16_t>((wire << 8) | (wire >> 8));
+            fputc(((v >> 11) & 0x1f) * 255 / 31, f);
+            fputc(((v >> 5) & 0x3f) * 255 / 63, f);
+            fputc((v & 0x1f) * 255 / 31, f);
         }
-        fputc('\n', f);
     }
     fclose(f);
 }
@@ -141,5 +168,29 @@ int main(int argc, char **argv) {
     v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
     v.page = Page::Home;
     render(v, "09_home_90");
+
+    // Sessions: what is running now, and nothing else. The count carries the state colour,
+    // each card carries it a second time as a bar and a word.
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v, {{"问候", false}});
+    render(v, "10_sessions_one");
+
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v, {{"重构会话页", true}, {"QuotaFrame bridge", true}});
+    render(v, "11_sessions_working");
+
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v,
+                   {{"重构会话页", true}, {"修 BLE 重连", false}, {"QuotaFrame bridge", true},
+                    {"整理发布文档", false}});
+    render(v, "12_sessions_four");
+
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v, {});
+    render(v, "13_sessions_empty");
     return 0;
 }

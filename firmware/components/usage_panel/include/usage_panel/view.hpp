@@ -1,12 +1,13 @@
 #pragma once
 #include "usage_core/now_playing.hpp"
+#include "usage_core/sessions.hpp"
 #include "usage_core/usage_state.hpp"
 #include <array>
 #include <cstdint>
 // The view and renderer depend only on usage_core so the screens can be rendered on a host.
 namespace usage_panel {
 /** Pages in navigation order; Settings sits outside the page ring. */
-enum class Page : uint8_t { Home, Deepseek, Minimax, Music, Clock, Settings };
+enum class Page : uint8_t { Home, Deepseek, Minimax, Sessions, Music, Clock, Settings };
 
 enum class Rotation : uint8_t { Landscape, Portrait, Flipped };
 enum class AlertMode : uint8_t { Off, Invert, Beep };
@@ -20,6 +21,8 @@ struct Settings {
     uint8_t brightness = 80; // Display brightness in percent; every target clamps it.
 };
 constexpr int kSettingRows = 5;
+/** Rows of a panel without a dimmer: every row above, without the trailing brightness one. */
+constexpr int kSettingRowsNoDimmer = kSettingRows - 1;
 
 /** Brightness steps the Settings page cycles through; the Bridge may set any percent. */
 constexpr uint8_t kBrightnessLevels[] = {20, 40, 60, 80, 100};
@@ -51,6 +54,11 @@ struct View {
     ClockTime clock;
     NowPlayingUpdate music;
     bool music_valid = false; // Whether a song was ever published.
+    // Whether a sessions publication ever arrived. The page ring keeps the
+    // sessions page out of reach until then, so a panel whose Bridge sends no
+    // sessions never shows an empty page.
+    bool sessions_valid = false;
+    SessionsUpdate sessions;
     uint64_t music_line_ms = 0; // When the line being sung began showing, for its scroll.
     // Milliseconds the source says the line had left when it appeared; 0 when it cannot say.
     // A scroll is shortened to fit inside it, never stretched to fill it. Only used when the
@@ -67,6 +75,9 @@ struct View {
     int battery = -1; // Percent, or -1 when unknown.
     Page page = Page::Home;
     Settings settings;
+    // Rows the Settings page of this panel offers. A panel without a dimmer
+    // drops the trailing brightness row, and the focus walks the rows it has.
+    uint8_t setting_rows = kSettingRows;
     int focus = 0;
     bool save_error = false;
     std::array<uint8_t, 2> warning{}; // Per provider: 0 normal, 1 >= 80 %, 2 >= 95 %.

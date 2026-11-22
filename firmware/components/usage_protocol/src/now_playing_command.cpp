@@ -8,28 +8,6 @@ namespace usage_panel {
 namespace {
 
 /**
- * Copies `text` into `out` without splitting a UTF-8 character.
- *
- * A truncated character would break the decoder of the display, so the copy
- * stops at the last complete character that fits.
- */
-void copy_truncated(char* out, size_t out_size, const char* text) {
-    if (!out || out_size == 0)
-        return;
-    out[0] = '\0';
-    if (!text)
-        return;
-    size_t length = 0;
-    while (text[length] && length + 1 < out_size)
-        ++length;
-    // Walk back to the start of the character the cut landed in.
-    while (length > 0 && (static_cast<unsigned char>(text[length]) & 0xC0) == 0x80)
-        --length;
-    memcpy(out, text, length);
-    out[length] = '\0';
-}
-
-/**
  * Parses one decimal number in the canonical text form the protocol uses.
  *
  * Leading zeros, signs, non-digits and values above UINT32_MAX are rejected,
@@ -77,11 +55,11 @@ NowPlayingParseResult parse_now_playing_command(
     const char* title = nullptr;
     if (esp_desktop_buddy_command_view_get_string(request, "title", &title) == ESP_OK &&
         title)
-        copy_truncated(result.update.title, sizeof(result.update.title), title);
+        copy_utf8_truncated(result.update.title, sizeof(result.update.title), title);
     const char* artist = nullptr;
     if (esp_desktop_buddy_command_view_get_string(request, "artist", &artist) == ESP_OK &&
         artist)
-        copy_truncated(result.update.artist, sizeof(result.update.artist), artist);
+        copy_utf8_truncated(result.update.artist, sizeof(result.update.artist), artist);
 
     const char* lines = nullptr;
     if (esp_desktop_buddy_command_view_get_string(request, "lines", &lines) == ESP_OK &&
@@ -95,7 +73,7 @@ NowPlayingParseResult parse_now_playing_command(
             const size_t copied = length < kMaxLyricLineBytes ? length : kMaxLyricLineBytes;
             memcpy(line, cursor, copied);
             line[copied] = '\0';
-            copy_truncated(result.update.lines[result.update.line_count],
+            copy_utf8_truncated(result.update.lines[result.update.line_count],
                            sizeof(result.update.lines[0]), line);
             ++result.update.line_count;
             if (!end)

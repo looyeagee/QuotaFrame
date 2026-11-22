@@ -59,6 +59,13 @@ constexpr uint8_t warning_level(uint8_t previous, uint8_t used) {
 Provider provider_for(int slot);
 
 /**
+ * Applies a sessions publication to the view. The publication replaces the
+ * previous roster whole; the first one is what makes the sessions page appear
+ * in the ring.
+ */
+void apply_sessions(View &view, const SessionsUpdate &update);
+
+/**
  * Applies a now-playing publication and restarts the lyric scroll when the line being sung
  * changes. The scroll anchor is the moment the panel began showing that line, so a line that
  * has to move starts at its beginning instead of wherever an earlier line left off.
@@ -127,11 +134,16 @@ int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t bu
 /** Text column the lyric scroll steps by: the ASCII cell of the lyric font at its scale. */
 constexpr int kLyricScrollColumn = 12;
 
-/** Header ring index of a page, or -1 when the page is outside the ring. */
-int ring_index(Page page);
+/**
+ * Header ring index of a page, or -1 when the page is outside the ring.
+ *
+ * The sessions page only sits in the ring once a publication has arrived, so
+ * the index of the pages after it depends on the view.
+ */
+int ring_index(const View &view, Page page);
 
 /** Number of pages in the header ring. */
-int ring_pages();
+int ring_pages(const View &view);
 
 /** Whether the short window of a provider has a value that may be displayed. */
 bool short_present(const ProviderSnapshot &s, bool encrypted);
@@ -157,14 +169,13 @@ struct NavResult {
 class Navigator {
   public:
     /**
-     * Next ring page.
-     *
-     * The ring holds the same pages in every orientation: Home, Deepseek, Minimax, Music and
-     * Clock.
+     * Next ring page, skipping the sessions page while no publication has
+     * arrived. The ring holds Home, Deepseek, Minimax, Sessions, Music and
+     * Clock; the sessions page only sits in it for a panel that has data.
      */
-    static Page next(Page page);
-    /** Previous ring page; returns Home when `page` is outside the current ring. */
-    static Page previous(Page page);
+    static Page next(const View &view);
+    /** Previous ring page with the same skip; Home when outside the ring. */
+    static Page previous(const View &view);
 
     /** Applies one button input to `view`. `now_ms` restarts the auto-cycle timer. */
     NavResult input(Input input, View &view, uint64_t now_ms);

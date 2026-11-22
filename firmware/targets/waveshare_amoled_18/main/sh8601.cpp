@@ -8,16 +8,13 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "driver/spi_master.h"
+#include <algorithm>
 #include <cstring>
 namespace usage_panel::amoled {
 namespace {
 constexpr char kTag[] = "sh8601";
-// 1 bit of the canvas is 1 = black, so a lit bit expands to black and a clear bit to white.
-// Both colours are byte-symmetric in RGB565, so the transfer's byte order is irrelevant
-// here; an asymmetric colour would need the SPI byte swap the colour examples use.
-constexpr uint16_t kBlack = 0x0000, kWhite = 0xFFFF;
-// One whole frame, in bytes; the panel-io pipeline copies it into its DMA buffers itself.
-constexpr int kFrameTransferBytes = Sh8601::kFramePixels * 2;
+// One whole frame, in bytes, and the strip height a transfer is split into.
+constexpr int kStripRows = 32;
 // The wait only catches a stuck bus: a frame takes about 17 ms on the wire at 40 MHz.
 constexpr uint32_t kFrameTimeoutMs = 200;
 // Default panel brightness after bring-up, in percent; AMOLED full scale is blinding.
@@ -53,7 +50,8 @@ bool Sh8601::begin() {
     bus.data1_io_num = kLcdData1;
     bus.data2_io_num = kLcdData2;
     bus.data3_io_num = kLcdData3;
-    bus.max_transfer_sz = kFrameTransferBytes;
+    // One strip per transfer: the bus never has to describe a whole frame at once.
+    bus.max_transfer_sz = kStripRows * kPanelWidth * 2;
     if (spi_bus_initialize(static_cast<spi_host_device_t>(kLcdSpiHost), &bus, SPI_DMA_CH_AUTO) !=
         ESP_OK)
         return false;
@@ -98,11 +96,10 @@ bool Sh8601::begin() {
     esp_lcd_panel_mirror(panel_, false, false);
     esp_lcd_panel_disp_on_off(panel_, true);
 
-    frame_ = static_cast<uint16_t *>(heap_caps_malloc(
-        kFrameTransferBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    displayed_ = static_cast<uint8_t *>(heap_caps_malloc(kFrameBytes, MALLOC_CAP_8BIT));
-    if (!frame_ || !displayed_) {
-        ESP_LOGE(kTag, "frame buffers unavailable");
+    displayed_ = static_cast<uint16_t *>(
+        heap_caps_malloc(kFrameBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!displayed_) {
+        ESP_LOGE(kTag, "frame buffer unavailable");
         return false;
     }
     memset(displayed_, 0, kFrameBytes);
@@ -123,30 +120,35 @@ void Sh8601::set_brightness(int percent) {
     esp_lcd_panel_io_tx_param(io_, wrapped, &value, 1);
 }
 
-void Sh8601::expand(const Canvas &canvas) {
-    const uint8_t *bits = canvas.data();
-    for (int i = 0; i < Sh8601::kFramePixels; ++i) {
-        const bool black = (bits[i >> 3] >> (7 - (i & 7))) & 1;
-        frame_[i] = black ? kBlack : kWhite;
-    }
-}
-
 bool Sh8601::show(const Canvas &canvas) {
     if (!panel_)
         return false;
-    if (has_frame_ && memcmp(displayed_, canvas.data(), kFrameBytes) == 0)
+    const uint16_t *frame = canvas.color_data();
+    // A canvas that could not reserve its PSRAM buffer has nothing to send.
+    if (frame == nullptr)
         return false;
-    expand(canvas);
-    if (esp_lcd_panel_draw_bitmap(panel_, 0, 0, kPanelWidth, kPanelHeight, frame_) != ESP_OK) {
-        ESP_LOGW(kTag, "frame rejected");
+    if (memcmp(displayed_, frame, kFrameBytes) == 0)
         return false;
+    // A completion left over from an earlier frame must not be read as this strip's: the
+    // semaphore is binary, and a stale token would let the next strip be queued while the
+    // previous one is still on the wire, so the panel would latch command bytes as pixels.
+    xSemaphoreTake(done_, 0);
+    // One strip at a time, each with its own address window: a whole frame in a single transfer
+    // is 322 KiB, a long DMA chain across PSRAM, and re-arming the window per strip keeps every
+    // transaction short enough to reason about.
+    for (int y = 0; y < kPanelHeight; y += kStripRows) {
+        const int rows = std::min(kStripRows, kPanelHeight - y);
+        if (esp_lcd_panel_draw_bitmap(panel_, 0, y, kPanelWidth, y + rows,
+                                      frame + y * kPanelWidth) != ESP_OK) {
+            ESP_LOGW(kTag, "strip %d rejected", y);
+            return false;
+        }
+        if (xSemaphoreTake(done_, pdMS_TO_TICKS(kFrameTimeoutMs)) == pdFALSE) {
+            ESP_LOGW(kTag, "strip %d timed out", y);
+            return false;
+        }
     }
-    if (xSemaphoreTake(done_, pdMS_TO_TICKS(kFrameTimeoutMs)) == pdFALSE) {
-        ESP_LOGW(kTag, "frame timed out");
-        return false;
-    }
-    memcpy(displayed_, canvas.data(), kFrameBytes);
-    has_frame_ = true;
+    memcpy(displayed_, frame, kFrameBytes);
     return true;
 }
 } // namespace usage_panel::amoled

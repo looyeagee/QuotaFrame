@@ -34,7 +34,7 @@ class Screens {
     int big_percent(int x, int top, int percent, int h, Ink ink = Ink::Black);
     static int big_percent_width(int h);
     /** The page ring as squares centred above the bottom edge. */
-    void page_dots(int page);
+    void page_dots(const View &v, int page);
     void home(const View &v);
     /** DeepSeek page: the account balance in segment digits. */
     void balance_page(const View &v);
@@ -44,6 +44,12 @@ class Screens {
     void clock(const View &v);
     /** Draws the song being played and the lyric window below its playhead. */
     void music(const View &v);
+    /**
+     * Sessions page: the live count in the state colour, then one card per running
+     * session with its state bar, its name and its state word. Sessions that have
+     * ended are not drawn; the page is about what is running now.
+     */
+    void sessions(const View &v);
     /** Draws the line being sung inside `width` starting at `x`. */
     void lyric_row(const View &v, int x, int top, int width, const char *line, Ink ink);
     /** Draws `line` fitted into `width` with an ellipsis when it has to be cut. */

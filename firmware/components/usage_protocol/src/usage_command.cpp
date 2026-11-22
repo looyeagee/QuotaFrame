@@ -25,6 +25,23 @@ FieldResult get_decimal_u32(const esp_desktop_buddy_command_view_t* request,
     return FieldResult::Valid;
 }
 
+void copy_utf8_truncated(char* out, size_t out_size, const char* text)
+{
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+    if (!text)
+        return;
+    size_t length = 0;
+    while (text[length] && length + 1 < out_size)
+        ++length;
+    // Walk back to the start of the character the cut landed in.
+    while (length > 0 && (static_cast<unsigned char>(text[length]) & 0xC0) == 0x80)
+        --length;
+    memcpy(out, text, length);
+    out[length] = '\0';
+}
+
 namespace {
 
 FieldResult get_optional_percent(

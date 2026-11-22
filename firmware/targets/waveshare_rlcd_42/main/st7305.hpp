@@ -26,6 +26,14 @@ class St7305 {
      * @return true when a transfer was started; false when unchanged or DMA is still busy.
      */
     bool show(const Canvas &canvas);
+    /**
+     * Accepts a brightness setting without changing the picture.
+     *
+     * The panel is reflective and has no backlight, so it has no dimmer to drive; the shared
+     * panel wiring calls this on every target, and the stored setting is inert here rather
+     * than absent.
+     */
+    void set_brightness(int percent);
 
   private:
     esp_lcd_panel_io_handle_t io_ = nullptr;

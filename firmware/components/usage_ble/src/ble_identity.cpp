@@ -69,7 +69,7 @@ bool make_status_json(
     const OtaSnapshot& ota, bool enable_time_sync,
     char* output, size_t output_size, bool enable_screen_toggle, bool boot_valid, bool enable_screen_page,
     bool enable_now_playing, bool enable_alert_set, int alert_mode,
-    bool enable_brightness_set, int brightness)
+    bool enable_brightness_set, int brightness, bool enable_sessions)
 {
     if (!usage_name_valid(status_name) || !firmware_version || strlen(firmware_version) > 31 ||
         !usage_version_valid(firmware_version[0] == 'v' ? firmware_version + 1 : firmware_version) ||
@@ -95,6 +95,7 @@ bool make_status_json(
         if (enable_alert_set) cJSON_AddItemToArray(caps, cJSON_CreateString("alert.set.v1"));
         if (enable_brightness_set)
             cJSON_AddItemToArray(caps, cJSON_CreateString("brightness.set.v1"));
+        if (enable_sessions) cJSON_AddItemToArray(caps, cJSON_CreateString("sessions.v1"));
     }
     cJSON_AddStringToObject(root, "firmware_project", "quotaframe");
     cJSON_AddStringToObject(root, "fw", firmware_version);

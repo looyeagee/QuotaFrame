@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 namespace usage_panel::amoled {
 namespace {
 // Content sits 16 px inside the 2 px bezel frame drawn 4 px from the panel edge.
@@ -37,17 +38,63 @@ constexpr int kMusicLyricsTop = 150, kMusicLyricPitch = kMusicLineHeight;
 constexpr int kMusicLyricRowsMax = 8;
 // The inverted lyric row extends this far past the text margin, like the status chips.
 constexpr int kMusicTextInset = 4;
+// Sessions page: the live count across the top, then one card per running session. The colour
+// glass gets a state colour per row, so a session that is working is visible from across the
+// desk without reading a word. Four cards fit above the page dots with room to spare.
+constexpr int kSessionsScale = 2;
+// The count is set at 6x of the pixel font: a seven-segment 1 is two thin bars in a wide
+// cell and reads as punctuation, while the pixel font keeps every digit the same weight.
+constexpr int kSessionsCountScale = 6;
+constexpr int kSessionsCountTop = 44;
+constexpr int kSessionsRowsTop = 120, kSessionsPitch = 74, kSessionsCardHeight = 60;
+constexpr int kSessionsBarWidth = 6;
 // Balance figure heights, largest first; the smallest one is the fallback.
 constexpr int kHomeBalanceHeights[] = {88, 80, 72, 64, 56, 48, 44, 40, 36, 32};
 constexpr int kHomeBalanceHeightsCompact[] = {56, 48, 44, 40, 36, 32, 28, 24};
 constexpr int kBalanceHeights[] = {136, 124, 112, 100, 88, 80, 72, 64, 56, 48, 40, 32};
-// Clock face proportions: seven-segment digits read correctly at the 5:9 cell ratio; the
-// ladder entries pick the largest face that fits the column with the seconds beside it.
+// Clock face proportions: seven-segment digits read correctly at the 5:9 cell ratio. Each
+// ladder is ordered largest first, and the clock takes the first face whose four digits, colon
+// and — when the seconds are shown — small pair fit across the glass with clear space between
+// them. That is what keeps the seconds off the last minute digit: at the largest face the two
+// only just touch, which reads as a collision on the glass.
 struct ClockFace {
     int w, h, t, gap, seconds_w, seconds_h, seconds_t;
 };
-constexpr ClockFace kClockFaceTall = {56, 100, 11, 14, 18, 32, 4};
-constexpr ClockFace kClockFaceCompact = {44, 80, 10, 13, 15, 26, 4};
+constexpr ClockFace kClockFacesTall[] = {
+    {56, 100, 11, 14, 18, 32, 4}, {54, 96, 11, 13, 17, 30, 4}, {52, 94, 10, 12, 16, 28, 4},
+    {50, 90, 10, 12, 15, 26, 4},  {46, 84, 10, 11, 14, 24, 4},
+};
+constexpr ClockFace kClockFacesCompact[] = {
+    {44, 80, 10, 13, 15, 26, 4},
+    {42, 78, 10, 12, 14, 24, 4},
+    {38, 72, 9, 11, 13, 22, 4},
+};
+// Glass left between the last minute digit and the seconds, so the pair reads as a separate
+// block instead of hanging off the time.
+constexpr int kClockSecondsGap = 24;
+
+/** Ink width of "00:00" at a face: four digits, the colon and four inter-glyph gaps. */
+constexpr int clock_time_width(const ClockFace &f) { return 4 * f.w + f.t + 4 * f.gap; }
+
+/**
+ * The face to set the time in.
+ *
+ * @param faces  Ladder, largest first.
+ * @param count  Entries in `faces`.
+ * @param avail  Glass the time plus its seconds must fit inside.
+ * @param secs   Whether the small pair shares the row.
+ */
+const ClockFace &clock_face(const ClockFace *faces, int count, int avail, bool secs) {
+    for (int i = 0; i < count; ++i) {
+        const int need = clock_time_width(faces[i]) +
+                         (secs ? kClockSecondsGap + Canvas::segments_width(
+                                                      "00", faces[i].seconds_w, faces[i].seconds_t)
+                               : 0);
+        if (need <= avail)
+            return faces[i];
+    }
+    return faces[count - 1];
+}
 } // namespace
 
 int Screens::battery(const View &v, int right, Ink ink) {
@@ -95,8 +142,8 @@ void Screens::header(const View &v, const char *title) {
     c_.fill(kLeft, 26, c_.width() - 2 * kLeft, 2);
 }
 
-void Screens::page_dots(int page) {
-    const int pages = ring_pages();
+void Screens::page_dots(const View &v, int page) {
+    const int pages = ring_pages(v);
     const int total = pages * 12 - 4;
     int x = (c_.width() - total) / 2;
     const int y = c_.height() - kDotsFromBottom;
@@ -322,8 +369,12 @@ void Screens::clock(const View &v) {
     c_.fill(kLeft, 26, right - kLeft, 2);
 
     // The clock face: 5:9 digits drawn glyph by glyph, so the gaps between them are wide
-    // enough to read at this size. The seconds sit right-aligned on the face baseline.
-    const ClockFace &face = tall ? kClockFaceTall : kClockFaceCompact;
+    // enough to read at this size. The face is the largest one that leaves the seconds their
+    // own clearance; the pair keeps to the right margin and never touches the minutes.
+    const bool secs = v.settings.seconds && v.clock.valid;
+    const ClockFace &face =
+        tall ? clock_face(kClockFacesTall, std::size(kClockFacesTall), right - kLeft, secs)
+             : clock_face(kClockFacesCompact, std::size(kClockFacesCompact), right - kLeft, secs);
     const int face_top = tall ? 38 : 36;
     if (v.clock.valid)
         snprintf(b, sizeof(b), "%02u:%02u", v.clock.hour, v.clock.minute);
@@ -339,12 +390,17 @@ void Screens::clock(const View &v) {
             x += face.t + face.gap;
             continue;
         }
-        c_.segments(x, face_top, &ch, face.w, face.h, face.t);
+        c_.glyph(x, face_top, ch, face.w, face.h, face.t);
         x += face.w + face.gap;
     }
-    if (v.settings.seconds && v.clock.valid) {
-        snprintf(b, sizeof(b), "%02u", v.clock.second);
-        c_.segments(right - Canvas::segments_width(b, face.seconds_w, face.seconds_t),
+    if (secs) {
+        // A clock only ever has 0-59 seconds in it; the modulus keeps a garbled register from
+        // widening the pair to three digits and pushing it into the minutes.
+        snprintf(b, sizeof(b), "%02u", v.clock.second % 60);
+        const int width = Canvas::segments_width(b, face.seconds_w, face.seconds_t);
+        // Right-aligned, but never closer than the clearance to the minutes. The face was
+        // picked so both hold at once, so this cannot push the pair past the margin.
+        c_.segments(std::max(right - width, kLeft + clock_time_width(face) + kClockSecondsGap),
                     face_top + face.h - face.seconds_h, b, face.seconds_w, face.seconds_h,
                     face.seconds_t);
     }
@@ -488,6 +544,88 @@ void Screens::music(const View &v) {
     }
 }
 
+void Screens::sessions(const View &v) {
+    header(v, "SESSIONS");
+    const int right = c_.width() - kLeft;
+    if (!v.sessions_valid) {
+        c_.text(kLeft, kSessionsCountTop, v.link.encrypted ? "WAITING FOR DATA" : "NO SESSIONS",
+                2, Ink::Muted);
+        return;
+    }
+    int busy = 0;
+    for (int i = 0; i < v.sessions.live_count; ++i)
+        busy += v.sessions.live[i].state == SessionState::Busy ? 1 : 0;
+
+    // The count leads the page: it answers the question the page exists for, and its colour
+    // says whether anything is working before a single word is read.
+    char count[4];
+    snprintf(count, sizeof(count), "%d", static_cast<int>(v.sessions.live_count));
+    const Ink lead = v.sessions.live_count == 0 ? Ink::Muted
+                     : busy > 0                ? Ink::Accent
+                                               : Ink::Good;
+    c_.text(kLeft, kSessionsCountTop, count, kSessionsCountScale, lead);
+    const int label_x = kLeft + Canvas::text_width(count, kSessionsCountScale) + 18;
+    c_.text(label_x, kSessionsCountTop + 6, "LIVE", 2);
+    char detail[24];
+    if (v.sessions.live_count == 0)
+        snprintf(detail, sizeof(detail), "NOTHING RUNNING");
+    else if (busy > 0)
+        snprintf(detail, sizeof(detail), "%d WORKING", busy);
+    else
+        snprintf(detail, sizeof(detail), "ALL WAITING");
+    c_.text(label_x, kSessionsCountTop + 28, detail, 2, Ink::Muted);
+
+    if (v.sessions.live_count == 0) {
+        // An empty page that explains itself: the count above is the answer, this is what to
+        // do about it. It sits where the first card would have started, so the page keeps the
+        // same rhythm as one with sessions on it.
+        const char *hint = "START CLAUDE CODE";
+        c_.text((c_.width() - Canvas::text_width(hint, 2)) / 2,
+                kSessionsRowsTop + (kSessionsCardHeight - kLine) / 2, hint, 2, Ink::Muted);
+        return;
+    }
+
+    int top = kSessionsRowsTop;
+    // The cards sit in the middle of the room under the count, so one running session reads as
+    // a card on the page instead of as a line stranded at the top edge; four still start at the
+    // top, because the block is then as tall as the room.
+    const int live = v.sessions.live_count;
+    const int block = live * kSessionsPitch - (kSessionsPitch - kSessionsCardHeight);
+    const int room_bottom = c_.height() - kDotsFromBottom - 12;
+    top += std::max(0, (room_bottom - kSessionsRowsTop - block) / 2);
+    for (int i = 0; i < live; ++i) {
+        const bool is_busy = v.sessions.live[i].state == SessionState::Busy;
+        const Ink state_ink = is_busy ? Ink::Accent : Ink::Good;
+        c_.fill(kLeft, top, kSessionsBarWidth, kSessionsCardHeight, state_ink);
+        // The state is drawn twice on purpose: the bar is read at a glance, the word answers
+        // the same question with the page in hand. Filled marks work in progress, outlined
+        // marks a session that is up and waiting, so the two do not read as equal.
+        const char *word = is_busy ? "BUSY" : "IDLE";
+        const int chip_w = Canvas::text_width(word, 2) + 2 * kChipPad;
+        const int chip_h = kLine + 2 * kChipPad;
+        const int chip_x = right - chip_w;
+        const int chip_y = top + (kSessionsCardHeight - chip_h) / 2;
+        if (is_busy) {
+            chip(chip_x + kChipPad, chip_y + kChipPad, word, Ink::Accent);
+        } else {
+            c_.frame(chip_x, chip_y, chip_w, chip_h, 2, Ink::Good);
+            c_.text(chip_x + kChipPad, chip_y + kChipPad, word, 2, Ink::Good);
+        }
+        const int name_x = kLeft + kSessionsBarWidth + 14;
+        char fitted[kMaxSessionTextBytes + 4];
+        CjkText::fit(fitted, sizeof(fitted), v.sessions.live[i].name, chip_x - 12 - name_x,
+                     kSessionsScale);
+        CjkText::draw(c_, name_x,
+                      top + (kSessionsCardHeight - CjkText::line_height(kSessionsScale)) / 2,
+                      fitted, kSessionsScale);
+        top += kSessionsPitch;
+        // A hairline in the gap between cards, aligned with the names rather than the bars.
+        if (i + 1 < v.sessions.live_count)
+            c_.fill(name_x, top - kSessionsPitch + kSessionsCardHeight + 4,
+                    right - name_x, 1, Ink::Muted);
+    }
+}
+
 void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
@@ -505,9 +643,9 @@ void Screens::settings(const View &v) {
     const int right = c_.width() - kLeft;
     const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation,
                                         brightness_level_index(s.brightness)};
-    // Five rows of a label and an option strip, spread between the header and the footer.
+    // Rows of a label and an option strip, spread between the header and the footer.
     const int pitch = (c_.height() - 100) / kSettingRows;
-    for (int r = 0; r < kSettingRows; ++r) {
+    for (int r = 0; r < v.setting_rows; ++r) {
         const int y = 48 + pitch * r;
         const int label_top = y + (pitch - kSmallLine) / 2;
         // The focused row's label is inverted in place. The box is sized for the small label
@@ -622,6 +760,9 @@ void Screens::render(const View &v) {
         case Page::Minimax:
             windows_page(v);
             break;
+        case Page::Sessions:
+            sessions(v);
+            break;
         case Page::Music:
             music(v);
             break;
@@ -633,8 +774,8 @@ void Screens::render(const View &v) {
             break;
         }
         // Settings and the passkey/OTA screens sit outside the page ring, so they get no dots.
-        if (const int ring = ring_index(v.page); ring >= 0)
-            page_dots(ring);
+        if (const int ring = ring_index(v, v.page); ring >= 0)
+            page_dots(v, ring);
     }
     if (v.ota.error && v.ota.stage == OtaStage::Idle && !show_alert) {
         c_.fill(kLeft, c_.height() - 26, c_.width() - 2 * kLeft, kLine);

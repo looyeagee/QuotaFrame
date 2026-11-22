@@ -34,7 +34,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 6.1.0
+    version: 6.1.1
 direct_dependencies:
 - esp_desktop_buddy
 - esp_desktop_buddy_transport_ble

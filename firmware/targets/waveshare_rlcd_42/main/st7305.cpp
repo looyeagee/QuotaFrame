@@ -187,4 +187,10 @@ bool St7305::show(const Canvas &canvas) {
     ESP_ERROR_CHECK(esp_lcd_panel_io_tx_color(io_, 0x2c, frame_, kFrameBytes));
     return true;
 }
+
+void St7305::set_brightness(int percent) {
+    // The reflective panel has no backlight, so every level reads the same. The shared
+    // wiring still calls this on every target and the setting is persisted regardless.
+    (void)percent;
+}
 } // namespace usage_panel::rlcd

@@ -107,17 +107,28 @@ int glyph_count(const char *s) {
 
 // Segment bits a-g: top, upper right, lower right, bottom, lower left, upper left, middle.
 constexpr uint8_t kDigitSegments[10] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+} // namespace
 
-int digit_gap(int t) { return t / 2 + 2; }
+int CanvasSurface::digit_gap(int t) { return t / 2 + 2; }
 
 /** Width of one seven-segment character; half digits and dots are one segment wide. */
-int char_width(char c, int w, int t) {
+int CanvasSurface::char_width(char c, int w, int t) {
     return c == 'h' || c == 'H' || c == ':' || c == '.' ? t : w;
 }
-} // namespace
 
 void CanvasSurface::attach(uint8_t *buffer, int native_width, int native_height) {
     bits_ = buffer;
+    pixels_ = nullptr;
+    native_width_ = native_width;
+    native_height_ = native_height;
+    width_ = native_width;
+    height_ = native_height;
+    reset_clip();
+}
+
+void CanvasSurface::attach_color(uint16_t *pixels, int native_width, int native_height) {
+    bits_ = nullptr;
+    pixels_ = pixels;
     native_width_ = native_width;
     native_height_ = native_height;
     width_ = native_width;
@@ -133,7 +144,13 @@ void CanvasSurface::begin(uint8_t rotation, bool black_background) {
     width_ = portrait ? native_height_ : native_width_;
     height_ = portrait ? native_width_ : native_height_;
     reset_clip();
-    memset(bits_, black_background ? 0xff : 0x00, native_width_ * native_height_ / 8);
+    if (pixels_ != nullptr) {
+        const int count = native_width_ * native_height_;
+        std::fill(pixels_, pixels_ + count,
+                  black_background ? palette_.ink : palette_.paper);
+    } else if (bits_ != nullptr) {
+        memset(bits_, black_background ? 0xff : 0x00, native_width_ * native_height_ / 8);
+    }
 }
 
 void CanvasSurface::clip(int x, int y, int w, int h) {
@@ -151,10 +168,25 @@ void CanvasSurface::reset_clip() {
     clip_h_ = height_;
 }
 
+uint16_t CanvasSurface::color_for(Ink ink) const {
+    switch (ink) {
+    case Ink::White:
+        return palette_.paper;
+    case Ink::Accent:
+        return palette_.accent;
+    case Ink::Muted:
+        return palette_.muted;
+    case Ink::Good:
+        return palette_.good;
+    case Ink::Black:
+        break;
+    }
+    return palette_.ink;
+}
+
 void CanvasSurface::pixel(int x, int y, Ink ink) {
     if (x < clip_x_ || y < clip_y_ || x >= clip_x_ + clip_w_ || y >= clip_y_ + clip_h_)
         return;
-    const bool black = ink == Ink::Black;
     int nx = x, ny = y;
     if (rotation_ == static_cast<uint8_t>(Rotation::Portrait)) {
         // Portrait is the landscape panel turned 90 degrees clockwise.
@@ -165,8 +197,13 @@ void CanvasSurface::pixel(int x, int y, Ink ink) {
         ny = native_height_ - 1 - y;
     }
     const int n = ny * native_width_ + nx;
+    if (pixels_ != nullptr) {
+        pixels_[n] = color_for(ink);
+        return;
+    }
+    // A one-bit surface has paper and ink, so every other ink is the ink.
     const uint8_t mask = 0x80 >> (n & 7);
-    if (black)
+    if (ink != Ink::White)
         bits_[n >> 3] |= mask;
     else
         bits_[n >> 3] &= ~mask;
@@ -247,28 +284,32 @@ int CanvasSurface::segments_width(const char *s, int w, int t) {
     return width;
 }
 
+int CanvasSurface::glyph(int x, int top, char c, int w, int h, int t, Ink ink) {
+    if (c == ':') {
+        fill(x, top + h / 3 - t / 2, t, t, ink);
+        fill(x, top + h * 2 / 3 - t / 2, t, t, ink);
+    } else if (c == '.') {
+        fill(x, top + h - t, t, t, ink);
+    } else if (c == 'H') {
+        // The right-hand segment pair of a digit box shifted so that the pair starts at x.
+        segment(x - w + t, top, w, h, t, 1, ink);
+        segment(x - w + t, top, w, h, t, 2, ink);
+    } else if (c != 'h') {
+        const uint8_t lit = c >= '0' && c <= '9' ? kDigitSegments[c - '0']
+                            : c == '-'             ? 0x40
+                                                   : 0;
+        for (int k = 0; k < 7; ++k)
+            if (lit & (1 << k))
+                segment(x, top, w, h, t, k, ink);
+    }
+    return char_width(c, w, t);
+}
+
 int CanvasSurface::segments(int x, int top, const char *s, int w, int h, int t, Ink ink) {
     int pen = x;
     for (const char *p = s; *p; ++p) {
-        const char c = *p;
-        if (c == ':') {
-            fill(pen, top + h / 3 - t / 2, t, t, ink);
-            fill(pen, top + h * 2 / 3 - t / 2, t, t, ink);
-        } else if (c == '.') {
-            fill(pen, top + h - t, t, t, ink);
-        } else if (c == 'H') {
-            // The right-hand segment pair of a digit box shifted so that the pair starts at pen.
-            segment(pen - w + t, top, w, h, t, 1, ink);
-            segment(pen - w + t, top, w, h, t, 2, ink);
-        } else if (c != 'h') {
-            const uint8_t lit = c >= '0' && c <= '9' ? kDigitSegments[c - '0']
-                                : c == '-'             ? 0x40
-                                                       : 0;
-            for (int k = 0; k < 7; ++k)
-                if (lit & (1 << k))
-                    segment(pen, top, w, h, t, k, ink);
-        }
-        pen += char_width(c, w, t) + (p[1] ? digit_gap(t) : 0);
+        glyph(pen, top, *p, w, h, t, ink);
+        pen += char_width(*p, w, t) + (p[1] ? digit_gap(t) : 0);
     }
     return pen - x;
 }

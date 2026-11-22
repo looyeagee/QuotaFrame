@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "esp_desktop_buddy/esp_desktop_buddy.h"
@@ -19,6 +20,14 @@ enum class FieldResult { Missing, Valid, Invalid };
 FieldResult get_decimal_u32(
     const esp_desktop_buddy_command_view_t* request,
     const char* key, uint32_t& value);
+
+/**
+ * Copies `text` into `out` without splitting a UTF-8 character.
+ *
+ * A truncated character would break the decoder of the display, so the copy
+ * stops at the last complete character that fits.
+ */
+void copy_utf8_truncated(char* out, size_t out_size, const char* text);
 
 /** Result of decoding one usage version 1 command. */
 struct UsageCommandParseResult {

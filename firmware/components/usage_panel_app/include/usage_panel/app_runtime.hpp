@@ -50,6 +50,14 @@ struct PanelIdentity {
     const char *status_name;        // Device name the Bridge shows.
     const char *bridge_target;      // Target id the Bridge status reports.
     const char *ota_project;        // Project name the OTA image has to carry.
+    // Whether this target renders the sessions page. Only a target that draws
+    // it may declare the capability, or the Bridge would publish to screens
+    // nothing renders.
+    bool sessions_page = false;
+    // Whether the panel has a dimmer. A reflective panel without a backlight
+    // hides the brightness setting and does not declare brightness.set.v1, so
+    // the Bridge never offers a control the glass cannot show.
+    bool dimmable = true;
 };
 
 /**

@@ -83,8 +83,8 @@ void Screens::header(const View &v, const char *title) {
     c_.fill(kLeft, 26, c_.width() - 2 * kLeft, 2);
 }
 
-void Screens::page_dots(int page) {
-    const int pages = ring_pages();
+void Screens::page_dots(const View &v, int page) {
+    const int pages = ring_pages(v);
     const int total = pages * 12 - 4;
     int x = (c_.width() - total) / 2;
     for (int i = 0; i < pages; ++i) {
@@ -421,6 +421,13 @@ void Screens::music(const View &v) {
     }
 }
 
+void Screens::sessions(const View &v) {
+    header(v, "SESSIONS");
+    // This target does not declare the sessions capability and the page ring
+    // skips the page, so this body is the safety net for an unreachable page.
+    c_.text(kLeft, kContentTop + 6, "NO SESSIONS", 2);
+}
+
 void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
@@ -438,8 +445,8 @@ void Screens::settings(const View &v) {
     const int right = c_.width() - kLeft;
     const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation,
                                         brightness_level_index(s.brightness)};
-    // Four rows of a label and an option strip, each row 42 px tall.
-    for (int r = 0; r < kSettingRows; ++r) {
+    // Rows of a label and an option strip, each row 42 px tall.
+    for (int r = 0; r < v.setting_rows; ++r) {
         const int y = 34 + 42 * r;
         const int label_top = y + 1;
         // The focused row's label is inverted in place. The box is sized for the small label
@@ -550,6 +557,9 @@ void Screens::render(const View &v) {
         case Page::Minimax:
             windows_page(v);
             break;
+        case Page::Sessions:
+            sessions(v);
+            break;
         case Page::Music:
             music(v);
             break;
@@ -561,8 +571,8 @@ void Screens::render(const View &v) {
             break;
         }
         // Settings and the passkey/OTA screens sit outside the page ring, so they get no dots.
-        if (const int ring = ring_index(v.page); ring >= 0)
-            page_dots(ring);
+        if (const int ring = ring_index(v, v.page); ring >= 0)
+            page_dots(v, ring);
     }
     if (v.ota.error && v.ota.stage == OtaStage::Idle && !show_alert) {
         c_.fill(kLeft, c_.height() - 26, c_.width() - 2 * kLeft, kLine);

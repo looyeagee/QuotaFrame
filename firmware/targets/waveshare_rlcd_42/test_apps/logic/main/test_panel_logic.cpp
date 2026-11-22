@@ -85,19 +85,59 @@ TEST_CASE("countdowns follow the design formats", "[format]")
 
 TEST_CASE("the page ring cycles in both directions", "[nav]")
 {
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(Navigator::next(Page::Home)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(Navigator::next(Page::Deepseek)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::next(Page::Minimax)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(Page::Music)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::next(Page::Clock)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::previous(Page::Clock)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::previous(Page::Home)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Deepseek)));
-    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(Page::Settings)));
+    View v = linked_view();
+    v.page = Page::Home;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(Navigator::next(v)));
+    v.page = Page::Deepseek;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(Navigator::next(v)));
+    v.page = Page::Minimax;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::next(v)));
+    v.page = Page::Music;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::next(v)));
+    v.page = Page::Clock;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::next(v)));
+    v.page = Page::Clock;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::previous(v)));
+    v.page = Page::Home;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(Navigator::previous(v)));
+    v.page = Page::Deepseek;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(v)));
+    v.page = Page::Settings;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(Navigator::previous(v)));
     // The header ring draws one marker per page, the music page third of five.
-    TEST_ASSERT_EQUAL_INT(5, ring_pages());
-    TEST_ASSERT_EQUAL_INT(3, ring_index(Page::Music));
-    TEST_ASSERT_EQUAL_INT(-1, ring_index(Page::Settings));
+    TEST_ASSERT_EQUAL_INT(5, ring_pages(v));
+    TEST_ASSERT_EQUAL_INT(3, ring_index(v, Page::Music));
+    TEST_ASSERT_EQUAL_INT(-1, ring_index(v, Page::Settings));
+}
+
+TEST_CASE("the sessions page joins the ring once a publication arrives", "[nav]")
+{
+    View v = linked_view();
+    // Without a publication the page is out of the ring, so a panel whose
+    // Bridge sends no sessions never shows an empty page.
+    TEST_ASSERT_EQUAL_INT(-1, ring_index(v, Page::Sessions));
+    TEST_ASSERT_EQUAL_INT(5, ring_pages(v));
+
+    SessionsUpdate update;
+    update.live_count = 1;
+    snprintf(update.live[0].name, sizeof(update.live[0].name), "Demo");
+    update.live[0].state = SessionState::Busy;
+    apply_sessions(v, update);
+
+    TEST_ASSERT_TRUE(v.sessions_valid);
+    TEST_ASSERT_EQUAL_INT(6, ring_pages(v));
+    TEST_ASSERT_EQUAL_INT(3, ring_index(v, Page::Sessions));
+    // The pages after it move along by one.
+    TEST_ASSERT_EQUAL_INT(4, ring_index(v, Page::Music));
+    TEST_ASSERT_EQUAL_INT(5, ring_index(v, Page::Clock));
+
+    // The ring now steps through the sessions page.
+    v.page = Page::Minimax;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Sessions), uint8_t(Navigator::next(v)));
+    v.page = Page::Sessions;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Music), uint8_t(Navigator::next(v)));
+    v.page = Page::Sessions;
+    TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(Navigator::previous(v)));
 }
 
 TEST_CASE("the ring holds the same pages in portrait", "[nav]")
@@ -167,6 +207,21 @@ TEST_CASE("settings open on hold, cycle values and return to the previous page",
     TEST_ASSERT_EQUAL_INT(1, v.alert);
     nav.input(Input::Forward, v, 0);
     TEST_ASSERT_EQUAL_INT(-1, v.alert);
+}
+
+TEST_CASE("a panel without a dimmer keeps the focus on the rows it draws", "[nav]")
+{
+    Navigator nav;
+    View v = linked_view();
+    v.setting_rows = static_cast<uint8_t>(kSettingRowsNoDimmer);
+    nav.input(Input::Hold, v, 0);
+    // The focus walks the rows this panel offers and wraps to the first one, so it never
+    // lands on the brightness row the reflective panel does not draw.
+    for (int i = 0; i < kSettingRowsNoDimmer - 1; ++i)
+        nav.input(Input::Home, v, 0);
+    TEST_ASSERT_EQUAL_INT(kSettingRowsNoDimmer - 1, v.focus);
+    nav.input(Input::Home, v, 0);
+    TEST_ASSERT_EQUAL_INT(0, v.focus);
 }
 
 TEST_CASE("the left key steps a setting back through its options", "[nav]")

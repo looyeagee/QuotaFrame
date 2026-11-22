@@ -33,6 +33,8 @@ const char *PanelRuntime::page_name(void *context) {
         return "deepseek";
     case Page::Minimax:
         return "minimax";
+    case Page::Sessions:
+        return "sessions";
     case Page::Music:
         return "music";
     case Page::Clock:
@@ -68,6 +70,9 @@ void PanelRuntime::run() {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(target_.begin() ? ESP_OK : ESP_FAIL);
     view_.settings = target_.load();
+    // A panel without a dimmer has no brightness row to show or to step through.
+    view_.setting_rows =
+        static_cast<uint8_t>(identity_.dimmable ? kSettingRows : kSettingRowsNoDimmer);
     // The panel boots at its own default; the persisted brightness takes over here.
     target_.apply_brightness(view_.settings.brightness);
     uint8_t mac[6];
@@ -81,7 +86,8 @@ void PanelRuntime::run() {
     // whether USB power is present, so a voltage threshold would block updates on USB power.
     BleServiceConfig config{identity_.advertising_prefix, identity_.status_name,
                             identity_.bridge_target, true, &ota_, page_name, this, true, true,
-                            true, true, alert_mode, this, true, brightness_value, this};
+                            true, identity_.sessions_page, true, alert_mode, this,
+                            identity_.dimmable, brightness_value, this};
     ESP_ERROR_CHECK(ble_.start(events_, config));
     run_loop();
 }
@@ -117,6 +123,15 @@ void PanelRuntime::run_loop() {
             redraw = true;
         }
 
+        // The sessions publication is the same kind of snapshot: the newest
+        // roster replaces the previous one, and the first one is what puts the
+        // page into the ring.
+        SessionsUpdate sessions;
+        if (ble_.take_sessions(sessions)) {
+            apply_sessions(view_, sessions);
+            redraw = true;
+        }
+
         AppEvent event{};
         while (events_.receive(event)) {
             switch (event.type) {
@@ -144,8 +159,8 @@ void PanelRuntime::run_loop() {
                 break;
             case AppEventType::ScreenPage:
                 if (!ota_.busy() && !view_.link.has_passkey && view_.page != Page::Settings) {
-                    view_.page = event.previous_page ? Navigator::previous(view_.page)
-                                                    : Navigator::next(view_.page);
+                    view_.page = event.previous_page ? Navigator::previous(view_)
+                                                    : Navigator::next(view_);
                 }
                 break;
             case AppEventType::AlertSet:

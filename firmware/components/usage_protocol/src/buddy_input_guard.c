@@ -29,7 +29,7 @@ void __wrap_buddy_protocol_process_line(esp_desktop_buddy_t* buddy, const char* 
     const char* strings[] = {"cmd", "v", "seq", "provider", "state", "sampled_at", "sent_at",
         "short_used_pct", "week_used_pct", "short_reset_at", "week_reset_at", "year", "month",
         "day", "weekday", "hour", "minute", "second", "utc_offset_min", "previous", "name", "path", "d",
-        "title", "artist", "lines", "current", "position", "duration"};
+        "title", "artist", "lines", "current", "position", "duration", "live", "states", "recent"};
     for (size_t i = 0; i < sizeof(strings) / sizeof(strings[0]); ++i) {
         const cJSON* item = cJSON_GetObjectItemCaseSensitive(root, strings[i]);
         if (item && !cJSON_IsString(item)) { reject_types(buddy, root); cJSON_Delete(root); return; }

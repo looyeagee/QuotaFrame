@@ -106,11 +106,12 @@ Waveshare 的烧录命令相同，只需替换工程路径和实际端口：
 RLCD 4.2 的按键与页面环：
 
 ```text
-Home -> Deepseek -> Minimax -> Music -> Clock -> Home
+Home -> Deepseek -> Minimax -> Sessions -> Music -> Clock -> Home
 ```
 
-横屏与竖屏的页面环一致：每个页面都有竖屏版式，按键在两种方向下都走完整的五页。
-Settings 由长按 KEY 进入，不在环上。
+横屏与竖屏的页面环一致：每个页面都有竖屏版式，按键在两种方向下都走完整的页面。
+Sessions 只在收到第一条会话数据后进环，没有会话数据时环上没有它；Settings 由长按 KEY
+进入，不在环上。
 
 状态优先级：
 

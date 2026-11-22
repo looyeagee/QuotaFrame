@@ -12,3 +12,7 @@ inline constexpr char kNowPlaying[] =
     R"fixture(@NOW_PLAYING_JSON@)fixture" "\n";
 inline constexpr char kNowPlayingInvalid[] =
     R"fixture(@NOW_PLAYING_INVALID_JSON@)fixture" "\n";
+inline constexpr char kSessions[] =
+    R"fixture(@SESSIONS_JSON@)fixture" "\n";
+inline constexpr char kSessionsInvalid[] =
+    R"fixture(@SESSIONS_INVALID_JSON@)fixture" "\n";

@@ -69,6 +69,7 @@ The display labels the short window `5H` for MiniMax and used-percentage meaning
 | Deepseek | Balance in 96 px segment digits with the currency and the sample age |
 | Minimax | One service: the 5H window in 80 px figures with its RESET countdown, then the 5H and WEEK sections each with a usage bar, elapsed-time marker and elapsed time. OVER +N% marks usage at least 5 percentage points above the elapsed fraction of the window |
 | Music | The song and its artist in 24 px CJK text, the playhead with elapsed and total time, then the line being sung inverted above the next four lines; PAUSED marks a stopped player |
+| Sessions | The running Claude Code sessions: a BUSY chip or a plain IDLE beside each name under a summary line counting them |
 | Clock | Time with seconds; the date, the SHTC3 temperature and the humidity share the top row. Below the dotted rule the MiniMax 5H and WEEK bars keep the left column, and the right column carries the DEEPSEEK caption with its balance on the same row, then the song being played above the line being sung and the line after it |
 | Settings | Auto cycle, alert mode, seconds, rotation |
 | Alert | Full-screen inverted page once the MiniMax 5H window reaches 95 %; NEAR LIMIT below 100 %, EXHAUSTED at 100 % |
@@ -156,16 +157,30 @@ The parameters and the reasoning behind each of them are in
 The window the Bridge sends is rebuilt around the sung line every time it changes, so the page
 always has one line of context above the highlight and four below it.
 
+The Sessions page shows the Claude Code sessions running on the computer. The Bridge reads
+`~/.claude/sessions` on the host and sends the display name of every running session with its
+state; a change reaches the panel as soon as Claude writes it. A busy session carries an inverted
+BUSY chip, an idle one a plain IDLE; the summary line counts how many sessions run and how many
+are busy. The page holds four running sessions, the same bound the Bridge applies. Sessions that
+have ended are not drawn. Only the display names and the busy flag travel: session ids, working
+directories, git branches and the conversations themselves stay on the computer.
+
+The page is only in the ring once a publication has arrived, so a panel whose Bridge sends no
+sessions never shows an empty page. A panel that received a publication but has no live session
+shows WAITING FOR DATA (linked) or NO SESSIONS (offline).
+
 ## Controls
 
 - KEY (GPIO18), left of the case: previous page.
-- BOOT (GPIO0), right of the case: next page, HOME → DEEPSEEK → MINIMAX → MUSIC → CLOCK (portrait: HOME ↔ CLOCK).
+- BOOT (GPIO0), right of the case: next page, HOME → DEEPSEEK → MINIMAX → MUSIC → CLOCK (portrait: HOME ↔ CLOCK). The Sessions page sits between MINIMAX and MUSIC once it has data.
 - Both keys together: the home page, and the next settings row while the settings page is open. The
   PWR button between them switches the power circuit and reaches no GPIO, so the chord of the two
   keys takes over the action of the middle button.
 - Hold either key for 800 ms: open Settings; hold again to leave.
 - Settings: the left and right keys change the value of the focused row and save it to NVS, the
-  chord of both keys moves the focus to the next row.
+  chord of both keys moves the focus to the next row. The reflective panel has no backlight, so
+  the page holds four rows and stops at rotation; the panel therefore declares no
+  `brightness.set.v1` capability.
 - Alert: any key dismisses it; it returns after usage drops below 93 % and reaches 95 % again.
 - Pairing: any key requests a new code.
 - OTA confirmation: any key confirms, holding a key denies. Navigation is blocked during OTA.

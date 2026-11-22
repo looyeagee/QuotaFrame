@@ -128,6 +128,11 @@ constexpr uint32_t kLyricEndMarginMs = 400;
 int text_columns(int width) { return (width + kLyricScrollColumn - 1) / kLyricScrollColumn; }
 } // namespace
 
+void apply_sessions(View &view, const SessionsUpdate &update) {
+    view.sessions = update;
+    view.sessions_valid = true;
+}
+
 void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms) {
     // The window the Bridge sends is anchored on the sung line, so comparing that one line is
     // enough to know whether the text under the highlight changed.
@@ -258,7 +263,7 @@ int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t bu
 
 Provider provider_for(int slot) { return slot ? Provider::Minimax : Provider::Deepseek; }
 
-int ring_index(Page page) {
+int ring_index(const View &view, Page page) {
     switch (page) {
     case Page::Home:
         return 0;
@@ -266,24 +271,33 @@ int ring_index(Page page) {
         return 1;
     case Page::Minimax:
         return 2;
+    case Page::Sessions:
+        return view.sessions_valid ? 3 : -1;
     case Page::Music:
-        return 3;
+        return view.sessions_valid ? 4 : 3;
     case Page::Clock:
-        return 4;
+        return view.sessions_valid ? 5 : 4;
     default:
         return -1;
     }
 }
 
-int ring_pages() { return 5; }
+int ring_pages(const View &view) { return view.sessions_valid ? 6 : 5; }
 
-Page Navigator::next(Page page) {
+/**
+ * Next ring page from `page`, skipping the sessions page while no publication
+ * has arrived. The skip keeps a panel whose Bridge sends no sessions out of an
+ * empty page, wherever in the ring the step starts.
+ */
+static Page next_ring_page(Page page, bool sessions_valid) {
     switch (page) {
     case Page::Home:
         return Page::Deepseek;
     case Page::Deepseek:
         return Page::Minimax;
     case Page::Minimax:
+        return sessions_valid ? Page::Sessions : Page::Music;
+    case Page::Sessions:
         return Page::Music;
     case Page::Music:
         return Page::Clock;
@@ -292,12 +306,14 @@ Page Navigator::next(Page page) {
     }
 }
 
-Page Navigator::previous(Page page) {
-    Page p = page;
-    for (int i = 0; i < ring_pages(); ++i) {
-        if (next(p) == page)
+Page Navigator::next(const View &v) { return next_ring_page(v.page, v.sessions_valid); }
+
+Page Navigator::previous(const View &v) {
+    Page p = v.page;
+    for (int i = 0; i < ring_pages(v); ++i) {
+        if (next_ring_page(p, v.sessions_valid) == v.page)
             return p;
-        p = next(p);
+        p = next_ring_page(p, v.sessions_valid);
     }
     return Page::Home;
 }
@@ -320,8 +336,8 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
         if (in == Input::Hold) {
             v.page = return_page_;
         } else if (in == Input::Home) {
-            // The home action moves the focus to the next row.
-            v.focus = (v.focus + 1) % kSettingRows;
+            // The home action moves the focus to the next row this panel offers.
+            v.focus = (v.focus + 1) % v.setting_rows;
         } else if (in == Input::Forward || in == Input::Back) {
             if (v.save_error) {
                 // Retries the rejected value; the footer shows RETRY in this state.
@@ -358,9 +374,9 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
         v.page = Page::Settings;
         v.focus = 0;
     } else if (in == Input::Forward)
-        v.page = next(v.page);
+        v.page = next(v);
     else if (in == Input::Back)
-        v.page = previous(v.page);
+        v.page = previous(v);
     else if (in == Input::Home)
         v.page = Page::Home;
     return r;
@@ -393,7 +409,7 @@ bool Navigator::auto_cycle(View &v, uint64_t now_ms) {
     if (now_ms - last_step_ms_ < interval)
         return false;
     last_step_ms_ = now_ms;
-    v.page = next(v.page);
+    v.page = next(v);
     return true;
 }
 } // namespace usage_panel

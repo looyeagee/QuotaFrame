@@ -5,6 +5,7 @@ idf_component_register(
         "src/ble_service.cpp"
         "src/now_playing_mailbox.cpp"
         "src/ota_commands.cpp"
+        "src/sessions_mailbox.cpp"
     INCLUDE_DIRS "include"
     PRIV_REQUIRES bt app_update esp_timer
     REQUIRES

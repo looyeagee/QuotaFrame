@@ -79,6 +79,12 @@ class Screens {
     void music(const View &v);
     /** Portrait music page: the same blocks over the taller lyric window of the turned panel. */
     void music_portrait(const View &v);
+    /**
+     * Live Claude Code sessions: a state chip beside each session's display
+     * name, then the titles the computer worked on before them. One function
+     * serves both orientations, like the settings page.
+     */
+    void sessions(const View &v);
     void settings(const View &v);
     void pairing(const View &v);
     void ota(const View &v);

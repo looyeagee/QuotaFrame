@@ -43,7 +43,13 @@ class Screens {
     int big_percent(int x, int top, int percent, int h, Ink ink = Ink::Black);
     static int big_percent_width(int h);
     /** The page ring as dots centred under the content. */
-    void page_dots(int page);
+    void page_dots(const View &v, int page);
+    /**
+     * The sessions page this target does not render. Its identity never
+     * declares the capability and the page ring skips it, so the case exists
+     * to keep the page switch exhaustive; the body is the safety net.
+     */
+    void sessions(const View &v);
     void home(const View &v);
     /** DeepSeek page: the account balance in segment digits. */
     void balance_page(const View &v);

@@ -1,5 +1,6 @@
 idf_component_register(
-    SRCS "app_main.cpp" "axp2101.cpp" "beeper.cpp" "board.cpp" "screens.cpp" "sh8601.cpp"
+    SRCS "app_main.cpp" "axp2101.cpp" "beeper.cpp" "board.cpp" "canvas.cpp" "screens.cpp"
+         "sh8601.cpp"
     INCLUDE_DIRS "."
     REQUIRES usage_panel usage_panel_app usage_core usage_protocol usage_rtc nvs_flash
              esp_driver_i2c esp_driver_spi esp_driver_gpio esp_lcd esp_timer esp_system

@@ -13,6 +13,7 @@
 #include "host/ble_gap.h"
 #include "usage_ble/ble_identity.hpp"
 #include "usage_protocol/now_playing_command.hpp"
+#include "usage_protocol/sessions_command.hpp"
 #include "usage_protocol/time_sync.hpp"
 #include "usage_protocol/usage_command.hpp"
 
@@ -143,6 +144,7 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
     enable_screen_toggle_ = config.enable_screen_toggle;
     enable_screen_page_ = config.enable_screen_page;
     enable_now_playing_ = config.enable_now_playing;
+    enable_sessions_ = config.enable_sessions;
     enable_alert_set_ = config.enable_alert_set;
     get_alert_mode_ = config.get_alert_mode;
     alert_context_ = config.alert_context;
@@ -152,6 +154,8 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
     alert_context_ = config.alert_context;
     if (enable_now_playing_ && !now_playing_.begin())
         return ESP_ERR_NO_MEM;
+    if (enable_sessions_ && !sessions_.begin())
+        return ESP_ERR_NO_MEM;
     ota_commands_.bind(*ota_);
     const esp_app_desc_t* app = esp_app_get_description();
     if (!make_status_json(
@@ -160,7 +164,7 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
             enable_time_sync_,
             status_json_, sizeof(status_json_), enable_screen_toggle_, boot_valid_.load(), enable_screen_page_,
             enable_now_playing_, enable_alert_set_, alert_mode_value(),
-            enable_brightness_set_, brightness_value())) {
+            enable_brightness_set_, brightness_value(), enable_sessions_)) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -184,6 +188,7 @@ esp_err_t BleService::start(AppEventQueue& queue, const BleServiceConfig& config
     static const esp_desktop_buddy_command_extension_entry_t entries[] = {
         {"usage", &BleService::usage_trampoline},
         {"now_playing", &BleService::now_playing_trampoline},
+        {"sessions", &BleService::sessions_trampoline},
         {"time_sync", &BleService::time_sync_trampoline},
         {"screen_toggle", &BleService::screen_toggle_trampoline},
         {"screen_page", &BleService::screen_page_trampoline},
@@ -293,6 +298,22 @@ bool BleService::take_now_playing(NowPlayingUpdate& out) {
     return now_playing_.take(out);
 }
 
+esp_desktop_buddy_command_extension_result_t BleService::handle_sessions(
+    const esp_desktop_buddy_command_view_t* request)
+{
+    const auto parsed = parse_sessions_command(request);
+    const uint32_t sequence = parsed.update.sequence;
+    if (!parsed.valid) return ack(false, sequence, "invalid_request");
+    if (!enable_sessions_) return ack(false, sequence, "unsupported");
+    if (ota_commands_.busy()) return ack(false, sequence, "ota_busy");
+    if (!sessions_.publish(parsed.update)) return ack(false, sequence, "queue_full");
+    return ack(true, sequence);
+}
+
+bool BleService::take_sessions(SessionsUpdate& out) {
+    return sessions_.take(out);
+}
+
 esp_desktop_buddy_command_extension_result_t BleService::handle_ota_abort(
     const esp_desktop_buddy_command_view_t* request)
 {
@@ -338,7 +359,7 @@ esp_desktop_buddy_status_reply_t BleService::status()
             ota_ ? ota_->snapshot() : OtaSnapshot{}, enable_time_sync_,
             status_json_, sizeof(status_json_), enable_screen_toggle_, boot_valid_.load(), enable_screen_page_,
             enable_now_playing_, enable_alert_set_, alert_mode_value(),
-            enable_brightness_set_, brightness_value())) {
+            enable_brightness_set_, brightness_value(), enable_sessions_)) {
         return esp_desktop_buddy_status_err(
             ESP_ERR_INVALID_ARG, "status_invalid");
     }
@@ -451,6 +472,13 @@ esp_desktop_buddy_command_extension_result_t BleService::now_playing_trampoline(
     const esp_desktop_buddy_command_view_t* request)
 {
     return static_cast<BleService*>(context)->handle_now_playing(request);
+}
+
+esp_desktop_buddy_command_extension_result_t BleService::sessions_trampoline(
+    void* context, esp_desktop_buddy_t*,
+    const esp_desktop_buddy_command_view_t* request)
+{
+    return static_cast<BleService*>(context)->handle_sessions(request);
 }
 
 esp_desktop_buddy_status_reply_t BleService::status_trampoline(

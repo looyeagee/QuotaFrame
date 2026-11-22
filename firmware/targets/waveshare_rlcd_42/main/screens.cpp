@@ -52,6 +52,9 @@ constexpr int kMusicTextInset = 4;
 constexpr int kSummarySongRow = 20;
 constexpr int kSummaryRule = 30, kSummaryLyricTop = 36, kSummaryLyricPitch = 32;
 constexpr int kSummaryLyricRows = 2;
+// Sessions page: the live count and a chip per running session beside its name. Portrait gets
+// the roomier pitch of the taller glass.
+constexpr int kSessionsRowGap = 10;
 
 // Segment heights the balance figure tries, largest first; the smallest one is the
 // fallback when none of them fits.
@@ -105,7 +108,7 @@ void Screens::header(const View &v, const char *title, int page) {
         edge -= kChipPad;
     }
     if (page >= 0) {
-        const int pages = ring_pages();
+        const int pages = ring_pages(v);
         edge -= 10 + pages * 12 - 4;
         for (int i = 0; i < pages; ++i) {
             if (i == page)
@@ -206,14 +209,14 @@ void Screens::windows_row(const View &v, int top) {
 
 void Screens::home(const View &v) {
     // Rows of 108 px with 10 px between the header rule, each row, the separator and the bezel.
-    header(v, nullptr, ring_index(Page::Home));
+    header(v, nullptr, ring_index(v, Page::Home));
     balance_row(v, kContentTop);
     c_.dotted(kLeft, 164, c_.width() - 2 * kLeft);
     windows_row(v, 176);
 }
 
 void Screens::home_portrait(const View &v) {
-    header(v, nullptr, ring_index(Page::Home));
+    header(v, nullptr, ring_index(v, Page::Home));
     const int right = c_.width() - kLeft, w = right - kLeft;
     const auto &s = v.model.snapshot(provider_for(1));
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
@@ -253,7 +256,7 @@ void Screens::focus(const View &v, int i) {
     const int right = c_.width() - kLeft, column = 240;
     char b[32];
     if (i == 0) {
-        header(v, kProviderNames[0], ring_index(Page::Deepseek));
+        header(v, kProviderNames[0], ring_index(v, Page::Deepseek));
         c_.text(kLeft, kContentTop, "BALANCE", 2);
         if (!balance_present(s, v.link.encrypted)) {
             c_.text(kLeft, 96, empty_message(v), 2);
@@ -269,7 +272,7 @@ void Screens::focus(const View &v, int i) {
     }
 
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
-    header(v, kProviderNames[1], ring_index(Page::Minimax));
+    header(v, kProviderNames[1], ring_index(v, Page::Minimax));
     const Paces pace = paces(v, 1, sp, wp);
     // Five-hour window: 80 px figure, reset countdown and pace in the right column, then its bar.
     c_.text(kLeft, kContentTop, "5H", 2);
@@ -320,7 +323,7 @@ void Screens::focus_portrait(const View &v, int i) {
     const int right = c_.width() - kLeft, w = right - kLeft;
     char b[32];
     if (i == 0) {
-        header(v, kProviderNames[0], ring_index(Page::Deepseek));
+        header(v, kProviderNames[0], ring_index(v, Page::Deepseek));
         c_.text(kLeft, kPortraitContentTop, "BALANCE", 2);
         if (!balance_present(s, v.link.encrypted)) {
             c_.text(kLeft, kPortraitContentTop + 40, empty_message(v), 2);
@@ -340,7 +343,7 @@ void Screens::focus_portrait(const View &v, int i) {
     }
 
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
-    header(v, kProviderNames[1], ring_index(Page::Minimax));
+    header(v, kProviderNames[1], ring_index(v, Page::Minimax));
     if (!sp && !wp) {
         c_.text(kLeft, kPortraitContentTop, empty_message(v), 2);
         return;
@@ -616,7 +619,7 @@ void Screens::now_playing_summary(const View &v, int x, int top, int width, int 
 }
 
 void Screens::music(const View &v) {
-    header(v, "MUSIC", ring_index(Page::Music));
+    header(v, "MUSIC", ring_index(v, Page::Music));
     const int right = c_.width() - kLeft;
     const int content = right - kLeft;
     if (!v.music_valid) {
@@ -674,7 +677,7 @@ void Screens::music(const View &v) {
 }
 
 void Screens::music_portrait(const View &v) {
-    header(v, "MUSIC", ring_index(Page::Music));
+    header(v, "MUSIC", ring_index(v, Page::Music));
     const int right = c_.width() - kLeft;
     const int content = right - kLeft;
     if (!v.music_valid) {
@@ -732,22 +735,62 @@ void Screens::music_portrait(const View &v) {
     }
 }
 
+void Screens::sessions(const View &v) {
+    header(v, "SESSIONS", ring_index(v, Page::Sessions));
+    const int right = c_.width() - kLeft;
+    const int content = right - kLeft;
+    if (!v.sessions_valid) {
+        c_.text(kLeft, kContentTop, v.link.encrypted ? "WAITING FOR DATA" : "NO SESSIONS", 2);
+        return;
+    }
+    const bool portrait = portrait_;
+    const int summary_top = portrait ? kPortraitContentTop : kContentTop;
+    const int row_top = summary_top + kLine + 2 * kChipPad + 4;
+    const int pitch = portrait ? 30 : 26;
+    int busy = 0;
+    for (int i = 0; i < v.sessions.live_count; ++i)
+        busy += v.sessions.live[i].state == SessionState::Busy ? 1 : 0;
+    char summary[44];
+    snprintf(summary, sizeof(summary), "%d LIVE / %d BUSY", v.sessions.live_count, busy);
+    c_.text(kLeft, summary_top, summary, 2);
+    // A busy session is an inverted chip like the status chips; an idle one keeps
+    // the same geometry as plain text, so the names line up across both states.
+    const int chip_w = Canvas::text_width("BUSY", 2) + 2 * kChipPad;
+    for (int i = 0; i < v.sessions.live_count; ++i) {
+        const int top = row_top + pitch * i;
+        const bool is_busy = v.sessions.live[i].state == SessionState::Busy;
+        if (is_busy) {
+            chip(kLeft, top, "BUSY");
+        } else {
+            c_.text(kLeft, top, "IDLE", 2);
+        }
+        char fitted[kMaxSessionTextBytes + 4];
+        // The name shares the label's top, so the two rows of the block line up.
+        CjkText::fit(fitted, sizeof(fitted), v.sessions.live[i].name,
+                     content - chip_w - kSessionsRowGap, 1);
+        CjkText::draw(c_, kLeft + chip_w + kSessionsRowGap, top, fitted, 1);
+    }
+}
+
 void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
         const char *label;
-        const char *options[4];
+        const char *options[5];
     };
     static const Row rows[kSettingRows] = {
         {"AUTO CYCLE", {"OFF", "30S", "1M", "5M"}},
         {"ALERT 95%", {"OFF", "PAGE", "+BEEP"}},
         {"SECONDS", {"ON", "OFF"}},
         {"ROTATION", {"LAND", "PORT", "FLIP"}},
+        {"BRIGHTNESS", {"20%", "40%", "60%", "80%", "100%"}},
     };
     const auto &s = v.settings;
     const int right = c_.width() - kLeft;
-    const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation};
-    for (int r = 0; r < kSettingRows; ++r) {
+    const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation,
+                                        brightness_level_index(s.brightness)};
+    // The reflective panel has no dimmer, so its view never offers the brightness row.
+    for (int r = 0; r < v.setting_rows; ++r) {
         // Landscape puts the options beside the label; portrait puts them below it.
         const int y = portrait_ ? 44 + 74 * r : kContentTop + 48 * r;
         const int label_top = portrait_ ? y + 4 : y + 11;
@@ -875,6 +918,9 @@ void Screens::render(const View &v) {
             break;
         case Page::Minimax:
             portrait_ ? focus_portrait(v, 1) : focus(v, 1);
+            break;
+        case Page::Sessions:
+            sessions(v);
             break;
         case Page::Music:
             portrait_ ? music_portrait(v) : music(v);

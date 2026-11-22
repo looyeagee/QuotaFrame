@@ -153,6 +153,29 @@ TEST_CASE("colons have equal space on both sides", "[render]")
     TEST_ASSERT_TRUE(black(64 + 8 + 12 + 8, 30));
 }
 
+TEST_CASE("a lone segment character fills exactly one cell", "[render]")
+{
+    // `segments` walks a string to its zero, so a layout that places each cell itself must use
+    // `glyph`. Passing the address of a single char used to make the walk continue into
+    // whatever the stack held next and paint it in the neighbouring cell, which is how a clock
+    // came to show two digits on top of each other.
+    const int cell = 40, h = 72, t = 8;
+    canvas.begin(uint8_t(Rotation::Landscape));
+    TEST_ASSERT_EQUAL_INT(cell, canvas.glyph(0, 0, '8', cell, h, t));
+    for (int y = 0; y < h; ++y)
+        for (int x = cell; x < canvas.width(); ++x)
+            TEST_ASSERT_FALSE(black(x, y));
+
+    // Both entry points must land on the same pixels for the same character.
+    static uint8_t one_cell[Canvas::kBytes];
+    canvas.begin(uint8_t(Rotation::Landscape));
+    canvas.glyph(0, 0, '1', cell, h, t);
+    memcpy(one_cell, canvas.data(), sizeof(one_cell));
+    canvas.begin(uint8_t(Rotation::Landscape));
+    canvas.segments(0, 0, "1", cell, h, t);
+    TEST_ASSERT_EQUAL_MEMORY(one_cell, canvas.data(), sizeof(one_cell));
+}
+
 TEST_CASE("long OTA versions stay clear of the progress figure", "[render]")
 {
     Screens screens(canvas);
@@ -408,6 +431,83 @@ TEST_CASE("the portrait music page shows the song and the whole lyric window", "
     // The playhead bar is framed at y 112 and the rule under it sits at y 138.
     TEST_ASSERT_TRUE(black_portrait(14, 112));
     TEST_ASSERT_TRUE(black_portrait(14, 138));
+}
+
+TEST_CASE("the sessions page shows the roster and its states", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Sessions;
+    v.link = {true, true, false, 0};
+    v.sessions_valid = true;
+    v.sessions.live_count = 2;
+    snprintf(v.sessions.live[0].name, sizeof(v.sessions.live[0].name), "会话状态页面");
+    v.sessions.live[0].state = SessionState::Busy;
+    snprintf(v.sessions.live[1].name, sizeof(v.sessions.live[1].name), "修复列表滚动");
+    v.sessions.live[1].state = SessionState::Idle;
+    screens.render(v);
+
+    // The summary line counts the roster and the busy sessions.
+    int summary_ink = 0;
+    for (int y = 46; y < 60; ++y)
+        for (int x = 14; x < 200; ++x)
+            summary_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, summary_ink, "The summary line is missing");
+    // The busy row carries an inverted chip: its padding band is solid black.
+    for (int y = 69; y < 72; ++y)
+        for (int x = 12; x < 62; ++x)
+            TEST_ASSERT_TRUE_MESSAGE(black(x, y), "The busy chip is missing");
+    // The session names carry CJK ink on their own rows beside the chips.
+    int name_ink = 0;
+    for (int y = 72; y < 84; ++y)
+        for (int x = 78; x < 240; ++x)
+            name_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, name_ink, "The session name is missing");
+    // Ended sessions are not drawn: the block under the last row stays blank.
+    int below_ink = 0;
+    for (int y = 148; y < 200; ++y)
+        for (int x = 14; x < 240; ++x)
+            below_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_EQUAL_MESSAGE(0, below_ink, "The page drew rows beyond the roster");
+}
+
+TEST_CASE("the sessions page explains itself before any publication arrives", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Sessions;
+    v.link = {true, true, false, 0};
+    screens.render(v);
+    // No publication means no roster: only the header and one line of text.
+    int name_ink = 0;
+    for (int y = 72; y < 84; ++y)
+        for (int x = 78; x < 240; ++x)
+            name_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_EQUAL_INT(0, name_ink);
+}
+
+TEST_CASE("the settings page draws the four rows a panel without a dimmer offers", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.page = Page::Settings;
+    v.link = {true, true, false, 0};
+    v.setting_rows = static_cast<uint8_t>(kSettingRowsNoDimmer);
+    screens.render(v);
+
+    // The rotation row, the last one this panel offers, keeps its label and its options.
+    int rotation_ink = 0;
+    for (int y = 190; y < 226; ++y)
+        for (int x = 14; x < 385; ++x)
+            rotation_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_GREATER_THAN_MESSAGE(40, rotation_ink, "The rotation row is missing");
+    // No fifth row is drawn, so the band above the footer rule stays clear.
+    int spare_ink = 0;
+    for (int y = 232; y < 250; ++y)
+        for (int x = 14; x < 385; ++x)
+            spare_ink += black(x, y) ? 1 : 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, spare_ink, "A row without a setting was drawn");
+    TEST_ASSERT_TRUE(black(14, 252));
 }
 
 TEST_CASE("an unknown provider is rejected by the model", "[render]")
