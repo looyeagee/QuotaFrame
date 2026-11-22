@@ -132,17 +132,12 @@ void PanelRuntime::run_loop() {
                         clock_return = view_.page == Page::Settings ? Page::Home : view_.page;
                         view_.page = Page::Clock;
                     }
-                    Navigator::normalize(view_);
                 }
                 break;
             case AppEventType::ScreenPage:
                 if (!ota_.busy() && !view_.link.has_passkey && view_.page != Page::Settings) {
-                    const bool portrait =
-                        view_.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
-                    view_.page = event.previous_page
-                                    ? Navigator::previous(view_.page, portrait,
-                                                          service_visible(view_, 1))
-                                    : Navigator::next(view_.page, portrait, service_visible(view_, 1));
+                    view_.page = event.previous_page ? Navigator::previous(view_.page)
+                                                    : Navigator::next(view_.page);
                 }
                 break;
             case AppEventType::AlertSet:

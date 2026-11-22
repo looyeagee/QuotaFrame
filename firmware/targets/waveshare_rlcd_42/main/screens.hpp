@@ -43,6 +43,11 @@ class Screens {
     void windows_row(const View &v, int top);
     void home_portrait(const View &v);
     void focus(const View &v, int provider);
+    /**
+     * Portrait detail pages: the DeepSeek balance and the MiniMax windows, stacked down
+     * the narrow column of the turned panel.
+     */
+    void focus_portrait(const View &v, int provider);
     void alert(const View &v);
     /**
      * Draws the room readings on the date row as one group after `x`.
@@ -72,6 +77,8 @@ class Screens {
     void context_row(int x, int top, int width, const char *line, Ink ink);
     /** Music page: the song, its artist, the playhead and the lyric window. */
     void music(const View &v);
+    /** Portrait music page: the same blocks over the taller lyric window of the turned panel. */
+    void music_portrait(const View &v);
     void settings(const View &v);
     void pairing(const View &v);
     void ota(const View &v);

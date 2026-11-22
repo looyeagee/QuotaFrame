@@ -9,19 +9,22 @@ eim run "idf.py -C firmware/targets/waveshare_rlcd_42 -p <PORT> flash" v6.1
 ```
 
 Evidence level: **partial hardware**. The firmware, `test_apps/logic` and the protocol test
-app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xd3ec0 bytes with 79 % of the app partition
+app compile with ESP-IDF v6.1; `ws_rlcd_42.bin` is 0xcfb30 bytes with 80 % of the app partition
 free. On one board, the landscape Home and detail pages rendered live usage from a bonded
 Bridge, which reconnected with an encrypted link after flashing. The music page has so far been
 verified only in the host preview and by the unit tests that compose its frame: a device has not
-drawn a published song, and the Chinese glyphs have not been read on the panel. Portrait and
-flipped layouts, the key handling, sensors, audio, first-time pairing and OTA have not been
-exercised on hardware.
+drawn a published song, and the Chinese glyphs have not been read on the panel. The portrait
+pages of the five-page ring are composed from the same view model and covered by the host
+preview and the logic tests, but a panel has not shown them yet: portrait and flipped layouts,
+the key handling, sensors, audio, first-time pairing and OTA have not been exercised on
+hardware.
 
 The board's three buttons are KEY (GPIO18), PWR and BOOT (GPIO0). PWR switches the power
 circuit and reaches no GPIO, so the firmware reads two keys: KEY on the left, BOOT on the right.
 A press of KEY steps back, a press of BOOT steps forward, the chord of both keys stands in for
 the middle button, and a key held for 800 ms opens the settings page. The logic test image runs
-the whole board logic suite on the chip: 42 cases, all passing.
+the whole board logic suite on the chip: 45 cases, all passing, including the three that cover
+the portrait pages.
 
 The device advertises as `QF-WS-S3-R42-` followed by the final two Bluetooth MAC bytes and
 reports `waveshare_rlcd_42` in the authenticated status. Usage publication, RTC
@@ -96,19 +99,25 @@ dropped when even the tightest spacing does not fit. In portrait the chip moves 
 of the page, because the narrow width leaves the top row to the date and the readings.
 
 Rotation is manual (the board has no accelerometer): LAND, PORT (landscape turned 90 degrees
-clockwise) or FLIP. Portrait provides Home, Clock and Settings; the other pages exist in
-landscape only.
+clockwise) or FLIP. Portrait keeps the same pages as landscape: every page has a portrait
+layout, so the page ring is the same in both orientations. The portrait column is 272 px wide,
+so the detail pages stack their blocks instead of putting them side by side, the balance
+figure sits between its caption and the account note, and the music page draws seven lyric
+rows under the playhead, which is the whole window the Bridge sends.
 
 The music page only fills while a Bridge publishes `nowplaying.v1`: the Bridge reads the song
 from the NetEase Cloud Music client on the computer and sends a window of lyric lines with the
 one being sung at its head, so the panel shows lyrics without holding a whole song. The page
-draws five lyric rows under the playhead, and the Bridge sends six lines after the sung one:
-four fill the rows below the sung line and two are slack, because the panel moves on to the
-next line on the song's own timeline rather than waiting for the next publication. A line may
+draws five lyric rows under the playhead in landscape and seven in portrait, and the Bridge
+sends six lines after the sung one:
+four fill the landscape rows below the sung line and two are slack, because the panel moves on
+to the next line on the song's own timeline rather than waiting for the next publication; the
+portrait window holds all seven. A line may
 carry up to 192 bytes, so a Chinese lyric of sixty-four
-characters arrives whole; the row shows about fifteen of them and scrolls the rest. A device that never received a song shows WAITING FOR DATA (linked) or
-NO MUSIC (offline); a song with no lyrics keeps the title, the artist and the playhead and
-shows NO LYRICS below the rule.
+characters arrives whole; the row shows about fifteen of them in landscape and eleven in
+portrait, and scrolls the rest. A device that never received a song shows WAITING FOR DATA
+(linked) or NO MUSIC (offline); a song with no lyrics keeps the title, the artist and the
+playhead and shows NO LYRICS below the rule.
 
 The Clock page shows the same song in a summary block: the balance shares the DeepSeek caption
 row so the space below it carries the title and artist on one row, then the line being sung

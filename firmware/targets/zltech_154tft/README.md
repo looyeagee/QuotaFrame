@@ -10,7 +10,7 @@ eim run "idf.py -C firmware/targets/zltech_154tft merge-bin -o zltech_154tft_ful
 ```
 
 证据等级：**hardware bring-up**。固件在 ESP-IDF v6.1 下编译通过，`zltech_154tft.bin` 为
-0xc8b10 字节（7 MB 应用分区剩余 89%）。设备已整片烧录并启动：新分区表生效、8 MB PSRAM 识别正常、
+0xc60c0 字节（7 MB 应用分区剩余 89%）。设备已整片烧录并启动：新分区表生效、8 MB PSRAM 识别正常、
 ADC 校准成功、ST7789 面板初始化完成并点亮 70% 背光、BLE 以 `QF-ZLT-154-FE16` 广播。
 Bridge 已建立 Secure Connections 连接并推送 `usage.v1`，面板渲染出余额与配额；
 顶部三键的按键事件从串口日志确认。OTA 流程、电量标定与音频仍待实机确认，之后才可称为 hardware-verified。
@@ -56,7 +56,8 @@ ES8311 上；本 target 不用音频通路，这些脚空闲。
 ## 显示
 
 240 × 240 正方形屏，所以没有横竖屏两套布局：整页按 220 px 单栏排版，Settings 里的
-ROTATION 只把成品画面在玻璃上转 0°/90°/180°，逻辑坐标不变。
+ROTATION 只把成品画面在玻璃上转 0°/90°/180°，逻辑坐标不变。页面环在三种方向下一致
+（Home → Deepseek → Minimax → Music → Clock），按键在任何方向都能翻到全部页面。
 
 屏幕是彩色 ST7789，但这一版所有界面都是一位图，因此每帧从画布展开成黑白 RGB565：
 `1` → 黑，`0` → 白。传输按 20 行一带走内部 DMA 缓冲，一帧 12 带、共 115 KB，

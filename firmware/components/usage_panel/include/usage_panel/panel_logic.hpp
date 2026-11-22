@@ -58,9 +58,6 @@ constexpr uint8_t warning_level(uint8_t previous, uint8_t used) {
 /** Provider rendered in one slot: DeepSeek holds the balance, MiniMax the windows. */
 Provider provider_for(int slot);
 
-/** Whether a slot has received data, so a page or row can show values instead of a message. */
-bool service_visible(const View &v, int slot);
-
 /**
  * Applies a now-playing publication and restarts the lyric scroll when the line being sung
  * changes. The scroll anchor is the moment the panel began showing that line, so a line that
@@ -160,12 +157,14 @@ struct NavResult {
 class Navigator {
   public:
     /**
-     * Next ring page; portrait orientation has a Home / Clock ring.
-     * `second_service` false skips the secondary service page.
+     * Next ring page.
+     *
+     * The ring holds the same pages in every orientation: Home, Deepseek, Minimax, Music and
+     * Clock.
      */
-    static Page next(Page page, bool portrait, bool second_service = true);
+    static Page next(Page page);
     /** Previous ring page; returns Home when `page` is outside the current ring. */
-    static Page previous(Page page, bool portrait, bool second_service = true);
+    static Page previous(Page page);
 
     /** Applies one button input to `view`. `now_ms` restarts the auto-cycle timer. */
     NavResult input(Input input, View &view, uint64_t now_ms);
@@ -179,9 +178,6 @@ class Navigator {
 
     /** Advances the ring when the configured auto-cycle interval has elapsed. */
     bool auto_cycle(View &view, uint64_t now_ms);
-
-    /** Moves to Home when the current page does not exist in the current orientation. */
-    static bool normalize(View &view);
 
   private:
     Page return_page_ = Page::Home;

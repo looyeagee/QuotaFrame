@@ -104,10 +104,11 @@ Waveshare 的烧录命令相同，只需替换工程路径和实际端口：
 RLCD 4.2 的按键与页面环：
 
 ```text
-Home -> Deepseek -> Minimax -> Clock -> Home
+Home -> Deepseek -> Minimax -> Music -> Clock -> Home
 ```
 
-竖屏只在 Home 与 Clock 之间轮换；Settings 由长按 KEY 进入，不在环上。
+横屏与竖屏的页面环一致：每个页面都有竖屏版式，按键在两种方向下都走完整的五页。
+Settings 由长按 KEY 进入，不在环上。
 
 状态优先级：
 

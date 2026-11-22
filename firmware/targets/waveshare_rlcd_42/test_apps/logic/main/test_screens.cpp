@@ -23,6 +23,23 @@ int black_pixels() {
         count += __builtin_popcount(canvas.data()[i]);
     return count;
 }
+
+/**
+ * Whether the logical pixel (`x`, `y`) of a portrait frame is black.
+ *
+ * The portrait frame is the native buffer turned a quarter clockwise, so a logical column
+ * is a native row.
+ */
+bool black_portrait(int x, int y) { return black(Canvas::kNativeWidth - 1 - y, x); }
+
+/** Black pixels in the logical rectangle of a portrait frame. */
+int ink_portrait(int x0, int y0, int x1, int y1) {
+    int count = 0;
+    for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x)
+            count += black_portrait(x, y) ? 1 : 0;
+    return count;
+}
 } // namespace
 
 TEST_CASE("bezel and header rule land on the design coordinates", "[render]")
@@ -312,6 +329,85 @@ TEST_CASE("the music page explains itself before any song arrives", "[render]")
         for (int x = 14; x < 386; ++x)
             band_black += black(x, y) ? 1 : 0;
     TEST_ASSERT_EQUAL_INT(0, band_black);
+}
+
+TEST_CASE("the portrait detail pages fill the turned column", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.link = {true, true, false, 0};
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    UsageUpdate d;
+    d.provider = Provider::Deepseek;
+    d.state = SourceState::Ok;
+    d.sent_at = d.sampled_at = 1800000000;
+    d.has_balance = true;
+    d.balance_cents = 3945;
+    memcpy(d.currency, "CNY", 4);
+    TEST_ASSERT_TRUE(v.model.apply(d, 0));
+    UsageUpdate m;
+    m.provider = Provider::Minimax;
+    m.state = SourceState::Ok;
+    m.sent_at = m.sampled_at = 1800000000;
+    m.short_window = {true, 69, true, 1800000000 + 8045};
+    m.week_window = {true, 57, true, 1800000000 + 281520};
+    TEST_ASSERT_TRUE(v.model.apply(m, 0));
+
+    // The DeepSeek page shows the balance between its caption and the account note.
+    v.page = Page::Deepseek;
+    screens.render(v);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, ink_portrait(14, 44, 90, 58), "The caption is missing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(200, ink_portrait(14, 131, 200, 219),
+                                     "The balance figure is missing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, ink_portrait(14, 308, 200, 322),
+                                     "The account note is missing");
+    // Nothing reaches into the gutter between the content column and the bezel; the
+    // inverted chip bleeds 4 px past the text margin, like the lyric band on the music page.
+    TEST_ASSERT_EQUAL_INT(0, ink_portrait(7, 40, 10, 350));
+
+    // The MiniMax page stacks the figure, its bar and the weekly block.
+    v.page = Page::Minimax;
+    screens.render(v);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(200, ink_portrait(14, 66, 190, 162),
+                                     "The window figure is missing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, ink_portrait(14, 204, 286, 222),
+                                     "The five-hour bar is missing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(20, ink_portrait(14, 292, 286, 306),
+                                     "The weekly bar is missing");
+    TEST_ASSERT_EQUAL_INT(0, ink_portrait(7, 40, 10, 350));
+}
+
+TEST_CASE("the portrait music page shows the song and the whole lyric window", "[render]")
+{
+    Screens screens(canvas);
+    View v;
+    v.link = {true, true, false, 0};
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    v.page = Page::Music;
+    v.music_valid = true;
+    snprintf(v.music.title, sizeof(v.music.title), "证据");
+    snprintf(v.music.artist, sizeof(v.music.artist), "杨乃文");
+    v.music.position_seconds = 54;
+    v.music.duration_seconds = 275;
+    v.music.playing = true;
+    v.music.line_count = 3;
+    snprintf(v.music.lines[0], sizeof(v.music.lines[0]), "被当作乱放电的诱惑");
+    snprintf(v.music.lines[1], sizeof(v.music.lines[1]), "我双鱼 为什么天蝎要恨我");
+    snprintf(v.music.lines[2], sizeof(v.music.lines[2]), "难道都是我的错");
+    screens.render(v);
+
+    // The line being sung is inverted across the column, and the glyphs inside it stay
+    // open so the text reads as white on black.
+    const int band_black = ink_portrait(10, 148, 290, 176);
+    TEST_ASSERT_GREATER_THAN(280 * 28 / 2, band_black);
+    TEST_ASSERT_LESS_THAN(280 * 28, band_black);
+    // The title and the artist carry CJK ink on their own rows above the playhead.
+    TEST_ASSERT_GREATER_THAN_MESSAGE(40, ink_portrait(14, 44, 286, 68),
+                                     "The song title is missing");
+    TEST_ASSERT_GREATER_THAN_MESSAGE(40, ink_portrait(14, 76, 286, 100), "The artist is missing");
+    // The playhead bar is framed at y 112 and the rule under it sits at y 138.
+    TEST_ASSERT_TRUE(black_portrait(14, 112));
+    TEST_ASSERT_TRUE(black_portrait(14, 138));
 }
 
 TEST_CASE("an unknown provider is rejected by the model", "[render]")

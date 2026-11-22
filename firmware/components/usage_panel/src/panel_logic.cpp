@@ -246,10 +246,6 @@ int lyric_scroll_offset(int line_width, int travel, uint64_t age_ms, uint32_t bu
 
 Provider provider_for(int slot) { return slot ? Provider::Minimax : Provider::Deepseek; }
 
-bool service_visible(const View &v, int slot) {
-    return v.model.snapshot(provider_for(slot)).has_valid_data;
-}
-
 int ring_index(Page page) {
     switch (page) {
     case Page::Home:
@@ -269,9 +265,7 @@ int ring_index(Page page) {
 
 int ring_pages() { return 5; }
 
-Page Navigator::next(Page page, bool portrait, bool) {
-    if (portrait)
-        return page == Page::Home ? Page::Clock : Page::Home;
+Page Navigator::next(Page page) {
     switch (page) {
     case Page::Home:
         return Page::Deepseek;
@@ -286,24 +280,14 @@ Page Navigator::next(Page page, bool portrait, bool) {
     }
 }
 
-Page Navigator::previous(Page page, bool portrait, bool) {
+Page Navigator::previous(Page page) {
     Page p = page;
     for (int i = 0; i < ring_pages(); ++i) {
-        if (next(p, portrait) == page)
+        if (next(p) == page)
             return p;
-        p = next(p, portrait);
+        p = next(p);
     }
     return Page::Home;
-}
-
-bool Navigator::normalize(View &v) {
-    const bool portrait = v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
-    if (portrait && (v.page == Page::Deepseek || v.page == Page::Minimax ||
-                     v.page == Page::Music)) {
-        v.page = Page::Home;
-        return true;
-    }
-    return false;
 }
 
 NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
@@ -312,7 +296,6 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
         return r;
     last_step_ms_ = now_ms;
     r.redraw = true;
-    const bool portrait = v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait);
     if (v.alert >= 0 && v.page != Page::Settings) {
         // The alert covers the panel, so a key dismisses it instead of changing the page.
         if (in != Input::Hold) {
@@ -324,7 +307,6 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
     if (v.page == Page::Settings) {
         if (in == Input::Hold) {
             v.page = return_page_;
-            normalize(v);
         } else if (in == Input::Home) {
             // The home action moves the focus to the next row.
             v.focus = (v.focus + 1) % kSettingRows;
@@ -353,9 +335,9 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
         v.page = Page::Settings;
         v.focus = 0;
     } else if (in == Input::Forward)
-        v.page = next(v.page, portrait);
+        v.page = next(v.page);
     else if (in == Input::Back)
-        v.page = previous(v.page, portrait);
+        v.page = previous(v.page);
     else if (in == Input::Home)
         v.page = Page::Home;
     return r;
@@ -388,7 +370,7 @@ bool Navigator::auto_cycle(View &v, uint64_t now_ms) {
     if (now_ms - last_step_ms_ < interval)
         return false;
     last_step_ms_ = now_ms;
-    v.page = next(v.page, v.settings.rotation == static_cast<uint8_t>(Rotation::Portrait));
+    v.page = next(v.page);
     return true;
 }
 } // namespace usage_panel

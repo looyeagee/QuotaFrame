@@ -147,5 +147,21 @@ int main(int argc, char **argv) {
     v = design_view();
     apply_minimax(v, 0, 0, 0, 0, 0);
     render(v, "08_home_empty");
+
+    // Portrait: the square panel turns the finished image, so every page keeps its layout
+    // and stays reachable in the turned orientation.
+    v = design_view();
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    render(v, "09_portrait_home");
+
+    v = design_view();
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    v.page = Page::Minimax;
+    render(v, "10_portrait_minimax");
+
+    v = design_view();
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    v.page = Page::Music;
+    render(v, "11_portrait_music");
     return 0;
 }

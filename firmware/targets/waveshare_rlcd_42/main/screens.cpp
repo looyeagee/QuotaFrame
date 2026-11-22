@@ -20,6 +20,22 @@ constexpr int kContentTop = 46;
 constexpr int kOverThreshold = 5;
 // Footer rule on pages with a footer line; the footer text follows 10 px below it.
 constexpr int kFooterRule = 252, kPortraitFooterRule = 340;
+// Portrait pages: the panel turned a quarter turn is 300 x 400, so the content column is
+// 272 px wide and the blocks stack down the page.
+constexpr int kPortraitContentTop = 44;
+// Portrait detail pages: the room the balance figure is centred in, and the note below it.
+constexpr int kPortraitFigureRoom = 190, kPortraitFigureTop = 80, kPortraitNoteRule = 296;
+// Portrait MiniMax page: the figure, the row the pace chip takes, the bar and the elapsed
+// time, then the weekly block.
+constexpr int kPortraitWindowTop = 66, kPortraitWindowFigure = 96, kPortraitChipTop = 172;
+constexpr int kPortraitBarTop = 204, kPortraitElapsedTop = 236, kPortraitWeekRule = 258;
+constexpr int kPortraitWeekTop = 270, kPortraitWeekBarTop = 292, kPortraitWeekElapsedTop = 318;
+// Portrait music page: the song, its artist, the playhead, the rule and the lyric window.
+constexpr int kPortraitMusicTitle = 44, kPortraitMusicArtist = 76, kPortraitMusicBarTop = 112;
+constexpr int kPortraitMusicRule = 138, kPortraitMusicLyricsTop = 150;
+// The portrait lyric window holds the whole window the Bridge sends: the line being sung
+// and the six lines after it.
+constexpr int kPortraitMusicLyricRows = 7;
 // Music page: two lyric-font lines for the song, a playhead, then the lyric window.
 constexpr int kMusicScale = 2;
 constexpr int kMusicLineHeight = CjkText::line_height(kMusicScale);
@@ -40,6 +56,9 @@ constexpr int kSummaryLyricRows = 2;
 // Segment heights the balance figure tries, largest first; the smallest one is the
 // fallback when none of them fits.
 constexpr int kBalanceHeights[] = {68, 60, 52, 44, 36, 32, 28};
+// The portrait column is narrower than the landscape one, so the figure there is taller
+// only while the amount and its currency still fit beside each other.
+constexpr int kPortraitBalanceHeights[] = {88, 80, 72, 64, 56, 48, 40, 36, 32, 28};
 } // namespace
 
 int Screens::battery(const View &v, int right, Ink ink) {
@@ -194,7 +213,7 @@ void Screens::home(const View &v) {
 }
 
 void Screens::home_portrait(const View &v) {
-    header(v, nullptr);
+    header(v, nullptr, ring_index(Page::Home));
     const int right = c_.width() - kLeft, w = right - kLeft;
     const auto &s = v.model.snapshot(provider_for(1));
     const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
@@ -293,6 +312,79 @@ void Screens::focus(const View &v, int i) {
         format_elapsed(pace.week_pace.elapsed_s, elapsed, sizeof(elapsed));
         snprintf(b, sizeof(b), "ELAPSED %s", elapsed);
         c_.text(kLeft, 268, b, 2);
+    }
+}
+
+void Screens::focus_portrait(const View &v, int i) {
+    const auto &s = v.model.snapshot(provider_for(i));
+    const int right = c_.width() - kLeft, w = right - kLeft;
+    char b[32];
+    if (i == 0) {
+        header(v, kProviderNames[0], ring_index(Page::Deepseek));
+        c_.text(kLeft, kPortraitContentTop, "BALANCE", 2);
+        if (!balance_present(s, v.link.encrypted)) {
+            c_.text(kLeft, kPortraitContentTop + 40, empty_message(v), 2);
+            return;
+        }
+        if (age_label(v, 0, b, sizeof(b)))
+            c_.text_right(right, kPortraitContentTop, b, 2);
+        // The figure sits in the middle of the page, so the caption above it and the note
+        // below it carry the same weight.
+        const int h = balance_height(s, w, kPortraitFigureRoom, kPortraitBalanceHeights);
+        const int top = kPortraitFigureTop + (kPortraitFigureRoom - h) / 2;
+        draw_balance(c_, kLeft, top, s, w, kPortraitFigureRoom, kPortraitBalanceHeights);
+        c_.dotted(kLeft, kPortraitNoteRule, w);
+        c_.text(kLeft, kPortraitNoteRule + 12, "CREDIT LEFT", 2);
+        c_.text(kLeft, kPortraitNoteRule + 34, "ON THE ACCOUNT", 2);
+        return;
+    }
+
+    const bool sp = short_present(s, v.link.encrypted), wp = week_present(s, v.link.encrypted);
+    header(v, kProviderNames[1], ring_index(Page::Minimax));
+    if (!sp && !wp) {
+        c_.text(kLeft, kPortraitContentTop, empty_message(v), 2);
+        return;
+    }
+    const Paces pace = paces(v, 1, sp, wp);
+    // Five-hour window: the figure with its reset countdown beside it, the pace chip on
+    // its own row, then the bar and the elapsed time.
+    c_.text(kLeft, kPortraitContentTop, "5H", 2);
+    c_.text_right(right, kPortraitContentTop, "RESET", 2);
+    big_percent(kLeft, kPortraitWindowTop, sp ? s.short_window.used_percent : -1,
+                kPortraitWindowFigure);
+    reset_countdown(v, 1, false, b, sizeof(b));
+    c_.text_right(right, kPortraitWindowTop, b, 2);
+    if (pace.short_pace.valid && pace.short_pace.delta >= kOverThreshold) {
+        snprintf(b, sizeof(b), "OVER +%d%%", pace.short_pace.delta);
+        chip(kLeft, kPortraitChipTop, b);
+    }
+    bar(kLeft, kPortraitBarTop, w, 18, sp ? s.short_window.used_percent : -1,
+        marker(pace.short_pace));
+    if (pace.short_pace.valid) {
+        char elapsed[16];
+        format_elapsed(pace.short_pace.elapsed_s, elapsed, sizeof(elapsed));
+        snprintf(b, sizeof(b), "ELAPSED %s", elapsed);
+        c_.text(kLeft, kPortraitElapsedTop, b, 2);
+    }
+    if (age_label(v, 1, b, sizeof(b)))
+        c_.text_right(right, kPortraitElapsedTop, b, 2);
+
+    // Week window: the same row structure, below the dotted rule.
+    c_.dotted(kLeft, kPortraitWeekRule, w);
+    if (wp)
+        snprintf(b, sizeof(b), "WEEK %u%%", s.week_window.used_percent);
+    else
+        snprintf(b, sizeof(b), "WEEK --");
+    c_.text(kLeft, kPortraitWeekTop, b, 2);
+    reset_countdown(v, 1, true, b, sizeof(b));
+    c_.text_right(right, kPortraitWeekTop, b, 2);
+    bar(kLeft, kPortraitWeekBarTop, w, 14, wp ? s.week_window.used_percent : -1,
+        marker(pace.week_pace));
+    if (pace.week_pace.valid) {
+        char elapsed[16];
+        format_elapsed(pace.week_pace.elapsed_s, elapsed, sizeof(elapsed));
+        snprintf(b, sizeof(b), "ELAPSED %s", elapsed);
+        c_.text(kLeft, kPortraitWeekElapsedTop, b, 2);
     }
 }
 
@@ -581,6 +673,65 @@ void Screens::music(const View &v) {
     }
 }
 
+void Screens::music_portrait(const View &v) {
+    header(v, "MUSIC", ring_index(Page::Music));
+    const int right = c_.width() - kLeft;
+    const int content = right - kLeft;
+    if (!v.music_valid) {
+        c_.text(kLeft, kPortraitContentTop + 6, v.link.encrypted ? "WAITING FOR DATA" : "NO MUSIC",
+                2);
+        return;
+    }
+    const auto &m = v.music;
+    char fitted[kMaxTitleBytes + 8];
+    // The song and its artist sit above the playhead, in the line height of the lyric font.
+    CjkText::fit(fitted, sizeof(fitted), m.title, content, kMusicScale);
+    CjkText::draw(c_, kLeft, kPortraitMusicTitle, fitted, kMusicScale);
+    if (m.artist[0]) {
+        CjkText::fit(fitted, sizeof(fitted), m.artist, content - kPausedWidth, kMusicScale);
+        CjkText::draw(c_, kLeft, kPortraitMusicArtist, fitted, kMusicScale);
+    }
+    // The paused state ends the artist row in the same font, so the two share the baseline.
+    if (!m.playing)
+        CjkText::draw(c_, right - CjkText::width("PAUSED", kMusicScale), kPortraitMusicArtist,
+                      "PAUSED", kMusicScale);
+    // Playhead: the bar keeps 12 px clear of the elapsed/total figures on its right.
+    char times[40];
+    format_playhead(m.position_seconds, m.duration_seconds, times, sizeof(times));
+    const int times_w = Canvas::text_width(times, 2);
+    const int bar_w = std::max(60, content - times_w - 12);
+    const int percent =
+        m.duration_seconds > 0
+            ? static_cast<int>(static_cast<uint64_t>(m.position_seconds) * 100 /
+                               m.duration_seconds)
+            : -1;
+    bar(kLeft, kPortraitMusicBarTop, bar_w, kMusicBarHeight, std::min(percent, 100));
+    c_.text_right(right, kPortraitMusicBarTop + 1, times, 2);
+    // A rule separates the song from the lyrics, like the rule under the header.
+    c_.fill(kLeft, kPortraitMusicRule, content, 2);
+    if (m.line_count == 0) {
+        c_.text(kLeft, kPortraitMusicLyricsTop + 6, v.link.encrypted ? "NO LYRICS" : "--", 2);
+        return;
+    }
+    const int lyric_width = content - 2 * kMusicTextInset;
+    // The line being sung follows the song, so it may move on before the next publication.
+    const int current = music_current_line(v, v.now_ms);
+    for (int row = 0; row < kPortraitMusicLyricRows; ++row) {
+        const int index = current + row;
+        if (index >= m.line_count)
+            break;
+        const int top = kPortraitMusicLyricsTop + row * kMusicLyricPitch;
+        if (row == 0) {
+            // The line being sung is inverted, like the chips elsewhere on the panel.
+            c_.fill(kLeft - kMusicTextInset, top - 2, content + 2 * kMusicTextInset,
+                    kMusicLineHeight + 4);
+            lyric_row(v, kLeft, top, lyric_width, m.lines[index], Ink::White);
+        } else {
+            context_row(kLeft, top, lyric_width, m.lines[index], Ink::Black);
+        }
+    }
+}
+
 void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
@@ -720,13 +871,13 @@ void Screens::render(const View &v) {
             portrait_ ? home_portrait(v) : home(v);
             break;
         case Page::Deepseek:
-            portrait_ ? home_portrait(v) : focus(v, 0);
+            portrait_ ? focus_portrait(v, 0) : focus(v, 0);
             break;
         case Page::Minimax:
-            portrait_ ? home_portrait(v) : focus(v, 1);
+            portrait_ ? focus_portrait(v, 1) : focus(v, 1);
             break;
         case Page::Music:
-            portrait_ ? home_portrait(v) : music(v);
+            portrait_ ? music_portrait(v) : music(v);
             break;
         case Page::Clock:
             clock(v);

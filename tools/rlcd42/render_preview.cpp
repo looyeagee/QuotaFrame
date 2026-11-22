@@ -158,6 +158,21 @@ int main(int argc, char **argv) {
     render(p, "11_portrait_clock");
     p.page = Page::Settings;
     render(p, "12_portrait_settings");
+    p.page = Page::Deepseek;
+    render(p, "12a_portrait_deepseek");
+    p.page = Page::Minimax;
+    render(p, "12b_portrait_minimax");
+    p.page = Page::Music;
+    // The portrait window holds the whole lyric window the Bridge sends: the line being
+    // sung and the six lines after it.
+    static const char *const kPortraitLyrics[] = {"被当作乱放电的诱惑", "我双鱼 为什么天蝎要恨我",
+                                                  "难道都是我的错", "我该生气还难过",
+                                                  "一杯被当做证据的红酒", "你说你也爱我",
+                                                  "我怕你从来都没有真正爱过我"};
+    apply_now_playing(p, "证据", "杨乃文", 54, 275, kPortraitLyrics, 7);
+    render(p, "12c_portrait_music");
+    p.music.playing = false;
+    render(p, "12d_portrait_music_paused");
     a.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
     render(a, "13_portrait_alert");
     View full = design_view();
