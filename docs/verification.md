@@ -17,6 +17,8 @@ RLCD 4.2 的按键方案已按实机照片复核：板上三个按键自左至�
 
 ZLTech 1.54 TFT 已在一台板上整片烧录并启动：v6.1 引导、新分区表（`ota_0` = 7 MB @ 0x20000）、8 MB PSRAM、ADC 校准、ST7789 240 × 240 面板初始化和 `QF-ZLT-154-FE16` 广播均从串口日志确认。Bridge 已与该板建立 Secure Connections 连接（`target=zltech_154tft`），`usage.v1` 数据到达面板并渲染出 DeepSeek 余额、MiniMax 5 小时与周配额；串口日志确认顶部三键（GPIO39 / GPIO0 / GPIO40）都会上报按键事件。屏幕观感由用户实拍照片核对：分带刷新导致的顶部截断与底部重影已消除，时钟改为本地时间，页码点与边框分离。OTA `ota.folder.v1`、电量标定与按键长按仍待专项验证。详见[目标说明](../firmware/targets/zltech_154tft/README.md)。
 
+公共包重构（`usage_panel` / `usage_panel_app`）后的固件在同一块板上整片烧录验证：v6.1 引导、新分区表、8 MB PSRAM、ADC 校准、ST7789 初始化和 `QF-ZLT-154-FE16` 广播从串口日志确认，Bridge 重新建立 Secure Connections 连接（`encrypted=1 bonded=1`）。该次刷入暴露了主任务栈溢出——画布与视图模型被放在 `app_main` 的局部变量里，超出 12 KB 栈后固件在第一条日志上触发中断看门狗并反复重启；改为静态存储后同板复测通过。RLCD 4.2 的重构固件同样修掉了这一处溢出，但未在硬件上运行。
+
 
 ## 性能与显示参考
 

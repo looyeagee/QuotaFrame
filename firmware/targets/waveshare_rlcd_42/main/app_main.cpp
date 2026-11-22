@@ -20,7 +20,5 @@ constexpr char kNoAudio[] = "ES8311 unavailable; alerts stay silent";
 } // namespace
 
 extern "C" void app_main() {
-    PanelTargetImpl<Canvas, Board, St7305, Beeper, Screens> target(kIdentity, kNoAudio);
-    PanelRuntime runtime(target, kIdentity);
-    runtime.run();
+    run_panel<Canvas, Board, St7305, Beeper, Screens>(kIdentity, kNoAudio);
 }

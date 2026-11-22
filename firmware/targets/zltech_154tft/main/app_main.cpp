@@ -20,7 +20,5 @@ constexpr char kNoAudio[] = "no audio path; alerts stay silent";
 } // namespace
 
 extern "C" void app_main() {
-    PanelTargetImpl<Canvas, Board, St7789, Beeper, Screens> target(kIdentity, kNoAudio);
-    PanelRuntime runtime(target, kIdentity);
-    runtime.run();
+    run_panel<Canvas, Board, St7789, Beeper, Screens>(kIdentity, kNoAudio);
 }

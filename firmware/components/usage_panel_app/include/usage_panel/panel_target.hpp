@@ -58,4 +58,18 @@ class PanelTargetImpl : public PanelTarget {
     ScreensT screens_{canvas_};
 };
 
+/**
+ * Brings the panel up and runs it.
+ *
+ * The target and the runtime live in static storage: the drawing surface and the view model
+ * are larger than the stack of the task that calls app_main, so they cannot be locals there.
+ */
+template <typename CanvasT, typename BoardT, typename PanelT, typename BeeperT, typename ScreensT>
+void run_panel(const PanelIdentity &identity, const char *no_audio_warning) {
+    static PanelTargetImpl<CanvasT, BoardT, PanelT, BeeperT, ScreensT> target(identity,
+                                                                              no_audio_warning);
+    static PanelRuntime runtime(target, identity);
+    runtime.run();
+}
+
 } // namespace usage_panel
