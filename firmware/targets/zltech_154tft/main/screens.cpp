@@ -13,8 +13,20 @@ constexpr int kLeft = 10, kBezel = 4;
 constexpr int kLine = 14;
 // Pixel-font line height at the small scale.
 constexpr int kSmallLine = kLine / 2;
-// Inverted chips extend this far around their text, so the text aligns with plain labels.
-constexpr int kChipPad = 4;
+// Inverted chips extend this far around their text at scale 2, so the text aligns with plain
+// labels; a small chip takes one pixel less, which is still enough to keep the outline clear
+// of the letters.
+constexpr int kChipPad = 4, kChipPadSmall = 3;
+// Sessions page: the count leads, one row per running session follows, the same composition
+// the AMOLED target draws, fitted to a 220 x 190 column. The roster carries at most four live
+// sessions, so every row gets room and no row is ever cut.
+constexpr int kSessionsCountTop = 34, kSessionsCountScale = 4;
+constexpr int kSessionsDetailTop = 56;
+constexpr int kSessionsRowsTop = 82, kSessionsPitch = 32, kSessionsCardHeight = 26;
+constexpr int kSessionsBarWidth = 4, kSessionsGap = 10;
+constexpr int kSessionsNameScale = 1, kSessionsChipScale = 1;
+// Gap between the state chip, which is right-aligned, and the name column.
+constexpr int kSessionsChipGap = 8;
 // First content line, just below the header rule.
 constexpr int kContentTop = 32;
 // Smallest pace excess, in percentage points, that the detail page reports as OVER. Smaller
@@ -50,11 +62,22 @@ int Screens::battery(const View &v, int right, Ink ink) {
     return x;
 }
 
-int Screens::chip(int x, int top, const char *s, Ink ink) {
-    const Ink paper = ink == Ink::Black ? Ink::White : Ink::Black;
-    const int tw = Canvas::text_width(s, 2);
-    const int x0 = x - kChipPad, y0 = top - kChipPad;
-    const int w = tw + 2 * kChipPad, h = kLine + 2 * kChipPad;
+int Screens::chip_pad(int scale) {
+    return scale >= 2 ? kChipPad : kChipPadSmall;
+}
+
+int Screens::chip_height(int scale) {
+    return kLine * scale / 2 + 2 * chip_pad(scale);
+}
+
+int Screens::chip(int x, int top, const char *s, Ink ink, int scale) {
+    // The label is paper on the chip's fill: white on an ink or amber chip, black on a paper
+    // one, which is the only case where the fill is light.
+    const Ink paper = ink == Ink::White ? Ink::Black : Ink::White;
+    const int pad = chip_pad(scale);
+    const int tw = Canvas::text_width(s, scale);
+    const int x0 = x - pad, y0 = top - pad;
+    const int w = tw + 2 * pad, h = chip_height(scale);
     c_.fill(x0, y0, w, h, ink);
     // A 2 px corner radius: clear the three outermost pixels of each corner.
     for (int cx : {x0, x0 + w - 1})
@@ -64,7 +87,7 @@ int Screens::chip(int x, int top, const char *s, Ink ink) {
             c_.pixel(cx + dx, cy, paper);
             c_.pixel(cx, cy + dy, paper);
         }
-    c_.text(x, top, s, 2, paper);
+    c_.text(x, top, s, scale, paper);
     return tw;
 }
 
@@ -72,7 +95,7 @@ void Screens::header(const View &v, const char *title) {
     char time[8];
     snprintf(time, sizeof(time), "%02u:%02u", v.clock.hour, v.clock.minute);
     c_.text(kLeft, 8, title ? title : v.clock.valid ? time : "--:--", 2);
-    int edge = battery(v, c_.width() - kLeft);
+    int edge = battery(v, c_.width() - kLeft, Ink::Muted);
     const char *status = link_status(v);
     // LINKED is the normal state and is not shown; every other state gets a chip.
     if (v.link.has_passkey || v.ota.stage != OtaStage::Idle || !v.link.encrypted) {
@@ -80,7 +103,9 @@ void Screens::header(const View &v, const char *title) {
         edge -= 8 + kChipPad + tw;
         chip(edge, 8, status);
     }
-    c_.fill(kLeft, 26, c_.width() - 2 * kLeft, 2);
+    // A hairline under the header reads as structure, not as ink: grey keeps the eye on the
+    // values below it.
+    c_.fill(kLeft, 26, c_.width() - 2 * kLeft, 2, Ink::Muted);
 }
 
 void Screens::page_dots(const View &v, int page) {
@@ -91,7 +116,7 @@ void Screens::page_dots(const View &v, int page) {
         if (i == page)
             c_.fill(x + 12 * i, 222, 8, 8);
         else
-            c_.frame(x + 12 * i, 222, 8, 8, 2);
+            c_.frame(x + 12 * i, 222, 8, 8, 2, Ink::Muted);
     }
 }
 
@@ -423,9 +448,82 @@ void Screens::music(const View &v) {
 
 void Screens::sessions(const View &v) {
     header(v, "SESSIONS");
-    // This target does not declare the sessions capability and the page ring
-    // skips the page, so this body is the safety net for an unreachable page.
-    c_.text(kLeft, kContentTop + 6, "NO SESSIONS", 2);
+    const int right = c_.width() - kLeft;
+    if (!v.sessions_valid) {
+        c_.text(kLeft, kSessionsCountTop, v.link.encrypted ? "WAITING FOR DATA" : "NO SESSIONS", 2,
+                Ink::Muted);
+        return;
+    }
+    int busy = 0;
+    for (int i = 0; i < v.sessions.live_count; ++i)
+        busy += v.sessions.live[i].state == SessionState::Busy ? 1 : 0;
+
+    // The count leads the page, as it does on the AMOLED target: it answers the question the
+    // page exists for, and its colour says whether anything is working before a word is read.
+    char count[4];
+    snprintf(count, sizeof(count), "%d", static_cast<int>(v.sessions.live_count));
+    const Ink lead = v.sessions.live_count == 0 ? Ink::Muted
+                     : busy > 0                ? Ink::Accent
+                                               : Ink::Good;
+    c_.text(kLeft, kSessionsCountTop, count, kSessionsCountScale, lead);
+    const int label_x = kLeft + Canvas::text_width(count, kSessionsCountScale) + kSessionsGap;
+    c_.text(label_x, kSessionsCountTop + 2, "LIVE", 2);
+    char detail[24];
+    if (v.sessions.live_count == 0)
+        snprintf(detail, sizeof(detail), "NOTHING RUNNING");
+    else if (busy > 0)
+        snprintf(detail, sizeof(detail), "%d WORKING", busy);
+    else
+        snprintf(detail, sizeof(detail), "ALL WAITING");
+    c_.text(label_x, kSessionsDetailTop, detail, 2, Ink::Muted);
+
+    if (v.sessions.live_count == 0) {
+        // An empty page that explains itself. The hint sits where the first card would start,
+        // so the page keeps the rhythm of one with sessions on it.
+        const char *hint = "START CLAUDE CODE";
+        c_.text((c_.width() - Canvas::text_width(hint, 2)) / 2,
+                kSessionsRowsTop + (kSessionsCardHeight - kLine) / 2, hint, 2, Ink::Muted);
+        return;
+    }
+
+    // One card per running session: a colour bar for the state, the name, and the state word
+    // in a chip. The block is centred in the room under the count, so a single session reads
+    // as a card on the page instead of a line stranded at the top edge.
+    const int live = v.sessions.live_count;
+    const int block = live * kSessionsPitch - (kSessionsPitch - kSessionsCardHeight);
+    const int room_bottom = c_.height() - 38;
+    int top = kSessionsRowsTop + std::max(0, (room_bottom - kSessionsRowsTop - block) / 2);
+    const int name_bottom = CjkText::line_height(kSessionsNameScale);
+    const int pad = chip_pad(kSessionsChipScale);
+    const int chip_h = chip_height(kSessionsChipScale);
+    for (int i = 0; i < live; ++i) {
+        const bool is_busy = v.sessions.live[i].state == SessionState::Busy;
+        const Ink state_ink = is_busy ? Ink::Accent : Ink::Good;
+        c_.fill(kLeft, top, kSessionsBarWidth, kSessionsCardHeight, state_ink);
+        // The state is drawn twice on purpose: the bar is read at a glance, the word answers
+        // the same question with the page in hand. A filled chip marks work in progress, an
+        // outlined one a session that is up and waiting, so the two never read as equal.
+        const char *word = is_busy ? "BUSY" : "IDLE";
+        const int chip_w = Canvas::text_width(word, kSessionsChipScale) + 2 * pad;
+        const int chip_left = right - chip_w;
+        const int chip_top = top + (kSessionsCardHeight - chip_h) / 2;
+        if (is_busy) {
+            chip(chip_left + pad, chip_top + pad, word, Ink::Accent, kSessionsChipScale);
+        } else {
+            c_.frame(chip_left, chip_top, chip_w, chip_h, 2, Ink::Good);
+            c_.text(chip_left + pad, chip_top + pad, word, kSessionsChipScale, Ink::Good);
+        }
+        const int name_x = kLeft + kSessionsBarWidth + kSessionsGap;
+        char fitted[kMaxSessionTextBytes + 4];
+        CjkText::fit(fitted, sizeof(fitted), v.sessions.live[i].name,
+                     chip_left - kSessionsChipGap - name_x, kSessionsNameScale);
+        CjkText::draw(c_, name_x, top + (kSessionsCardHeight - name_bottom) / 2, fitted,
+                      kSessionsNameScale);
+        // A hairline in the gap between cards, aligned with the names rather than the bars.
+        if (i + 1 < live)
+            c_.fill(name_x, top + kSessionsCardHeight + 3, right - name_x, 1, Ink::Muted);
+        top += kSessionsPitch;
+    }
 }
 
 void Screens::settings(const View &v) {
@@ -445,10 +543,14 @@ void Screens::settings(const View &v) {
     const int right = c_.width() - kLeft;
     const int selected[kSettingRows] = {s.cycle, s.alert, s.seconds ? 0 : 1, s.rotation,
                                         brightness_level_index(s.brightness)};
-    // Rows of a label and an option strip, each row 42 px tall.
+    // Rows of a label and an option strip. The pitch is what the footer leaves: five rows have
+    // to end above the footer rule, or the last one lands on the page dots.
+    constexpr int kSettingTop = 34, kOptionHeight = 22, kMaxRowPitch = 42;
+    const int rows_shown = v.setting_rows > 0 ? v.setting_rows : 1;
+    const int pitch = std::min(kMaxRowPitch, (kFooterRule - kSettingTop) / rows_shown);
     for (int r = 0; r < v.setting_rows; ++r) {
-        const int y = 34 + 42 * r;
-        const int label_top = y + 1;
+        const int y = kSettingTop + pitch * r;
+        const int label_top = y + (kOptionHeight - kSmallLine) / 2;
         // The focused row's label is inverted in place. The box is sized for the small label
         // and stops short of the option boxes, which start further to the right.
         if (r == v.focus) {
@@ -465,12 +567,12 @@ void Screens::settings(const View &v) {
             const int x0 = left + round_px(k * (w + 4)), x1 = left + round_px(k * (w + 4) + w);
             const bool on = k == selected[r];
             if (on)
-                c_.fill(x0, top, x1 - x0, 22);
+                c_.fill(x0, top, x1 - x0, kOptionHeight);
             else
-                c_.frame(x0, top, x1 - x0, 22, 2);
+                c_.frame(x0, top, x1 - x0, kOptionHeight, 2);
             const int tw = Canvas::text_width(rows[r].options[k], 1);
-            c_.text(x0 + (x1 - x0 - tw) / 2, top + 8, rows[r].options[k], 1,
-                    on ? Ink::White : Ink::Black);
+            c_.text(x0 + (x1 - x0 - tw) / 2, top + (kOptionHeight - kSmallLine) / 2,
+                    rows[r].options[k], 1, on ? Ink::White : Ink::Black);
         }
     }
     c_.fill(kLeft, kFooterRule, right - kLeft, 2);

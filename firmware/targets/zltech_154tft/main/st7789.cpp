@@ -8,13 +8,12 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <algorithm>
 #include <cstring>
 namespace usage_panel::zltech {
 namespace {
 constexpr char kTag[] = "st7789";
-// 1 bit of the canvas is 1 = black, so a lit bit expands to black and a clear bit to white.
-constexpr uint16_t kBlack = 0x0000, kWhite = 0xFFFF;
-// One band is 9.6 KB, about 2 ms on the wire at 40 MHz; the timeout only catches a stuck bus.
+// The timeout only catches a stuck bus: one band is about 2 ms on the wire at 40 MHz.
 constexpr uint32_t kBandTimeoutMs = 100;
 } // namespace
 
@@ -52,7 +51,7 @@ bool St7789::begin() {
     bus.miso_io_num = -1;
     bus.quadwp_io_num = -1;
     bus.quadhd_io_num = -1;
-    bus.max_transfer_sz = St7789::kBandBytes;
+    bus.max_transfer_sz = St7789::kBandRows * kPanelWidth * 2;
     if (spi_bus_initialize(static_cast<spi_host_device_t>(kLcdSpiHost), &bus, SPI_DMA_CH_AUTO) !=
         ESP_OK)
         return false;
@@ -81,7 +80,9 @@ bool St7789::begin() {
     esp_lcd_panel_dev_config_t panel_config{};
     panel_config.reset_gpio_num = kLcdRst;
     panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
-    panel_config.data_endian = LCD_RGB_DATA_ENDIAN_BIG;
+    // Little-endian pixel order matches the `uint16_t` the canvas holds, so no byte swap is
+    // needed on the way to the glass.
+    panel_config.data_endian = LCD_RGB_DATA_ENDIAN_LITTLE;
     panel_config.bits_per_pixel = 16;
     if (esp_lcd_new_panel_st7789(io_, &panel_config, &panel_) != ESP_OK)
         return false;
@@ -93,12 +94,12 @@ bool St7789::begin() {
     esp_lcd_panel_mirror(panel_, false, false);
     esp_lcd_panel_disp_on_off(panel_, true);
 
-    // The band buffer is internal DMA memory; 9.6 KB leaves the NimBLE heap it needs at startup.
-    band_ = static_cast<uint16_t *>(
-        heap_caps_malloc(kBandBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    displayed_ = static_cast<uint8_t *>(heap_caps_malloc(kFrameBytes, MALLOC_CAP_8BIT));
-    if (!band_ || !displayed_) {
-        ESP_LOGE(kTag, "frame buffers unavailable");
+    // The last submitted frame lives in PSRAM beside the canvas: a frame is 112 KiB, and the
+    // internal RAM it would take is what NimBLE needs to start.
+    displayed_ = static_cast<uint16_t *>(
+        heap_caps_malloc(kFrameBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!displayed_) {
+        ESP_LOGE(kTag, "frame buffer unavailable");
         return false;
     }
     memset(displayed_, 0, kFrameBytes);
@@ -118,27 +119,21 @@ void St7789::set_brightness(int percent) {
     ledc_update_duty(LEDC_LOW_SPEED_MODE, kBacklightChannel);
 }
 
-void St7789::expand(const Canvas &canvas, int first_row, int rows) {
-    const uint8_t *bits = canvas.data();
-    for (int r = 0; r < rows; ++r) {
-        const int y = first_row + r;
-        const uint8_t *line = bits + (y * Canvas::kNativeWidth) / 8;
-        uint16_t *out = band_ + r * Canvas::kNativeWidth;
-        for (int x = 0; x < Canvas::kNativeWidth; ++x) {
-            const bool black = (line[x >> 3] >> (7 - (x & 7))) & 1;
-            out[x] = black ? kBlack : kWhite;
-        }
-    }
-}
-
 bool St7789::show(const Canvas &canvas) {
     if (!panel_)
         return false;
-    if (has_frame_ && memcmp(displayed_, canvas.data(), kFrameBytes) == 0)
+    const uint16_t *frame = canvas.color_data();
+    // A canvas that could not reserve its PSRAM buffer has nothing to send.
+    if (frame == nullptr)
         return false;
+    if (has_frame_ && memcmp(displayed_, frame, kFrameBytes) == 0)
+        return false;
+    // A completion left over from an earlier frame must not be read as this band's.
+    xSemaphoreTake(done_, 0);
     for (int y = 0; y < kPanelHeight; y += kBandRows) {
-        expand(canvas, y, kBandRows);
-        if (esp_lcd_panel_draw_bitmap(panel_, 0, y, kPanelWidth, y + kBandRows, band_) != ESP_OK) {
+        const int rows = std::min(kBandRows, kPanelHeight - y);
+        if (esp_lcd_panel_draw_bitmap(panel_, 0, y, kPanelWidth, y + rows,
+                                      frame + y * Canvas::kNativeWidth) != ESP_OK) {
             ESP_LOGW(kTag, "band at y=%d rejected", y);
             return false;
         }
@@ -148,7 +143,7 @@ bool St7789::show(const Canvas &canvas) {
             return false;
         }
     }
-    memcpy(displayed_, canvas.data(), kFrameBytes);
+    memcpy(displayed_, frame, kFrameBytes);
     has_frame_ = true;
     return true;
 }

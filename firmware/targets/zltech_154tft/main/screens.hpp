@@ -26,10 +26,14 @@ class Screens {
      */
     int battery(const View &v, int right, Ink ink = Ink::Black);
     /**
-     * Inverted pixel-font label with rounded corners. The text is placed at (`x`, `top`) and
-     * the chip extends 4 px around it. @return text width.
+     * Inverted pixel-font label with rounded corners, drawn at `scale`. The text is placed at
+     * (`x`, `top`) and the chip extends around it by `chip_pad`. @return text width.
      */
-    int chip(int x, int top, const char *s, Ink ink = Ink::Black);
+    int chip(int x, int top, const char *s, Ink ink = Ink::Black, int scale = 2);
+    /** Glass a chip takes around its text at `scale`. */
+    static int chip_pad(int scale);
+    /** Height of a chip at `scale`, text box included. */
+    static int chip_height(int scale);
     /**
      * 2 px outlined bar filled with up to twenty 5 % cells inset by 2 px; a negative `percent`
      * leaves it empty. `marker` is the elapsed fraction of the window, or negative to omit it.
@@ -45,9 +49,8 @@ class Screens {
     /** The page ring as dots centred under the content. */
     void page_dots(const View &v, int page);
     /**
-     * The sessions page this target does not render. Its identity never
-     * declares the capability and the page ring skips it, so the case exists
-     * to keep the page switch exhaustive; the body is the safety net.
+     * The sessions page: the count leading the page, then one card per running session with a
+     * state bar, the name, and the state word in a chip, as on the AMOLED target.
      */
     void sessions(const View &v);
     void home(const View &v);
