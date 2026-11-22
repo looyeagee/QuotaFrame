@@ -87,6 +87,9 @@ _TEMPLATE = """<!DOCTYPE html>
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
           padding: 16px; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .setting { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .setting label { font-weight: 600; }
+  input[type="range"] { flex: 1 1 140px; accent-color: var(--accent); }
   button {
     font: inherit; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--card); color: var(--ink); cursor: pointer; min-height: 44px;
@@ -134,29 +137,26 @@ _TEMPLATE = """<!DOCTYPE html>
       <button id="refresh">{{refresh}}</button>
     </div>
     <p class="status" id="status" role="status"></p>
-  </section>
-
-  <section class="card">
-    <h2>{{control_alert}}</h2>
-    <div class="actions">
-      <select id="alert">
-        <option value="0">{{alert_off}}</option>
-        <option value="1">{{alert_page}}</option>
-        <option value="2">{{alert_beep}}</option>
-      </select>
-      <button class="primary" id="alert-apply">{{alert_apply}}</button>
+    <div class="setting">
+      <div class="actions">
+        <label for="alert">{{control_alert}}</label>
+        <select id="alert">
+          <option value="0">{{alert_off}}</option>
+          <option value="1">{{alert_page}}</option>
+          <option value="2">{{alert_beep}}</option>
+        </select>
+      </div>
+      <p class="status" id="alert-status" role="status"></p>
     </div>
-    <p class="status" id="alert-status" role="status"></p>
-  </section>
-
-  <section class="card">
-    <h2>{{control_brightness}}</h2>
-    <div class="actions">
-      <input type="range" id="brightness" min="10" max="100" step="5" aria-label="{{control_brightness}}">
-      <span class="mono" id="brightness-value"></span>
-      <button class="primary" id="brightness-apply">{{alert_apply}}</button>
+    <div class="setting">
+      <div class="actions">
+        <label for="brightness">{{control_brightness}}</label>
+        <input type="range" id="brightness" min="10" max="100" step="5"
+               aria-label="{{control_brightness}}">
+        <span class="mono" id="brightness-value"></span>
+      </div>
+      <p class="status" id="brightness-status" role="status"></p>
     </div>
-    <p class="status" id="brightness-status" role="status"></p>
   </section>
 
   <section class="card">
@@ -422,29 +422,80 @@ function renderNowPlaying(state) {
 
 const ALERT_LABELS = { 0: LABELS.alert_off, 1: LABELS.alert_page, 2: LABELS.alert_beep };
 const alertSelect = document.getElementById("alert");
-const alertApply = document.getElementById("alert-apply");
 const alertStatus = document.getElementById("alert-status");
-// A poll must not overwrite a choice the person has not applied yet.
-let alertDirty = false;
-alertSelect.addEventListener("change", () => { alertDirty = true; });
+
+// Settings reach the chosen panels the moment the control moves, so there is
+// no apply button. One send cycle per setting runs at a time and always
+// carries the control's latest value; the panels report the write as
+// `set.pending` until its acknowledgement lands, and the cycle waits that out
+// before judging whether a newer choice still has to go out — sending earlier
+// would only be dropped as busy.
+const settingCycles = { alert: null, brightness: null };
+const settingQueued = { alert: false, brightness: false };
+
+function settingValue(kind) {
+  return kind === "alert" ? Number(alertSelect.value) : Number(brightnessInput.value);
+}
+
+async function settingPending(kind) {
+  const state = await api("/api/state");
+  return chosenDevices(state).some((device) => ((device[kind] || {}).set || {}).pending);
+}
+
+async function settingCycle(kind) {
+  const path = kind === "alert" ? "/api/alert" : "/api/brightness";
+  const statusNode = kind === "alert" ? alertStatus : brightnessStatus;
+  while (true) {
+    const sent = settingValue(kind);
+    const body = { ...targetBody(), [kind === "alert" ? "mode" : "percent"]: sent };
+    try {
+      await api(path, { method: "POST", body: JSON.stringify(body) });
+    } catch (error) {
+      statusNode.textContent = LABELS.control_send_failed + ": " + error.message;
+      statusNode.className = "status error";
+      return;
+    }
+    let pending = true;
+    for (let waited = 0; waited < 2000 && pending; waited += 120) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      pending = await settingPending(kind);
+    }
+    if (pending || settingValue(kind) === sent) return;
+  }
+}
+
+function pushSetting(kind) {
+  if (settingCycles[kind]) { settingQueued[kind] = true; return; }
+  settingCycles[kind] = settingCycle(kind).finally(() => {
+    settingCycles[kind] = null;
+    if (settingQueued[kind]) {
+      settingQueued[kind] = false;
+      pushSetting(kind);
+    }
+  });
+}
+
+alertSelect.addEventListener("change", () => pushSetting("alert"));
 
 function renderAlert(state) {
   const devices = chosenDevices(state);
   const modes = devices.map((device) => (device.alert || {}).mode);
   const reported = modes.filter((mode) => typeof mode === "number");
-  alertApply.disabled = !devices.some((device) => (device.alert || {}).set?.available);
-  // Follow the panels when they agree; a mixed fleet keeps the manual choice.
-  if (!alertDirty && reported.length &&
+  alertSelect.disabled = !devices.some((device) => (device.alert || {}).set?.available);
+  // Follow the panels when they agree and no choice is in flight; a mixed
+  // fleet keeps the manual choice.
+  if (!settingCycles.alert && !settingQueued.alert && reported.length &&
       reported.every((mode) => mode === reported[0])) {
     alertSelect.value = String(reported[0]);
   }
   const parts = devices.map((device) => {
     const alert = device.alert || {};
+    const set = alert.set || {};
     const current = typeof alert.mode === "number"
       ? ALERT_LABELS[alert.mode] : LABELS.control_alert_unknown;
-    const blocked = alert.set && alert.set.available === false && alert.set.reason
-      ? " · " + reasonText(alert.set.reason) : "";
-    return device.name + ": " + current + blocked;
+    const note = set.pending ? " · " + {{control_pending}}
+      : set.available === false && set.reason ? " · " + reasonText(set.reason) : "";
+    return device.name + ": " + current + note;
   });
   alertStatus.textContent = parts.join("\\n");
   alertStatus.style.whiteSpace = "pre-line";
@@ -453,12 +504,25 @@ function renderAlert(state) {
 
 const brightnessInput = document.getElementById("brightness");
 const brightnessValue = document.getElementById("brightness-value");
-const brightnessApply = document.getElementById("brightness-apply");
 const brightnessStatus = document.getElementById("brightness-status");
-let brightnessDirty = false;
+
+// Sliding sends live: throttled while dragging, and the release always sends
+// its final position even when the drag never paused.
+let brightnessThrottle = null;
 brightnessInput.addEventListener("input", () => {
-  brightnessDirty = true;
   brightnessValue.textContent = brightnessInput.value + "%";
+  if (brightnessThrottle) return;
+  brightnessThrottle = setTimeout(() => {
+    brightnessThrottle = null;
+    pushSetting("brightness");
+  }, 200);
+});
+brightnessInput.addEventListener("change", () => {
+  if (brightnessThrottle) {
+    clearTimeout(brightnessThrottle);
+    brightnessThrottle = null;
+  }
+  pushSetting("brightness");
 });
 
 // The chooser scopes every panel command; these are the panels it names.
@@ -472,21 +536,23 @@ function renderBrightness(state) {
   const devices = chosenDevices(state);
   const percents = devices.map((device) => (device.brightness || {}).percent);
   const reported = percents.filter((p) => typeof p === "number");
-  brightnessApply.disabled = !devices.some(
+  brightnessInput.disabled = !devices.some(
     (device) => (device.brightness || {}).set?.available);
-  // Follow the panels when they agree; a mixed fleet keeps the manual choice.
-  if (!brightnessDirty && reported.length &&
+  // Follow the panels when they agree and no choice is in flight; a mixed
+  // fleet keeps the manual choice.
+  if (!settingCycles.brightness && !settingQueued.brightness && reported.length &&
       reported.every((p) => p === reported[0])) {
     brightnessInput.value = String(reported[0]);
     brightnessValue.textContent = reported[0] + "%";
   }
   const parts = devices.map((device) => {
     const brightness = device.brightness || {};
+    const set = brightness.set || {};
     const current = typeof brightness.percent === "number"
       ? brightness.percent + "%" : LABELS.control_brightness_unknown;
-    const blocked = brightness.set && brightness.set.available === false && brightness.set.reason
-      ? " · " + reasonText(brightness.set.reason) : "";
-    return device.name + ": " + current + blocked;
+    const note = set.pending ? " · " + {{control_pending}}
+      : set.available === false && set.reason ? " · " + reasonText(set.reason) : "";
+    return device.name + ": " + current + note;
   });
   brightnessStatus.textContent = parts.join("\\n");
   brightnessStatus.style.whiteSpace = "pre-line";
@@ -602,16 +668,6 @@ document.getElementById("next").addEventListener("click", (event) =>
 document.getElementById("refresh").addEventListener("click", async (event) => {
   await command(event.currentTarget, "/api/refresh");
 });
-alertApply.addEventListener("click", async (event) => {
-  const mode = Number(alertSelect.value);
-  alertDirty = false;
-  await command(event.currentTarget, "/api/alert", { ...targetBody(), mode });
-});
-brightnessApply.addEventListener("click", async (event) => {
-  const percent = Number(brightnessInput.value);
-  brightnessDirty = false;
-  await command(event.currentTarget, "/api/brightness", { ...targetBody(), percent });
-});
 
 pairButton.addEventListener("click", async (event) => {
   const button = event.currentTarget;
@@ -685,7 +741,6 @@ _STATIC_KEYS = (
     "alert_off",
     "alert_page",
     "alert_beep",
-    "alert_apply",
     "control_pairing",
     "control_pair_add",
     "control_pair_stop",

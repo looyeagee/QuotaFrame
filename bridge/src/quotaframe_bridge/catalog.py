@@ -456,7 +456,6 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "alert_off": ("关闭", "Off"),
     "alert_page": ("仅告警页", "Alert page only"),
     "alert_beep": ("告警页 + 提示音", "Alert page + tone"),
-    "alert_apply": ("应用", "Apply"),
     "control_alert_unknown": ("面板未报告", "Not reported by the panel"),
     "control_target": ("作用设备", "Target panel"),
     "all_devices": ("全部面板", "All panels"),
