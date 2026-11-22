@@ -86,6 +86,7 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 | screen.page.v1 | 设备本地上一页/下一页，不要求提供page |
 | alert.set.v1 | 接收alert_set远程设置告警档位并持久化；可选，无此能力时档位只能设备本地修改 |
 | nowplaying.v1 | 显示正在播放的歌曲与歌词窗口；可选 |
+| sessions.v1 | 显示本机Claude Code会话与最近会话标题；可选 |
 | ota.folder.v1 | 应用OTA；必须有firmware_project、target、fw、ota |
 
 不要求第三方使用Buddy，但必须满足同一线上契约。
@@ -168,7 +169,26 @@ Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不�
 
 Bridge只在设备声明该能力时发送，且发送节奏由歌曲进度决定；内容不是幂等快照，断线后不补发历史。设备收到非法字段、超出范围的 `current`、与 `lines` 数目不符的 `line_times` 或未知 `state` 时整条拒绝并返回 `invalid_request`，没有更新时不改变已显示的歌曲。
 
-## 7. 错误与远程解绑
+## 7. Claude Code 会话（sessions.v1）
+
+设备声明 `sessions.v1` 后可接收本机 Claude Code 的会话状态：
+
+```json
+{"cmd":"sessions","v":"1","seq":"46","live":"Claude Code Desktop 会话状态页面\n修复列表滚动的问题","states":"busy\nidle","recent":"给面板加一个秒表页\n整理 bridge 日志"}
+{"ack":"sessions","n":46,"ok":true}
+```
+
+| 参数 | 规则 |
+| --- | --- |
+| live | 可选字符串，运行中会话的显示名，行间以 `\n` 分隔，最多4行；单行≤96字节 |
+| states | 与 `live` 一一对应的状态，每行 `busy` 或 `idle`；行数必须与 `live` 相同，且必须同时出现 |
+| recent | 可选字符串，最近结束的会话标题，行间以 `\n` 分隔，最多3行；单行≤96字节。面板不绘制它，保留为兼容旧 Bridge |
+
+Bridge只发送显示文字：会话名、忙/闲状态，以及最近会话的标题（面板忽略）。会话ID、工作目录、git分支、时间戳和对话内容都不进入线上帧。设备按文本长度自行排版。
+
+内容是快照而不是事件：最新的发布替换上一份，断线后不补发历史。设备收到非法字段、行数不符的 `states` 或未知状态词时整条拒绝并返回 `invalid_request`，没有更新时不改变已显示的会话。
+
+## 8. 错误与远程解绑
 
 ```json
 {"ack":"screen_page","n":45,"ok":false,"error":"unsupported"}
@@ -182,7 +202,7 @@ error是稳定短码，不返回凭据或原始内部错误。普通命令沿用
 
 固件不注册on_unpair。收到 `{"cmd":"unpair"}` 时Buddy返回ack=unpair、ok=false、n=0、error=unsupported，设备bond保持不变。保留设备本地明确触发的恢复方式；Bridge忘记设备不发送unpair。其他未使用的Buddy回调保持未配置，不扩大远程控制面。
 
-## 8. Folder Push应用OTA
+## 9. Folder Push应用OTA
 
 ### 7.1 项目、兼容性和状态
 
@@ -237,7 +257,7 @@ manifest的file_end验证后进入confirming，设备逐次物理确认且满足
 
 本地启动检查不能依赖电脑在线；回滚和断电恢复必须实测。[乐鑫OTA说明](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/ota.html)
 
-## 9. 实施与隐私边界
+## 10. 实施与隐私边界
 
 Buddy getter 调用前的原始输入校验与固定版本包装见[接入架构](../docs/design/open-device-access.md#输入校验)。
 

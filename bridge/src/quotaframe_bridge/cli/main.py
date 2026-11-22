@@ -29,7 +29,11 @@ from quotaframe_bridge.service.multi_device import (
 )
 from quotaframe_bridge.sources.mock import MockUsageSource
 from quotaframe_bridge.pairing.base import UnsupportedPlatformError
-from quotaframe_bridge.sources.selection import create_now_playing_source, create_usage_source
+from quotaframe_bridge.sources.selection import (
+    create_now_playing_source,
+    create_sessions_source,
+    create_usage_source,
+)
 from quotaframe_bridge.service.adoption import discover_device
 from quotaframe_bridge.service.ownership import OwnershipStore, display_name
 from quotaframe_bridge.transports.console import ConsoleTransport
@@ -260,6 +264,7 @@ async def _run(args: argparse.Namespace) -> None:
         else create_usage_source(timeout=args.source_timeout)
     )
     music_source = create_now_playing_source()
+    sessions_source = create_sessions_source()
     graph = None
     if args.dry_run:
         transport = ConsoleTransport()
@@ -269,6 +274,7 @@ async def _run(args: argparse.Namespace) -> None:
             interval=args.interval,
             publish_interval=args.publish_interval,
             music_source=music_source,
+            sessions_source=sessions_source,
         )
     else:
         from quotaframe_bridge.transports.bleak_nus import BleakNusTransport
@@ -290,6 +296,7 @@ async def _run(args: argparse.Namespace) -> None:
                 source, (), interval=args.interval,
                 publish_interval=args.publish_interval,
                 music_source=music_source,
+                sessions_source=sessions_source,
             )
             graph = TrayServiceGraph(
                 service=service, store=store,
@@ -328,6 +335,7 @@ async def _run(args: argparse.Namespace) -> None:
                 interval=args.interval,
                 publish_interval=args.publish_interval,
                 music_source=music_source,
+                sessions_source=sessions_source,
             )
     cycles = args.cycles
     if args.dry_run and cycles is None:

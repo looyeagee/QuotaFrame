@@ -100,6 +100,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 & $venvPython -m PyInstaller --onefile --windowed --name quotaframe-bridge --clean --noconfirm `
     --distpath $distPath --workpath $workPath --specpath $workPath `
     --icon $iconPath `
+    --hidden-import watchdog.observers.read_directory_changes `
     --add-data "$assetPath;tray" `
     --add-data "$releaseChannelPath;quotaframe_bridge" `
     --add-binary "$runtimePath;." `

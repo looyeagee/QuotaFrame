@@ -80,6 +80,36 @@ class NowPlayingPublication:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionsPublication:
+    """Sanitized Claude Code session state for a panel's sessions page.
+
+    A panel shows which Claude Code sessions are live and what they are working
+    on. Only display text travels: the session name or its first prompt stands
+    in for the session, and session ids, working directories and transcripts
+    stay on the computer. `live` pairs each running session's name with whether
+    it is busy; `recent` lists the most recently active ended sessions.
+    """
+
+    # (display name, busy) for every running session, newest first.
+    live: tuple[tuple[str, bool], ...] = ()
+    recent: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.live) > 4:
+            raise ValueError("a publication carries at most four live sessions")
+        if len(self.recent) > 3:
+            raise ValueError("a publication carries at most three recent sessions")
+        for name, busy in self.live:
+            if not name:
+                raise ValueError("a live session needs a display name")
+            if not isinstance(busy, bool):
+                raise ValueError("a live session's busy flag must be a bool")
+        for title in self.recent:
+            if not title:
+                raise ValueError("a recent session needs a title")
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderUsage:
     """Sanitized provider state; deliberately contains no identity metadata.
 

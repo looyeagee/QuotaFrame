@@ -12,3 +12,4 @@ pyobjc-framework-CoreBluetooth==12.2.2 --hash=sha256:0c483a90fb7ebf269af5f235fed
 pyobjc-framework-libdispatch==12.2.2 --hash=sha256:9c62b8c03b9e8c8925fdbb9d5a9541c1e9a4023ec06f1312441edfd166f33398
 pyobjc-framework-UserNotifications==12.2.2 --hash=sha256:2e56cd2e57d63b91eb7585803386fe7cab8c8f889c499b838b32f9f4ff3bd828
 setuptools==83.0.0 --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3
+watchdog==6.0.0 --hash=sha256:a175f755fc2279e0b7312c0035d52e27211a5bc39719dd529625b1930917345b

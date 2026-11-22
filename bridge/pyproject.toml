@@ -9,6 +9,9 @@ description = "Windows and macOS BLE bridge for QuotaFrame panels"
 requires-python = ">=3.11"
 dependencies = [
     "bleak>=1.0,<4",
+    # The Claude Code sessions page follows the files Claude publishes, so the
+    # bridge needs a directory watcher on both hosts.
+    "watchdog>=4,<7",
     # Native update notifications are not a Bleak dependency, so declare the
     # framework explicitly for the frozen macOS application.
     "pyobjc-framework-UserNotifications>=10.3; sys_platform == 'darwin'",

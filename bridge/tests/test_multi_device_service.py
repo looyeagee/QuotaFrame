@@ -36,6 +36,7 @@ class RecordingTransport:
         self.connected = False
         self.closed = False
         self.sent: list[tuple[bytes, str, int]] = []
+        self.status_reads = 0
         self.time_sync_gate = time_sync_gate
         self.device_status = DeviceStatus(
             name="Panel",
@@ -49,6 +50,20 @@ class RecordingTransport:
         if self.connect_gate is not None:
             await self.connect_gate.wait()
         self.connected = True
+
+    async def query_status(self) -> DeviceStatus:
+        # Reports the page the panel is on now, the way the device answers a
+        # status query. A screen command must re-read it; the handshake copy goes
+        # stale as soon as the panel moves.
+        self.status_reads += 1
+        self.device_status = DeviceStatus(
+            name=self.device_status.name,
+            secure=self.device_status.secure,
+            protocol=self.device_status.protocol,
+            page="minimax",
+            capabilities=self.device_status.capabilities,
+        )
+        return self.device_status
 
     async def send_command(
         self,
@@ -337,6 +352,35 @@ class DeviceSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(transports[0].sent[1][0])["previous"], "0")
         with self.assertRaises(ValueError):
             sessions[0].schedule_screen_page(0)
+
+    async def test_a_screen_command_re_reads_the_status_so_the_page_follows(self):
+        transport = RecordingTransport(capabilities=frozenset({"screen.page.v1"}))
+        session = DeviceSession("panel", transport)
+        session._connected = True
+        transport.connected = True
+
+        self.assertEqual(transport.device_status.page, "overview")
+        session.schedule_screen_page(1)
+        await session._screen_command_task
+
+        self.assertEqual(transport.status_reads, 1)
+        self.assertEqual(transport.device_status.page, "minimax")
+
+    async def test_a_failed_status_refresh_does_not_report_the_command_as_failed(self):
+        transport = RecordingTransport(capabilities=frozenset({"screen.page.v1"}))
+        session = DeviceSession("panel", transport)
+        session._connected = True
+        transport.connected = True
+
+        async def refuse() -> None:
+            raise RuntimeError("status query failed")
+
+        transport.query_status = refuse  # type: ignore[method-assign]
+        session.schedule_screen_page(1)
+        await session._screen_command_task
+
+        self.assertEqual(len(transport.sent), 1)
+        self.assertIsNone(session.screen_command_unavailable("screen.page.v1"))
 
     async def test_alert_set_targets_capable_sessions_and_persists_the_mode(self):
         transports = [RecordingTransport(capabilities=frozenset(caps)) for caps in (

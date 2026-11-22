@@ -114,6 +114,7 @@ printf '{"repository":"%s"}\n' "$release_repository" >"$release_channel"
     --distpath "$dist_dir" --workpath "$work_dir" --specpath "$work_dir" \
     --icon "$icon_file" \
     --hidden-import UserNotifications \
+    --hidden-import watchdog.observers.fsevents \
     --add-data "$asset_dir:tray" \
     --add-data "$media_control_dir:media-control" \
     --add-data "$release_channel:quotaframe_bridge" \

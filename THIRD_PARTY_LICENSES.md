@@ -350,6 +350,16 @@ For ESP Component Registry entries, `Registry license` is the API value for the 
 - SPDX: `MIT-CMU`
 - Copyright/notice: https://github.com/python-pillow/Pillow/blob/main/LICENSE
 
+## `watchdog`
+
+- Release version: `6.0.0` (Windows and macOS)
+- Development range: `>=4,<7`
+- Source: https://github.com/gorakhargosh/watchdog
+- SPDX: `Apache-2.0`
+- Copyright/notice: https://github.com/gorakhargosh/watchdog/blob/master/LICENSE
+- Use: reports writes to the directory Claude Code publishes its session state
+  in, so the sessions page follows a change instead of a timer.
+
 ## `PyInstaller`
 
 - Release build version: `6.22.0`

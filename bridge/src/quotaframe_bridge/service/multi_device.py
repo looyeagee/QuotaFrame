@@ -14,6 +14,7 @@ from quotaframe_bridge.domain.models import (
     NowPlayingPublication,
     Provider,
     ProviderUsage,
+    SessionsPublication,
     SourceState,
 )
 from quotaframe_bridge.protocol.messages import (
@@ -21,12 +22,14 @@ from quotaframe_bridge.protocol.messages import (
     BRIGHTNESS_SET_CAPABILITY,
     MAX_INVERSE_CLOCK_SKEW_SECONDS,
     NOW_PLAYING_CAPABILITY,
+    SESSIONS_CAPABILITY,
     Sequence,
     encode_alert_set,
     encode_brightness_set,
     encode_now_playing,
     encode_screen_toggle,
     encode_screen_page,
+    encode_sessions,
     encode_usage,
 )
 from quotaframe_bridge.service.device_manager import ReconnectBackoff
@@ -35,6 +38,7 @@ from quotaframe_bridge.service.time_sync import TimeSyncScheduler
 from quotaframe_bridge.sources.base import (
     NowPlayingSource,
     ProgressiveUsageSource,
+    SessionsSource,
     UsageSource,
 )
 from quotaframe_bridge.transports.base import (
@@ -118,6 +122,10 @@ class DeviceSession:
         self._alert_mode: int | None = None
         # Last brightness percent this session wrote or read; cleared like the alert mode.
         self._brightness: int | None = None
+        # Last session roster sent, so an identical one is not put on the link again.
+        self._sessions_sent: SessionsPublication | None = None
+        # Set by the service: a link that just came up needs the roster at once.
+        self.on_link_ready: Callable[[], None] | None = None
         self._force_time_sync = True
 
     @property
@@ -196,7 +204,9 @@ class DeviceSession:
         self._schedule_screen_command(None)
 
     def schedule_screen_page(self, direction: int) -> None:
-        if direction not in (-1, 1):
+        # A bool would satisfy `in (-1, 1)` because True equals 1, and then the
+        # sign test below would silently reverse the requested direction.
+        if type(direction) is not int or direction not in (-1, 1):
             raise ValueError("page direction must be -1 or 1")
         self._schedule_screen_command(direction < 0)
 
@@ -305,11 +315,32 @@ class DeviceSession:
                 payload = (encode_screen_toggle(sequence) if previous is None
                            else encode_screen_page(sequence, previous))
                 await self.transport.send_command(payload, command, sequence)
+                await self._refresh_status()
         except TransportReset:
             self._force_time_sync = True
             LOGGER.warning("%s %s outcome unknown; not replayed", self.label, command)
         except Exception as exc:
             LOGGER.warning("%s %s failed: %s", self.label, command, type(exc).__name__)
+
+    async def _refresh_status(self) -> None:
+        """Re-read the panel's status after a command that moves the panel.
+
+        The status a session holds is the one read at handshake, so without this
+        the page the control page reports keeps showing the page the panel was on
+        when it connected. A failed refresh is not a failed command: the panel
+        already acted, so it must not surface as one.
+        """
+
+        query = getattr(self.transport, "query_status", None)
+        if query is None:
+            return
+        try:
+            await query()
+        except Exception as exc:  # noqa: BLE001 - a stale label beats a false failure
+            LOGGER.debug(
+                "%s status refresh after a screen command failed: %s",
+                self.label, type(exc).__name__,
+            )
 
     async def _cancel_screen_command(self) -> None:
         await _cancel(self._screen_command_task)
@@ -409,6 +440,62 @@ class DeviceSession:
                 lambda: self._delivered_revision >= revision
             )
 
+    async def publish_sessions(self, publication: SessionsPublication) -> bool:
+        """Send one sessions publication to a device that renders it.
+
+        The same snapshot contract as now_playing: devices without the
+        capability are left alone, and a link that drops while the command is
+        in flight is reported as a failed publication instead of ending the
+        session. A roster identical to the last one sent stays off the link,
+        because a redraw it cannot show is only wear on the glass.
+        """
+
+        status = device_status(self.transport)
+        if (
+            not self.connected
+            or self.exclusive_active
+            or status is None
+            or not status.secure
+            or SESSIONS_CAPABILITY not in status.capabilities
+        ):
+            # A link that went away has to be handed the roster again when it
+            # comes back, whether or not the sessions changed meanwhile.
+            self._sessions_sent = None
+            return False
+        if publication == self._sessions_sent:
+            return False
+        try:
+            async with self._exclusive_lock:
+                if not self.connected or self.exclusive_active:
+                    self._sessions_sent = None
+                    return False
+                sequence = self._sequence.next()
+                payload = encode_sessions(publication, sequence)
+                await self.transport.send_command(payload, "sessions", sequence)
+        except TransportReset:
+            self._sessions_sent = None
+            LOGGER.warning("%s sessions outcome unknown; not replayed", self.label)
+            return False
+        except Exception as exc:
+            self._sessions_sent = None
+            LOGGER.warning("%s sessions failed: %s", self.label, type(exc).__name__)
+            return False
+        self._sessions_sent = publication
+        LOGGER.debug("%s sessions sent: %d live", self.label, len(publication.live))
+        return True
+
+    def _link_ready(self) -> None:
+        """Report a link that can carry a first snapshot of the panels."""
+
+        # A link that just came up has no idea what the panel shows, and a board that
+        # rebooted starts on a page it has no roster for, so the roster goes out again even
+        # when it has not changed since the last link.
+        self._sessions_sent = None
+        callback = self.on_link_ready
+        if callback is not None:
+            callback()
+
+
     async def _connect(self) -> bool:
         """Allow lifecycle operations to interrupt negotiation without stopping publication."""
         task = asyncio.create_task(self.transport.connect())
@@ -443,6 +530,7 @@ class DeviceSession:
                     if await self._connect():
                         break
             self._connected = True
+            self._link_ready()
             while True:
                 try:
                     await asyncio.wait_for(self._wake.wait(), timeout=1.0)
@@ -454,6 +542,7 @@ class DeviceSession:
                         if not await self._connect():
                             continue
                     self._force_time_sync = True
+                    self._link_ready()
                 self._wake.clear()
                 snapshot = self._pending
                 revision = self._offered_revision
@@ -511,6 +600,13 @@ class DeviceSession:
                 if not await self._connect():
                     raise TransportReset("connection interrupted for device recovery")
                 self._force_time_sync = True
+                # Delivering a snapshot is how a link usually comes back: the loop wakes
+                # holding a snapshot and reconnects here, without ever sitting idle for the
+                # second that runs the reconnect branch above. The board on the other end may
+                # have rebooted while the link was down and lost its roster, so the link is
+                # declared ready here as well; without this the sessions page stays dark on a
+                # link that returned with a usage frame, until the roster itself changes.
+                self._link_ready()
             snapshot = self._pending or snapshot
             revision = self._offered_revision
             level = logging.INFO if self._delivered_revision == 0 else logging.DEBUG
@@ -575,6 +671,8 @@ class MultiDeviceBridgeService:
         store: UsageStateStore | None = None,
         music_source: NowPlayingSource | None = None,
         music_interval: float = 1.0,
+        sessions_source: SessionsSource | None = None,
+        sessions_interval: float = 30.0,
     ) -> None:
         # Zero sessions is a legitimate steady state, not a misconfiguration:
         # a user who has not adopted a board yet still gets usage collection
@@ -586,6 +684,8 @@ class MultiDeviceBridgeService:
             )
         if music_interval <= 0:
             raise ValueError("music interval must be positive")
+        if sessions_interval <= 0:
+            raise ValueError("sessions interval must be positive")
         self.source = source
         self.sessions = sessions
         self.interval = interval
@@ -595,11 +695,18 @@ class MultiDeviceBridgeService:
         self.store = UsageStateStore() if store is None else store
         self.music_source = music_source
         self.music_interval = music_interval
+        self.sessions_source = sessions_source
+        # The longest the sessions loop stays blind, not its cadence: the source
+        # wakes it on a change, and this only covers the ones no file reports.
+        self.sessions_interval = sessions_interval
         declared = getattr(source, "providers", None)
         if declared is not None:
             self.store.restrict_to(declared)
         self._first_collection = True
         self._collect_now = asyncio.Event()
+        # Set when a link comes up, so a board that just booted gets the session
+        # roster at once instead of at the next change.
+        self._sessions_now = asyncio.Event()
         self._supervisors: dict[DeviceSession, asyncio.Task[None]] = {}
         self._running = False
         self.collection_count = 0
@@ -684,6 +791,7 @@ class MultiDeviceBridgeService:
             raise ValueError("cycles must be at least one")
         self._running = True
         for session in self.sessions:
+            session.on_link_ready = self._sessions_now.set
             self._start_supervisor(session)
         try:
             if cycles is None:
@@ -701,6 +809,8 @@ class MultiDeviceBridgeService:
                 *(session.close() for session in self.sessions),
                 return_exceptions=True,
             )
+            if self.sessions_source is not None:
+                self.sessions_source.close()
             tasks = tuple(self._supervisors.values())
             self._supervisors.clear()
             for task in tasks:
@@ -728,6 +838,9 @@ class MultiDeviceBridgeService:
         if providers:
             session.offer(self._snapshot(providers))
         if self._running:
+            # A board adopted while the bridge runs joins a loop that is already waiting for
+            # a change, and its own first connection is not one of them.
+            session.on_link_ready = self._sessions_now.set
             self._start_supervisor(session)
 
     async def remove_session(self, session: DeviceSession) -> None:
@@ -816,6 +929,7 @@ class MultiDeviceBridgeService:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(self._publish_periodically())
             tasks.create_task(self._publish_music_periodically())
+            tasks.create_task(self._publish_sessions_periodically())
             while True:
                 self._collect_now.clear()
                 await self.collect()
@@ -858,6 +972,47 @@ class MultiDeviceBridgeService:
             self.now_playing = publication
             for session in self.sessions:
                 await session.publish_now_playing(publication)
+
+    async def _publish_sessions_periodically(self) -> None:
+        """Push the Claude Code roster to every device that renders it.
+
+        Claude publishes its session state as files, so the source wakes this
+        loop when one changes instead of being read on a timer: a session that
+        starts or starts working reaches the panel in a fraction of a second.
+        The interval is only the longest this loop stays blind, which covers the
+        states no file reports, and the walk a reconnect needs.
+        """
+
+        source = self.sessions_source
+        if source is None:
+            return
+        while True:
+            await self._wait_for_sessions_event(source)
+            try:
+                publication = await source.collect()
+            except Exception as exc:
+                LOGGER.debug("sessions collection failed: %s", type(exc).__name__)
+                continue
+            for session in self.sessions:
+                await session.publish_sessions(publication)
+
+    async def _wait_for_sessions_event(self, source: SessionsSource) -> None:
+        """Wait for a sessions change, a link that just came up, or the deadline."""
+
+        change = asyncio.create_task(source.wait_for_change(self.sessions_interval))
+        ready = asyncio.create_task(self._sessions_now.wait())
+        try:
+            await asyncio.wait((change, ready), return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in (change, ready):
+                task.cancel()
+            await asyncio.gather(change, ready, return_exceptions=True)
+            self._sessions_now.clear()
+        if change.done() and not change.cancelled() and change.exception() is not None:
+            # A watcher that fails once would otherwise spin this loop at full
+            # speed until the next change.
+            LOGGER.debug("sessions watch failed: %s", type(change.exception()).__name__)
+            await asyncio.sleep(1.0)
 
     async def _wait_for_music_tick(self, deadline: float) -> None:
         """Wait for the cadence, or until the player reports a new state.

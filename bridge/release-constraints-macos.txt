@@ -14,3 +14,4 @@ pyobjc-framework-CoreBluetooth==12.2.2
 pyobjc-framework-libdispatch==12.2.2
 pyobjc-framework-UserNotifications==12.2.2
 setuptools==83.0.0
+watchdog==6.0.0

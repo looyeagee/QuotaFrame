@@ -108,7 +108,7 @@ Bridge 根据发布 manifest 和已校验的本地镜像生成本次传输的 `m
 {"cmd":"char_end"}
 ```
 
-容量、文件顺序、ACK 计数、分片和超时见[Folder Push 契约](open-device-access.md#8-folder-push应用ota)。官方实现的执行行为：
+容量、文件顺序、ACK 计数、分片和超时见[Folder Push 契约](open-device-access.md#9-folder-push应用ota)。官方实现的执行行为：
 
 - manifest 校验后进入物理确认阶段，Bridge 每 500 ms 查询 status，直到 `receiving` 才发送固件。
 - 接收期间 usage 返回 `ota_busy`。`char_end` 仅在镜像结构与 SHA-256 通过后切换启动分区。
@@ -162,6 +162,18 @@ ACK 表示已入应用事件队列；不表示屏幕已完成刷新。未启用�
 
 `position` / `duration` 为秒，`state` 为 `playing` 或 `paused`。`lines` 是 `\n` 分隔的歌词窗口（最多 8 行），`current` 是正在唱的那一行在窗口中的下标；整首歌词放不进一帧，所以 Bridge 按播放进度推送当前行及其后六行；多出的两行留给设备自己换句，窗口最多 8 行。放不下的歌词行由设备按文本长度自行滚动；可选 `line_end`（本行结束的位置）只作为上限，本句时间短时让滚动在本句内结束，后面的长间奏不会把速度摊薄。`position_ms` 与 `line_times` 是毫秒时间轴：播放位置，以及窗口里每一行的起点，设备据此自己判断正在唱哪一句、这一句唱了多久；两者都可缺省，只给秒的来源按发布节奏换句。字段、截断规则和隐私边界见[接入契约](open-device-access.md#6-正在播放nowplayingv1)。
 
-成功 ACK 为 `{"ack":"now_playing","n":42,"ok":true}`；OTA 期间返回 `ota_busy`，非法字段返回 `invalid_request`。该命令是快照而不是事件，Bridge 不重放历史。
+成功 ACK 为 `{"ack":"now_playing","n":42,"ok":true}`；OTA 期间返回 `ota_busy`，非法字段返回 `invalid_request`。该命令是快照而不是事件，Bridge 不重放历史；会话状态一变，Bridge 就下发新的一帧，内容与上一帧相同的帧不会重复发送。
 
 Bridge 只在 macOS 上取数：网易云音乐桌面端把每次起播写进自己的本地数据库（`historyTracks`，只读打开），Bridge 由最新一行得到歌曲、歌手、时长与起播时刻；CoreAudio 的进程输出状态决定这次是播放还是暂停；歌词来自客户端自己使用的公开歌词接口，按歌曲缓存，换歌时才取一次。没有任何账号凭据离开电脑，面板上也只出现歌曲名、歌手、进度和歌词。
+
+## Claude Code 会话（sessions.v1）
+
+设备在 `caps` 中声明 `sessions.v1` 后，Bridge 可发送本机 Claude Code 的会话状态：
+
+```json
+{"cmd":"sessions","v":"1","seq":"46","live":"Claude Code Desktop 会话状态页面\n修复列表滚动的问题","states":"busy\nidle","recent":"给面板加一个秒表页"}
+```
+
+`live` 是运行中会话的显示名，`states` 与之一一对应，每行 `busy` 或 `idle`；`recent` 是最近结束的会话标题，保留在协议里供旧 Bridge 兼容，面板不绘制它。三个字段都是 `\n` 分隔的字符串，行数与长度都有上限，所以一帧远小于 4096 字节。Bridge 只发送显示文字：会话名、忙 / 闲状态与会话标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不离开电脑。
+
+成功 ACK 为 `{"ack":"sessions","n":46,"ok":true}`；非法字段、行数不符的 `states` 或未知状态词返回 `invalid_request`，未声明该能力返回 `unsupported`，OTA 接收期间返回 `ota_busy`。该命令是快照而不是事件，Bridge 不重放历史；会话状态一变，Bridge 就下发新的一帧，内容与上一帧相同的帧不会重复发送。字段与隐私边界见[接入契约](open-device-access.md#7-claude-code-会话sessionsv1)。

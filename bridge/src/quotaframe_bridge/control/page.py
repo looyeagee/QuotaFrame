@@ -118,6 +118,8 @@ _TEMPLATE = """<!DOCTYPE html>
   .empty { color: var(--dim); }
   .status { min-height: 20px; font-size: 13px; color: var(--dim); }
   .status.error { color: var(--warn); }
+  main a { color: var(--accent); text-decoration: none; }
+  main a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -182,6 +184,8 @@ _TEMPLATE = """<!DOCTYPE html>
     <h2>{{control_now_playing}}</h2>
     <div id="nowplaying"><p class="empty">{{control_no_track}}</p></div>
   </section>
+
+  <p class="status"><a id="to-sessions" href="#">{{sessions_link}}</a></p>
 </main>
 <script>
 const TOKEN = {{token}};
@@ -708,6 +712,8 @@ async function loop() {
   setTimeout(loop, document.hidden ? 15000 : 3000);
 }
 
+document.getElementById("to-sessions").href = "/sessions?token=" + encodeURIComponent(TOKEN);
+
 loop();
 </script>
 </body>
@@ -754,6 +760,7 @@ _STATIC_KEYS = (
     "control_loading",
     "control_target",
     "control_brightness",
+    "sessions_link",
 )
 
 # Copy the script embeds as JSON string literals.

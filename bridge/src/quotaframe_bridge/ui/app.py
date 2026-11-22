@@ -71,7 +71,7 @@ from quotaframe_bridge.service.update import (
     BridgeUpdateMonitor,
     UpdateState,
 )
-from quotaframe_bridge.sources.selection import create_usage_source
+from quotaframe_bridge.sources.selection import create_sessions_source, create_usage_source
 from quotaframe_bridge.sources.firmware_release import (
     FirmwareImage,
     FirmwareReleaseSource,
@@ -368,6 +368,7 @@ class TrayApplication(FirmwareUpdateActions):
                 repair=False,
                 ceremony_lock=ceremony_lock,
             ),
+            sessions_source=create_sessions_source(),
         )
         self._graph = graph
         return graph.service

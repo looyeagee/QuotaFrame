@@ -10,7 +10,12 @@ from typing import Any, Mapping
 from quotaframe_bridge.versioning import SemVer, VersionError
 
 from quotaframe_bridge.protocol.validation import validate_name, validate_identifier, validate_token
-from quotaframe_bridge.domain.models import Provider, ProviderUsage, NowPlayingPublication
+from quotaframe_bridge.domain.models import (
+    NowPlayingPublication,
+    Provider,
+    ProviderUsage,
+    SessionsPublication,
+)
 from quotaframe_bridge.protocol.ota_messages import OtaMessageError, OtaStatus, parse_ota_status
 
 PROTOCOL_VERSION = 1
@@ -20,6 +25,8 @@ MAX_U32 = 0xFFFFFFFF
 MAX_INVERSE_CLOCK_SKEW_SECONDS = 300
 # Capability a device declares when it renders the now-playing command.
 NOW_PLAYING_CAPABILITY = "nowplaying.v1"
+# Capability a device declares when it renders the sessions command.
+SESSIONS_CAPABILITY = "sessions.v1"
 # Capability a device declares when the alert mode can be set over the link.
 ALERT_SET_CAPABILITY = "alert.set.v1"
 # Capability a device declares when the display brightness can be set over the link.
@@ -33,6 +40,11 @@ ALERT_MODES = (ALERT_OFF, ALERT_PAGE, ALERT_BEEP)
 MAX_TITLE_BYTES = 192
 MAX_LINES = 8
 MAX_LINE_BYTES = 192
+# Sessions page bounds; four live rows and three recent titles fit the panel
+# and keep the frame far below the 4096 byte limit.
+MAX_LIVE_SESSIONS = 4
+MAX_RECENT_SESSIONS = 3
+MAX_SESSION_TEXT_BYTES = 96
 
 
 
@@ -244,6 +256,16 @@ def _truncate_utf8(text: str, limit: int) -> str:
     return encoded[:limit].decode("utf-8", "ignore")
 
 
+def _single_line(text: str) -> str:
+    """Fold a display text into one line.
+
+    The lists travel newline-separated, so a name that carries a line break of
+    its own would split into two entries and make the roster unreadable.
+    """
+
+    return " ".join(text.split())
+
+
 def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
     """Encode one now-playing publication for a panel's music page.
 
@@ -287,6 +309,49 @@ def encode_now_playing(publication: NowPlayingPublication, seq: int) -> bytes:
         # A song may start at zero, so the field travels whenever the source knows a
         # playhead; the device reads its presence as the position being known.
         payload["position_ms"] = _u32_text(publication.position_ms, "position_ms")
+    return (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def encode_sessions(publication: SessionsPublication, seq: int) -> bytes:
+    """Encode one sessions publication for a panel's sessions page.
+
+    The live names and their busy states travel as two parallel newline-joined
+    strings, like the lyric lines and their start times do: the command view of
+    the device reads strings, so a short list travels without adding an array
+    type to the protocol. An empty list stays off the wire rather than sending
+    a frame the device would count as one empty entry.
+    """
+
+    sequence = _u32(seq, "seq")
+    live = publication.live[:MAX_LIVE_SESSIONS]
+    recent = publication.recent[:MAX_RECENT_SESSIONS]
+    payload: dict[str, object] = {
+        "cmd": "sessions",
+        "v": "1",
+        "seq": _u32_text(sequence, "seq"),
+    }
+    if live:
+        payload["live"] = "\n".join(
+            _truncate_utf8(_single_line(name), MAX_SESSION_TEXT_BYTES)
+            for name, _busy in live
+        )
+        payload["states"] = "\n".join(
+            "busy" if busy else "idle" for _name, busy in live
+        )
+    if recent:
+        payload["recent"] = "\n".join(
+            _truncate_utf8(_single_line(title), MAX_SESSION_TEXT_BYTES)
+            for title in recent
+        )
     return (
         json.dumps(
             payload,

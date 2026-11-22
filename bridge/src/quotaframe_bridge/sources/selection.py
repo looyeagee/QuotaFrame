@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from quotaframe_bridge.config import read_deepseek_settings, read_minimax_settings
-from quotaframe_bridge.sources.base import NowPlayingSource, UsageSource
+from quotaframe_bridge.sources.base import NowPlayingSource, SessionsSource, UsageSource
 from quotaframe_bridge.sources.combined import CombinedUsageSource
 
 
@@ -71,3 +71,16 @@ def create_now_playing_source() -> NowPlayingSource | None:
     from quotaframe_bridge.sources.netease_music import LyricCache, NeteaseMusicSource
 
     return NeteaseMusicSource(cache=LyricCache())
+
+
+def create_sessions_source() -> SessionsSource:
+    """Return the Claude Code sessions source of this computer.
+
+    Claude Code keeps its transcripts under the user's home directory on every
+    supported host, so unlike the music source this one always exists; a
+    computer without Claude data yields empty publications.
+    """
+
+    from quotaframe_bridge.sources.claude_sessions import ClaudeSessionsSource
+
+    return ClaudeSessionsSource()

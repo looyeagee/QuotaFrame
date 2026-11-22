@@ -140,7 +140,7 @@ class ServiceControl:
         return self._dispatch(SCREEN_TOGGLE_CAPABILITY, None, address)
 
     def turn_page(self, direction: int, address: str | None = None) -> dict[str, object]:
-        if direction not in (-1, 1):
+        if type(direction) is not int or direction not in (-1, 1):
             raise ValueError("page direction must be -1 or 1")
         return self._dispatch(SCREEN_PAGE_CAPABILITY, direction, address)
 
@@ -217,7 +217,7 @@ class ServiceControl:
                 if direction is None:
                     session.schedule_screen_toggle()
                 else:
-                    session.schedule_screen_page(direction < 0)
+                    session.schedule_screen_page(direction)
         return {"devices": results}
 
     def _setting(

@@ -135,7 +135,9 @@ BLE connected: device=Waveshare AMOLED 2.16 secure=true protocol=1 capabilities=
 
 ```text
 GET  /                   页面（令牌随查询串带入）
+GET  /sessions           Claude Code 会话页面（同一令牌）
 GET  /api/state          设备、额度、播放状态快照
+GET  /api/cc/sessions    本机 Claude Code 会话快照
 POST /api/screen/toggle  切换到时钟 / 额度
 POST /api/screen/page    {"direction": "next" | "previous"}
 POST /api/alert          {"mode": 0 | 1 | 2}，0 关闭、1 仅告警页、2 告警页加提示音
@@ -146,7 +148,7 @@ POST /api/refresh        立即采集
 
 `server.py` 是标准库 `asyncio` 实现的 HTTP/1.1，不引入第三方框架：请求头上限 8 KiB、请求体上限 4 KiB、空闲连接 30 秒回收。`routes.py` 与套接字层分离，可脱离网络直接测试。令牌来自 `control.token`（`paths.data_directory()`，权限 0600），由 `token.py` 首次生成；绑定环回地址时额外校验 `Host` 头以防 DNS rebinding，绑定其他地址时只依赖令牌。
 
-页面是无构建步骤的单个字符串（`page.py`），文案取自 `catalog.py`，冻结包与源码树服务同一份内容。`bridge/tests/test_control_http.py` 覆盖路由、令牌、命令派发与真实套接字往返，不需要蓝牙。
+页面是无构建步骤的单个字符串（`page.py` 与会话页 `sessions_page.py`），文案取自 `catalog.py`，冻结包与源码树服务同一份内容。会话页由 `cc_sessions.py` 只读本机 `~/.claude`：`sessions/<pid>.json` 提供运行中会话与忙碌状态，`projects/*/*.jsonl` 只读文件头提取标题，两者按会话 ID 关联。`bridge/tests/test_control_http.py` 覆盖路由、令牌、命令派发与真实套接字往返，不需要蓝牙；会话读取器与页面在 `bridge/tests/test_cc_sessions.py`。
 
 ## 数据源接口
 
@@ -164,6 +166,19 @@ macOS：  codexbar config providers --json
 Bridge 每轮读取启用列表，只查询已启用的来源。两路并发、各自计时，先收到的用量立即进入推送。查询失败时保留该来源上次有效的用量和原采样时间。Win-CodexBar 0.46.0 和 Bridge 固定下载的 1.2.12 通过 `config dump --format json` 提供 `enabled_providers`。macOS 需要支持 `config providers --json` 的 CLI。
 
 随后只保留两个 provider 的 primary/secondary 窗口百分比、重置时间和采样时间，转换成 `usage.v1` 后通过加密 BLE 发送。原始 stdout/stderr、身份、费用、计划和凭据不会写入 BLE 消息或正常日志。
+
+## Claude Code 会话
+
+Bridge 另有一路只读数据源，读本机 `~/.claude` 下 Claude Code 自己的会话数据：
+
+```text
+~/.claude/sessions/<pid>.json      运行中会话：名称、忙碌状态、进程是否存活
+~/.claude/projects/*/<id>.jsonl    会话记录，只读文件头提取标题
+```
+
+`sources/claude_sessions.py` 把快照收成面板要显示的两样东西：运行中会话的（显示名，忙碌与否）和最近会话的标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不进入线上帧。转换后的 `sessions.v1` 帧由 `DeviceSession.publish_sessions()` 每 10 秒推给声明了该能力的设备；没有该能力的设备不受影响。
+
+`control/cc_sessions.py` 同时支撑本地控制页的 `/sessions` 页面与 `/api/cc/sessions` 接口，两者读的是同一份数据。
 
 ## 更新与发布配置
 

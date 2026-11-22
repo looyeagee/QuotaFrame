@@ -15,7 +15,9 @@ from dataclasses import dataclass
 from urllib.parse import parse_qs, urlsplit
 
 from quotaframe_bridge.control.backend import PanelControl
+from quotaframe_bridge.control.cc_sessions import ClaudeSessionStore
 from quotaframe_bridge.control.page import render_page
+from quotaframe_bridge.control.sessions_page import render_sessions_page
 
 TOKEN_HEADER = "x-quotaframe-token"
 JSON_TYPE = "application/json; charset=utf-8"
@@ -27,7 +29,9 @@ STATIC_HEADERS = (
     ("Referrer-Policy", "no-referrer"),
 )
 PAGE_PATH = "/"
+SESSIONS_PAGE_PATH = "/sessions"
 STATE_PATH = "/api/state"
+CC_SESSIONS_PATH = "/api/cc/sessions"
 TOGGLE_PATH = "/api/screen/toggle"
 PAGE_COMMAND_PATH = "/api/screen/page"
 ALERT_PATH = "/api/alert"
@@ -41,7 +45,9 @@ FAVICON_PATH = "/favicon.ico"
 # The page is the only client; anything else is a typo or a probe.
 ALLOWED_METHODS = {
     PAGE_PATH: ("GET",),
+    SESSIONS_PAGE_PATH: ("GET",),
     STATE_PATH: ("GET",),
+    CC_SESSIONS_PATH: ("GET",),
     TOGGLE_PATH: ("POST",),
     PAGE_COMMAND_PATH: ("POST",),
     ALERT_PATH: ("POST",),
@@ -96,11 +102,13 @@ class ControlRoutes:
         *,
         token: str,
         bound_host: str = "127.0.0.1",
+        sessions: ClaudeSessionStore | None = None,
     ) -> None:
         if not token:
             raise ValueError("control token must not be empty")
         self._control = control
         self._token = token
+        self._sessions = sessions if sessions is not None else ClaudeSessionStore()
         self._enforce_host = _is_loopback(bound_host)
         self._bound_hostname = bound_host.strip("[]").lower()
 
@@ -115,10 +123,16 @@ class ControlRoutes:
             return _error(405, "method_not_allowed", {"Allow": ", ".join(allowed)})
         if path == PAGE_PATH:
             return Response(200, render_page(token=self._token).encode("utf-8"), HTML_TYPE)
+        if path == SESSIONS_PAGE_PATH:
+            return Response(
+                200, render_sessions_page(token=self._token).encode("utf-8"), HTML_TYPE
+            )
         if path == FAVICON_PATH:
             return Response(204, b"", "text/plain; charset=utf-8")
         if path == STATE_PATH:
             return _ok(self._control.state())
+        if path == CC_SESSIONS_PATH:
+            return _ok(self._sessions.snapshot())
         if path == TOGGLE_PATH:
             return self._toggle(request)
         if path == PAGE_COMMAND_PATH:

@@ -6,6 +6,7 @@ import unittest
 from quotaframe_bridge.domain.models import (
     Provider,
     ProviderUsage,
+    SessionsPublication,
     SourceState,
     UsageWindow,
 )
@@ -17,6 +18,7 @@ from quotaframe_bridge.protocol.messages import (
     Sequence,
     encode_alert_set,
     encode_brightness_set,
+    encode_sessions,
     encode_status_query,
     encode_usage,
     parse_ack,
@@ -275,6 +277,48 @@ class OpenStatusTests(unittest.TestCase):
         decoder = LineDecoder(4096)
         self.assertEqual(decoder.feed(raw + b'\r'), [])
         self.assertEqual(len(decoder.feed(b'\n')), 1)
+
+
+class SessionsEncodingTests(unittest.TestCase):
+    def test_sessions_encoder_has_exact_allowlisted_keys(self) -> None:
+        publication = SessionsPublication(
+            live=(("Panel session", True), ("Idle session", False)),
+            recent=("修复列表滚动的问题",),
+        )
+        line = encode_sessions(publication, seq=46)
+
+        payload = json.loads(line)
+        self.assertEqual(
+            set(payload), {"cmd", "v", "seq", "live", "states", "recent"}
+        )
+        self.assertTrue(line.endswith(b"\n"))
+        self.assertEqual(payload["live"], "Panel session\nIdle session")
+        self.assertEqual(payload["states"], "busy\nidle")
+        self.assertEqual(payload["recent"], "修复列表滚动的问题")
+
+    def test_empty_lists_stay_off_the_wire(self) -> None:
+        payload = json.loads(encode_sessions(SessionsPublication(), 7))
+
+        self.assertEqual(set(payload), {"cmd", "v", "seq"})
+
+    def test_long_names_are_cut_at_a_whole_character(self) -> None:
+        name = "字" * 60
+        publication = SessionsPublication(live=((name, True),))
+        line = encode_sessions(publication, seq=1)
+
+        payload = json.loads(line)
+        self.assertLessEqual(len(payload["live"].encode("utf-8")), 96)
+
+    def test_a_name_with_a_line_break_stays_one_entry(self) -> None:
+        publication = SessionsPublication(
+            live=(("第一行\n第二行", True),), recent=("标题\n也是一行",)
+        )
+        line = encode_sessions(publication, seq=2)
+
+        payload = json.loads(line)
+        self.assertEqual(payload["live"], "第一行 第二行")
+        self.assertEqual(payload["recent"], "标题 也是一行")
+        self.assertEqual(len(payload["states"].split("\n")), 1)
 
 
 if __name__ == "__main__":

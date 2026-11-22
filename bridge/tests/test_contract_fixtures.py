@@ -21,6 +21,8 @@ ALLOWED_KEYS = {
     "week_used_pct",
     "week_reset_at",
 }
+SESSIONS_ALLOWED_KEYS = {"cmd", "v", "seq", "live", "states", "recent"}
+SESSIONS_STATES = {"busy", "idle"}
 
 
 class ContractFixtureTests(unittest.TestCase):
@@ -57,6 +59,25 @@ class ContractFixtureTests(unittest.TestCase):
         self.assertIsInstance(numeric["short_used_pct"], int)
         self.assertIn("short_reset_at", orphan)
         self.assertNotIn("short_used_pct", orphan)
+
+
+    def test_valid_sessions_fixture_decodes_and_uses_only_allowlisted_keys(self) -> None:
+        messages = LineDecoder(1024).feed((EXAMPLES / "sessions.jsonl").read_bytes())
+        self.assertEqual(len(messages), 1)
+        payload = messages[0]
+        self.assertEqual(payload["cmd"], "sessions")
+        self.assertEqual(payload["v"], "1")
+        self.assertLessEqual(set(payload), SESSIONS_ALLOWED_KEYS)
+        self.assertEqual(len(payload["states"].split("\n")), len(payload["live"].split("\n")))
+        for state in payload["states"].split("\n"):
+            self.assertIn(state, SESSIONS_STATES)
+
+    def test_invalid_sessions_fixture_carries_mismatched_lists(self) -> None:
+        payload = json.loads((EXAMPLES / "sessions-invalid.jsonl").read_text())
+
+        self.assertNotEqual(
+            len(payload["states"].split("\n")), len(payload["live"].split("\n"))
+        )
 
 
 if __name__ == "__main__":

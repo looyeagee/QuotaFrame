@@ -9,6 +9,7 @@ from quotaframe_bridge.domain.models import (
     NowPlayingPublication,
     Provider,
     ProviderUsage,
+    SessionsPublication,
 )
 
 UsageUpdate = Callable[[ProviderUsage], None]
@@ -37,3 +38,21 @@ class NowPlayingSource(Protocol):
 
     async def collect(self) -> NowPlayingPublication | None:
         """Return the current song, or None when nothing is playing."""
+
+
+@runtime_checkable
+class SessionsSource(Protocol):
+    """Collects the Claude Code session state of this computer."""
+
+    async def collect(self) -> SessionsPublication:
+        """Return the current sessions snapshot; the roster may be empty."""
+
+    async def wait_for_change(self, timeout: float) -> None:
+        """Return once the sessions may have changed, or after `timeout` seconds.
+
+        A source that cannot observe the sessions blocks for `timeout`, so the
+        caller always gets a bounded wait.
+        """
+
+    def close(self) -> None:
+        """Release anything held for watching the sessions."""

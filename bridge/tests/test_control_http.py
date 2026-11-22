@@ -138,9 +138,13 @@ class FakeSession:
         if self.screen_command_unavailable(SCREEN_TOGGLE_CAPABILITY) is None:
             self.toggles += 1
 
-    def schedule_screen_page(self, previous: bool) -> None:
+    def schedule_screen_page(self, direction: int) -> None:
+        # Mirrors the real session, which takes -1 or 1 and rejects a bool: the
+        # control layer once passed `direction < 0` and every page turn failed.
+        if type(direction) is not int or direction not in (-1, 1):
+            raise ValueError("page direction must be -1 or 1")
         if self.screen_command_unavailable(SCREEN_PAGE_CAPABILITY) is None:
-            self.pages.append(-1 if previous else 1)
+            self.pages.append(direction)
 
     def schedule_alert_set(self, mode: int) -> None:
         if self.alert_command_unavailable() is None:
@@ -369,6 +373,19 @@ class ServiceControlTests(unittest.TestCase):
         self.assertIsNone(devices[1]["brightness"]["percent"])
         self.assertFalse(devices[1]["brightness"]["set"]["available"])
         self.assertEqual(devices[1]["brightness"]["set"]["reason"], "missing_capability")
+
+    def test_turn_page_hands_the_direction_itself_to_the_session(self) -> None:
+        # The session takes -1 or 1; dispatching a bool made every page turn from
+        # the control page fail server-side instead of moving the panel.
+        session = FakeSession("ready")
+        control = ServiceControl(FakeService([session]), version="1.2.1")
+
+        forward = control.turn_page(1)
+        backward = control.turn_page(-1)
+
+        self.assertEqual(session.pages, [1, -1])
+        self.assertTrue(forward["devices"][0]["accepted"])
+        self.assertTrue(backward["devices"][0]["accepted"])
 
     def test_dispatch_reports_why_a_device_is_skipped(self) -> None:
         ready = FakeSession("ready")
