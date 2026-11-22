@@ -458,4 +458,27 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "alert_beep": ("告警页 + 提示音", "Alert page + tone"),
     "alert_apply": ("应用", "Apply"),
     "control_alert_unknown": ("面板未报告", "Not reported by the panel"),
+    "control_pairing": ("配对", "Pairing"),
+    "control_pair_add": ("添加面板", "Add panel"),
+    "control_pair_stop": ("停止扫描", "Stop scanning"),
+    "control_pair_stopped": ("扫描已停止", "Scan stopped"),
+    "control_pair_scanning": (
+        "正在扫描，请在面板上确认配对码…",
+        "Scanning; confirm the code on the panel…",
+    ),
+    "control_pair_added": ("已添加", "Added"),
+    "control_pair_none_found": ("没有发现新面板", "No new panel answered"),
+    "control_pair_failed": ("配对扫描失败，请查看日志", "Pairing scan failed; see the log"),
+    "control_pair_busy": ("已有配对任务在进行", "A pairing task is already running"),
+    "control_pair_unsupported": (
+        "当前模式不支持网页配对",
+        "Pairing is unavailable in this mode",
+    ),
+    "control_pairing_error_failed": ("操作失败，请查看日志", "The action failed; see the log"),
+    "control_unavailable_unknown_device": ("没有这个面板", "No such panel"),
+    "control_unavailable_unsupported": ("当前模式不支持", "Not available in this mode"),
+    "control_unavailable_manual": (
+        "请在系统蓝牙设置中删除配对记录",
+        "Remove the bond in the system Bluetooth settings first",
+    ),
 }

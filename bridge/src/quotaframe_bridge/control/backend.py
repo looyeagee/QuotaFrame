@@ -7,20 +7,32 @@ device, because a session drops an ineligible command silently.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import time
 from collections.abc import Callable, Mapping
 from typing import Protocol
 
 from quotaframe_bridge.domain.models import ProviderUsage, UsageWindow
-from quotaframe_bridge.service.devices import PairerT, TrayServiceGraph
+from quotaframe_bridge.service.devices import (
+    PairerT,
+    TrayDevice,
+    TrayServiceGraph,
+    run_adoption,
+)
 from quotaframe_bridge.service.multi_device import (
     SCREEN_PAGE_CAPABILITY,
     SCREEN_TOGGLE_CAPABILITY,
     DeviceSession,
     MultiDeviceBridgeService,
 )
-from quotaframe_bridge.transports.base import device_status
+from quotaframe_bridge.transports.base import (
+    TransportCleanupError,
+    device_status,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 # A command already on the wire clears itself in one round trip and only means
 # "this click would have been dropped", which is exactly what the tray does.
@@ -47,6 +59,18 @@ class PanelControl(Protocol):
     def refresh(self) -> dict[str, object]:
         """Ask the collection loop to read usage now."""
 
+    def pair_new_device(self) -> dict[str, object]:
+        """Scan for a panel nobody owns yet, pair with it, and adopt it."""
+
+    def stop_pairing(self) -> dict[str, object]:
+        """Cancel a running adoption scan and close its BLE link."""
+
+    def repair_pairing(self, address: str) -> dict[str, object]:
+        """Drop one panel's bond and pair again, or report why that cannot run."""
+
+    def forget_device(self, address: str) -> dict[str, object]:
+        """Remove one adopted panel from the Bridge, keeping the system bond."""
+
 
 class ServiceControl:
     """Expose one running service to the control page.
@@ -68,9 +92,14 @@ class ServiceControl:
         self._version = version
         self._clock = clock
         self._started_at = clock()
+        # Pairing actions run as tasks on the service loop; the page watches
+        # the flags and the last outcome through state() instead of a reply.
+        self._adoption_task: asyncio.Task[None] | None = None
+        self._last_adoption: dict[str, object] | None = None
+        self._last_pairing_error: dict[str, str] | None = None
 
     def state(self) -> dict[str, object]:
-        addresses = self._addresses()
+        graph_devices = self._graph_devices()
         return {
             "bridge": {
                 "version": self._version,
@@ -83,13 +112,23 @@ class ServiceControl:
                 "last_attempt_at": self._service.store.last_collection_attempt,
             },
             "devices": [
-                self._device(session, addresses.get(session))
+                self._device(session, graph_devices.get(session))
                 for session in self._service.sessions
             ],
             "providers": [
                 _usage(usage) for usage in self._service.store.providers.values()
             ],
             "now_playing": _now_playing(self._service.now_playing),
+            "pairing": {
+                # Adopting, repairing and forgetting require the ownership
+                # graph; single-device and dry-run modes have no store to act on.
+                "supported": self._graph is not None,
+                "adoption": {
+                    "running": self._adoption_running(),
+                    "last": self._last_adoption,
+                },
+                "last_error": self._last_pairing_error,
+            },
         }
 
     def toggle_screen(self) -> dict[str, object]:
@@ -147,17 +186,154 @@ class ServiceControl:
                 self._service.turn_pages(direction)
         return {"devices": results}
 
-    def _addresses(self) -> Mapping[DeviceSession, str]:
+    def pair_new_device(self) -> dict[str, object]:
+        """Start one bounded adoption scan, as the tray's add-device action does."""
+
+        if self._graph is None:
+            return {"started": False, "reason": "unsupported"}
+        if self._adoption_running():
+            return {"started": False, "reason": "busy"}
+        self._last_adoption = None
+        self._last_pairing_error = None
+        self._adoption_task = asyncio.create_task(self._adopt())
+        return {"started": True}
+
+    def stop_pairing(self) -> dict[str, object]:
+        """Cancel the running adoption scan; the page watches state for the result."""
+
+        if not self._adoption_running():
+            return {"stopped": False, "reason": "idle"}
+        # Record the outcome here: a scan cancelled before its first step never
+        # runs its own cleanup, so the page would otherwise see no result.
+        self._last_adoption = {"stopped": True}
+        self._adoption_task.cancel()
+        return {"stopped": True}
+
+    def repair_pairing(self, address: str) -> dict[str, object]:
+        """Ask one panel to drop its bond and pair again on the next connect."""
+
+        return self._pairing_command(address, self._start_repair)
+
+    def forget_device(self, address: str) -> dict[str, object]:
+        """Remove one adopted panel from the Bridge; the system bond stays."""
+
+        return self._pairing_command(address, self._start_forget)
+
+    def _pairing_command(
+        self,
+        address: str,
+        start: Callable[[object], str | None],
+    ) -> dict[str, object]:
+        # The single-device response shape matches the screen commands, so the
+        # page reports a rejection with the same per-device reason renderer.
+        device = None if self._graph is None else self._graph.get(address)
+        if device is None:
+            reason = "unsupported" if self._graph is None else "unknown_device"
+            return {"devices": [{"name": address, "accepted": False, "reason": reason}]}
+        reason = start(device)
+        return {
+            "devices": [
+                {
+                    "name": device.name,
+                    "accepted": reason is None,
+                    "reason": reason,
+                }
+            ]
+        }
+
+    def _start_repair(self, device: TrayDevice[PairerT]) -> str | None:
+        pairer = getattr(device, "pairer", None)
+        if not callable(getattr(pairer, "request_repair", None)):
+            # macOS owns the ceremony; the tray shows the same manual guidance.
+            return "manual"
+        if device.session.exclusive_active:
+            return "exclusive"
+        self._last_pairing_error = None
+        asyncio.create_task(self._repair(device))
+        return None
+
+    def _start_forget(self, device: TrayDevice[PairerT]) -> str | None:
+        if device.session.exclusive_active:
+            return "exclusive"
+        self._last_pairing_error = None
+        asyncio.create_task(self._forget(device))
+        return None
+
+    async def _repair(self, device: TrayDevice[PairerT]) -> None:
+        async def repair(transport):
+            device.pairer.request_repair()
+            await transport.reset()
+
+        try:
+            await device.session.run_exclusive(repair, interrupt_connect=True)
+        except TransportCleanupError:
+            self._record_pairing_error(device.name, "repair", "cleanup_failed")
+        except RuntimeError:
+            # An OTA session won the exclusive lock between the page's poll and
+            # this task; the tray reports the same outcome as "updating".
+            self._record_pairing_error(device.name, "repair", "busy")
+        except Exception:
+            LOGGER.exception("pairing repair failed: device=%s", device.name)
+            self._record_pairing_error(device.name, "repair", "failed")
+        else:
+            self._service.request_collection()
+
+    async def _forget(self, device: TrayDevice[PairerT]) -> None:
+        graph = self._graph
+        if graph is None:
+            return
+        try:
+            await graph.forget(device.address, expected=device)
+        except TransportCleanupError:
+            # Removal already persisted; only the link cleanup failed.
+            self._record_pairing_error(device.name, "forget", "cleanup_failed")
+        except RuntimeError:
+            self._record_pairing_error(device.name, "forget", "busy")
+        except Exception:
+            LOGGER.exception("forget device failed: device=%s", device.name)
+            self._record_pairing_error(device.name, "forget", "failed")
+
+    async def _adopt(self) -> None:
+        graph = self._graph
+        if graph is None:
+            return
+        try:
+            if graph.store.read_error:
+                self._last_adoption = {"error": "records"}
+                return
+            adopted = await run_adoption(graph)
+        except asyncio.CancelledError:
+            # discover_device's cleanup already closed whichever BLE link the
+            # scan held when cancellation landed; the result was recorded by
+            # stop_pairing, so re-raise without overwriting anything.
+            raise
+        except Exception:
+            LOGGER.exception("adoption scan failed")
+            self._last_adoption = {"error": "failed"}
+            return
+        self._last_adoption = {"adopted": [device.name for device in adopted]}
+
+    def _record_pairing_error(self, name: str, action: str, error: str) -> None:
+        self._last_pairing_error = {"device": name, "action": action, "error": error}
+
+    def _adoption_running(self) -> bool:
+        return self._adoption_task is not None and not self._adoption_task.done()
+
+    def _graph_devices(self) -> Mapping[DeviceSession, TrayDevice[PairerT]]:
         if self._graph is None:
             return {}
-        return {device.session: device.address for device in self._graph.devices}
+        return {device.session: device for device in self._graph.devices}
 
-    def _device(self, session: DeviceSession, address: str | None) -> dict[str, object]:
+    def _device(
+        self,
+        session: DeviceSession,
+        device: TrayDevice[PairerT] | None,
+    ) -> dict[str, object]:
         status = device_status(session.transport)
         capabilities = sorted(status.capabilities) if status is not None else []
         return {
             "name": session.label,
-            "address": address or "",
+            "address": "" if device is None else device.address,
             "connected": session.connected,
             "secure": bool(status.secure) if status is not None else False,
             "capabilities": capabilities,
@@ -178,7 +354,29 @@ class ServiceControl:
                 "mode": session.alert_mode,
                 "set": _availability(session.alert_command_unavailable()),
             },
+            "pairing": {
+                "repair": self._repair_availability(device, session),
+                "forget": _availability(self._pairing_unavailable(session)),
+            },
         }
+
+    def _pairing_unavailable(self, session: DeviceSession) -> str | None:
+        if self._graph is None:
+            return "unsupported"
+        if session.exclusive_active:
+            return "exclusive"
+        return None
+
+    def _repair_availability(
+        self,
+        device: TrayDevice[PairerT] | None,
+        session: DeviceSession,
+    ) -> dict[str, object]:
+        pairer = None if device is None else getattr(device, "pairer", None)
+        # A pairer without request_repair (macOS) can only show manual steps;
+        # the page uses the mode to decide between a request and the guidance.
+        mode = "ceremony" if callable(getattr(pairer, "request_repair", None)) else "manual"
+        return {**_availability(self._pairing_unavailable(session)), "mode": mode}
 
 
 def _availability(reason: str | None) -> dict[str, object]:

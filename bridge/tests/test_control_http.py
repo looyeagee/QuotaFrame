@@ -30,6 +30,7 @@ from quotaframe_bridge.service.multi_device import (
     DeviceSession,
     MultiDeviceBridgeService,
 )
+from quotaframe_bridge.transports.base import TransportCleanupError
 from quotaframe_bridge.cli.main import _control_server
 from quotaframe_bridge.service.state import UsageStateStore
 from quotaframe_bridge.sources.mock import MockUsageSource
@@ -50,6 +51,7 @@ class ScreenTransport:
     ) -> None:
         self.connected = connected
         self.sent: list[tuple[bytes, str, int]] = []
+        self.resets = 0
         self.status = DeviceStatus(
             name="Panel",
             secure=secure,
@@ -63,6 +65,9 @@ class ScreenTransport:
 
     async def send_command(self, payload: bytes, command: str, sequence: int) -> None:
         self.sent.append((payload, command, sequence))
+
+    async def reset(self) -> None:
+        self.resets += 1
 
     async def close(self) -> None:
         self.connected = False
@@ -87,6 +92,8 @@ class FakeSession:
             capabilities, connected=connected, secure=secure, alert=alert
         )
         self._reason = reason
+        self.exclusive_active = False
+        self._exclusive_failure: Exception | None = None
 
     def screen_command_unavailable(self, capability: str) -> str | None:
         if self._reason is not None:
@@ -105,6 +112,59 @@ class FakeSession:
     @property
     def alert_mode(self) -> int | None:
         return self.transport.status.alert
+
+    async def run_exclusive(self, operation, *, interrupt_connect: bool = False) -> None:
+        if self._exclusive_failure is not None:
+            raise self._exclusive_failure
+        await operation(self.transport)
+
+
+class FakePairer:
+    """The pairer surface the page's repair action drives."""
+
+    def __init__(self) -> None:
+        self.repairs = 0
+
+    def request_repair(self) -> None:
+        self.repairs += 1
+
+    async def ensure_paired(self, device) -> None:
+        return None
+
+
+class FakeGraphDevice:
+    """One adopted device as the pairing actions see it."""
+
+    def __init__(self, session: FakeSession, *, pairer=object()) -> None:
+        self.session = session
+        self.address = "AA:BB:CC:DD:EE:FF"
+        self.pairer = pairer
+        self.name = session.label
+
+
+class FakeGraph:
+    """The ownership surface the page's pairing actions need."""
+
+    def __init__(self, *devices: FakeGraphDevice, forget_error: Exception | None = None) -> None:
+        self.devices = tuple(devices)
+        self.store = SimpleNamespace(read_error=False)
+        self.forget_error = forget_error
+        self.forgotten: list[str] = []
+
+    def get(self, address: str) -> FakeGraphDevice | None:
+        wanted = address.strip().upper()
+        return next(
+            (device for device in self.devices if device.address.upper() == wanted), None
+        )
+
+    async def forget(self, address: str, *, expected) -> bool:
+        if self.forget_error is not None:
+            raise self.forget_error
+        device = self.get(address)
+        if device is None or device is not expected:
+            return False
+        self.forgotten.append(device.address)
+        return True
 
 
 class FakeService:
@@ -287,6 +347,273 @@ class ServiceControlTests(unittest.TestCase):
         self.assertEqual(service.refreshes, 1)
 
 
+class PairingStateTests(unittest.TestCase):
+    """The state snapshot must tell the page which pairing actions exist."""
+
+    def test_state_without_a_graph_reports_pairing_unsupported(self) -> None:
+        reported = ServiceControl(FakeService([FakeSession("solo")]), version="1").state()
+
+        self.assertFalse(reported["pairing"]["supported"])
+        self.assertIsNone(reported["pairing"]["adoption"]["last"])
+        pairing = reported["devices"][0]["pairing"]
+        self.assertFalse(pairing["repair"]["available"])
+        self.assertEqual(pairing["repair"]["reason"], "unsupported")
+        self.assertFalse(pairing["forget"]["available"])
+
+    def test_an_owned_device_reports_ceremony_repair_and_forget(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        state = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        ).state()
+
+        self.assertTrue(state["pairing"]["supported"])
+        self.assertEqual(state["devices"][0]["address"], device.address)
+        pairing = state["devices"][0]["pairing"]
+        self.assertTrue(pairing["repair"]["available"])
+        self.assertEqual(pairing["repair"]["mode"], "ceremony")
+        self.assertTrue(pairing["forget"]["available"])
+
+    def test_a_pairer_without_a_ceremony_reports_manual_repair(self) -> None:
+        session = FakeSession("mac")
+        device = FakeGraphDevice(session, pairer=object())
+        pairing = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        ).state()["devices"][0]["pairing"]
+
+        self.assertTrue(pairing["repair"]["available"])
+        self.assertEqual(pairing["repair"]["mode"], "manual")
+
+    def test_an_exclusive_session_blocks_repair_and_forget(self) -> None:
+        session = FakeSession("QF-1")
+        session.exclusive_active = True
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        pairing = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        ).state()["devices"][0]["pairing"]
+
+        self.assertEqual(pairing["repair"]["reason"], "exclusive")
+        self.assertEqual(pairing["forget"]["reason"], "exclusive")
+
+
+class PairingCommandTests(unittest.IsolatedAsyncioTestCase):
+    """Pairing actions run as tasks on the loop and report through state."""
+
+    async def test_pair_new_device_adopts_and_reports_the_result(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        graph = FakeGraph(device)
+        control = ServiceControl(FakeService([session]), graph=graph, version="1")
+
+        async def adoption(graph_arg, **kwargs):
+            self.assertIs(graph_arg, graph)
+            return [device]
+
+        with patch("quotaframe_bridge.control.backend.run_adoption", adoption):
+            self.assertEqual(control.pair_new_device(), {"started": True})
+            await asyncio.sleep(0)
+
+        state = control.state()
+        self.assertFalse(state["pairing"]["adoption"]["running"])
+        self.assertEqual(state["pairing"]["adoption"]["last"], {"adopted": ["QF-1"]})
+
+    async def test_a_second_adoption_is_reported_as_busy(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        control = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        )
+        release = asyncio.Event()
+
+        async def adoption(graph, **kwargs):
+            await release.wait()
+            return []
+
+        with patch("quotaframe_bridge.control.backend.run_adoption", adoption):
+            self.assertEqual(control.pair_new_device(), {"started": True})
+            self.assertEqual(
+                control.pair_new_device(), {"started": False, "reason": "busy"}
+            )
+            release.set()
+            # The task is the observation point the page watches through state.
+            await asyncio.gather(control._adoption_task)  # noqa: SLF001
+
+        self.assertEqual(control.state()["pairing"]["adoption"]["last"], {"adopted": []})
+
+    async def test_pairing_is_reported_unsupported_without_a_graph(self) -> None:
+        control = ServiceControl(FakeService([]), version="1")
+
+        self.assertEqual(
+            control.pair_new_device(), {"started": False, "reason": "unsupported"}
+        )
+        self.assertIsNone(control.state()["pairing"]["adoption"]["last"])
+
+    async def test_stop_pairing_cancels_the_running_scan(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        control = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        )
+        release = asyncio.Event()
+
+        async def adoption(graph, **kwargs):
+            await release.wait()
+            return []
+
+        with patch("quotaframe_bridge.control.backend.run_adoption", adoption):
+            self.assertEqual(control.pair_new_device(), {"started": True})
+            self.assertEqual(control.stop_pairing(), {"stopped": True})
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.gather(control._adoption_task)  # noqa: SLF001
+
+        state = control.state()
+        self.assertFalse(state["pairing"]["adoption"]["running"])
+        self.assertEqual(state["pairing"]["adoption"]["last"], {"stopped": True})
+
+    async def test_stop_pairing_without_a_scan_reports_idle(self) -> None:
+        control = ServiceControl(FakeService([]), version="1")
+
+        self.assertEqual(
+            control.stop_pairing(), {"stopped": False, "reason": "idle"}
+        )
+        self.assertIsNone(control.state()["pairing"]["adoption"]["last"])
+
+    async def test_unreadable_records_stop_the_scan_before_it_starts(self) -> None:
+        session = FakeSession("QF-1")
+        graph = FakeGraph(FakeGraphDevice(session, pairer=FakePairer()))
+        graph.store.read_error = True
+        control = ServiceControl(FakeService([session]), graph=graph, version="1")
+
+        self.assertEqual(control.pair_new_device(), {"started": True})
+        await asyncio.sleep(0)
+
+        self.assertEqual(
+            control.state()["pairing"]["adoption"]["last"], {"error": "records"}
+        )
+
+    async def test_repair_drops_the_bond_and_resets_the_link(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        service = FakeService([session])
+        control = ServiceControl(service, graph=FakeGraph(device), version="1")
+
+        result = control.repair_pairing("aa:bb:cc:dd:ee:ff")
+        await asyncio.sleep(0)
+
+        self.assertTrue(result["devices"][0]["accepted"])
+        self.assertEqual(device.pairer.repairs, 1)
+        self.assertEqual(session.transport.resets, 1)
+        # The tray asks for a usage collection after a successful repair.
+        self.assertEqual(service.refreshes, 1)
+        self.assertIsNone(control.state()["pairing"]["last_error"])
+
+    async def test_repair_reports_an_unknown_address(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        control = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        )
+
+        result = control.repair_pairing("11:22:33:44:55:66")
+
+        self.assertEqual(
+            result["devices"],
+            [{"name": "11:22:33:44:55:66", "accepted": False, "reason": "unknown_device"}],
+        )
+        self.assertEqual(device.pairer.repairs, 0)
+
+    async def test_repair_rejects_while_an_exclusive_operation_owns_the_link(self) -> None:
+        session = FakeSession("QF-1")
+        session.exclusive_active = True
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        control = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        )
+
+        result = control.repair_pairing(device.address)
+
+        self.assertEqual(result["devices"][0]["reason"], "exclusive")
+        self.assertEqual(device.pairer.repairs, 0)
+
+    async def test_a_lost_cleanup_is_recorded_for_the_page(self) -> None:
+        session = FakeSession("QF-1")
+        session._exclusive_failure = TransportCleanupError("client leaked")  # noqa: SLF001
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        service = FakeService([session])
+        control = ServiceControl(service, graph=FakeGraph(device), version="1")
+
+        control.repair_pairing(device.address)
+        await asyncio.sleep(0)
+
+        self.assertEqual(
+            control.state()["pairing"]["last_error"],
+            {"device": "QF-1", "action": "repair", "error": "cleanup_failed"},
+        )
+        self.assertEqual(service.refreshes, 0)
+
+    async def test_a_busy_session_is_recorded_for_the_page(self) -> None:
+        session = FakeSession("QF-1")
+        session._exclusive_failure = RuntimeError(  # noqa: SLF001
+            "device operation is already active or device is closing"
+        )
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        control = ServiceControl(
+            FakeService([session]), graph=FakeGraph(device), version="1"
+        )
+
+        control.repair_pairing(device.address)
+        await asyncio.sleep(0)
+
+        self.assertEqual(
+            control.state()["pairing"]["last_error"],
+            {"device": "QF-1", "action": "repair", "error": "busy"},
+        )
+
+    async def test_forget_removes_the_device_from_the_ownership_graph(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        graph = FakeGraph(device)
+        control = ServiceControl(FakeService([session]), graph=graph, version="1")
+
+        result = control.forget_device(device.address)
+        await asyncio.sleep(0)
+
+        self.assertTrue(result["devices"][0]["accepted"])
+        self.assertEqual(graph.forgotten, [device.address])
+
+    async def test_a_forget_during_ota_is_recorded_for_the_page(self) -> None:
+        session = FakeSession("QF-1")
+        device = FakeGraphDevice(session, pairer=FakePairer())
+        graph = FakeGraph(device, forget_error=RuntimeError("device is busy with OTA"))
+        control = ServiceControl(FakeService([session]), graph=graph, version="1")
+
+        control.forget_device(device.address)
+        await asyncio.sleep(0)
+
+        self.assertEqual(graph.forgotten, [])
+        self.assertEqual(
+            control.state()["pairing"]["last_error"],
+            {"device": "QF-1", "action": "forget", "error": "busy"},
+        )
+
+    async def test_pairing_commands_without_a_graph_report_unsupported(self) -> None:
+        control = ServiceControl(FakeService([]), version="1")
+
+        for action in (control.repair_pairing, control.forget_device):
+            with self.subTest(action=action):
+                result = action("AA:BB:CC:DD:EE:FF")
+                self.assertEqual(
+                    result["devices"],
+                    [
+                        {
+                            "name": "AA:BB:CC:DD:EE:FF",
+                            "accepted": False,
+                            "reason": "unsupported",
+                        }
+                    ],
+                )
+
+
 class RealSessionTests(unittest.TestCase):
     """The page must drive the same session scheduling path the tray uses."""
 
@@ -425,6 +752,15 @@ class RouteTests(unittest.TestCase):
     def test_page_requires_the_token(self) -> None:
         self.assertEqual(self.routes().handle(self.get("/", token=None)).status, 401)
 
+    def test_page_renders_the_pairing_controls(self) -> None:
+        body = self.routes().handle(self.get("/")).body.decode("utf-8")
+        self.assertIn('id="pair"', body)
+        self.assertIn('id="pair-stop"', body)
+        self.assertIn('id="pairing-status"', body)
+        self.assertIn("/api/pair/repair", body)
+        self.assertIn("/api/pair/forget", body)
+        self.assertIn("renderPairing", body)
+
     def test_wrong_method_is_reported_with_allow(self) -> None:
         response = self.routes().handle(self.get("/api/state", method="POST"))
         self.assertEqual(response.status, 405)
@@ -480,6 +816,60 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(
             self.routes().handle(self.get("/api/alert", method="GET")).status, 405
         )
+
+    def test_pair_start_is_post_only_and_accepted(self) -> None:
+        routes = self.routes()
+        self.assertEqual(routes.handle(self.get("/api/pair", method="POST")).status, 202)
+        refused = routes.handle(self.get("/api/pair"))
+        self.assertEqual(refused.status, 405)
+        self.assertIn(("Allow", "POST"), refused.headers)
+
+    def test_pair_stop_is_post_only_and_accepted(self) -> None:
+        routes = self.routes()
+        self.assertEqual(
+            routes.handle(self.get("/api/pair/stop", method="POST")).status, 202
+        )
+        self.assertEqual(
+            json.loads(routes.handle(self.get("/api/pair/stop", method="POST")).body),
+            {"stopped": False, "reason": "idle"},
+        )
+        refused = routes.handle(self.get("/api/pair/stop"))
+        self.assertEqual(refused.status, 405)
+        self.assertIn(("Allow", "POST"), refused.headers)
+
+    def test_repair_and_forget_read_the_address_from_body_or_query(self) -> None:
+        routes = self.routes()
+        body = json.dumps({"address": "AA:BB"}).encode()
+        repair = routes.handle(self.get("/api/pair/repair", method="POST", body=body))
+        forget = routes.handle(self.get("/api/pair/forget?address=AA:BB", method="POST"))
+        self.assertEqual((repair.status, forget.status), (202, 202))
+        for response in (repair, forget):
+            self.assertEqual(
+                json.loads(response.body)["devices"][0]["reason"], "unsupported"
+            )
+
+    def test_a_pairing_target_rejects_a_missing_or_invalid_address(self) -> None:
+        routes = self.routes()
+        missing = routes.handle(self.get("/api/pair/repair", method="POST"))
+        self.assertEqual(
+            (missing.status, json.loads(missing.body)["error"]),
+            (400, "address_required"),
+        )
+        for payload in ({"address": ""}, {"address": 42}, {"address": " "},
+                        {"address": "A" * 65}, {"address": ["AA:BB"]}):
+            with self.subTest(payload=payload):
+                response = routes.handle(
+                    self.get(
+                        "/api/pair/forget", method="POST", body=json.dumps(payload).encode()
+                    )
+                )
+                self.assertEqual(
+                    (response.status, json.loads(response.body)["error"]),
+                    (400, "invalid_address"),
+                )
+        broken = routes.handle(self.get("/api/pair/forget", method="POST", body=b"{"))
+        self.assertEqual((broken.status, json.loads(broken.body)["error"]),
+                         (400, "invalid_json"))
 
     def test_page_command_rejects_a_missing_or_unknown_direction(self) -> None:
         routes = self.routes()

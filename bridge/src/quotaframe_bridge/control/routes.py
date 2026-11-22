@@ -32,6 +32,10 @@ TOGGLE_PATH = "/api/screen/toggle"
 PAGE_COMMAND_PATH = "/api/screen/page"
 ALERT_PATH = "/api/alert"
 REFRESH_PATH = "/api/refresh"
+PAIR_PATH = "/api/pair"
+PAIR_STOP_PATH = "/api/pair/stop"
+PAIR_REPAIR_PATH = "/api/pair/repair"
+PAIR_FORGET_PATH = "/api/pair/forget"
 FAVICON_PATH = "/favicon.ico"
 # The page is the only client; anything else is a typo or a probe.
 ALLOWED_METHODS = {
@@ -41,9 +45,15 @@ ALLOWED_METHODS = {
     PAGE_COMMAND_PATH: ("POST",),
     ALERT_PATH: ("POST",),
     REFRESH_PATH: ("POST",),
+    PAIR_PATH: ("POST",),
+    PAIR_STOP_PATH: ("POST",),
+    PAIR_REPAIR_PATH: ("POST",),
+    PAIR_FORGET_PATH: ("POST",),
     FAVICON_PATH: ("GET",),
 }
 DIRECTIONS = {"next": 1, "previous": -1}
+# An address is a platform BLE identifier at most; anything longer is a probe.
+MAX_ADDRESS_CHARS = 64
 LOOPBACK_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "[::1]", "::1"})
 
 
@@ -115,6 +125,14 @@ class ControlRoutes:
             return self._set_alert(request)
         if path == REFRESH_PATH:
             return _accepted(self._control.refresh())
+        if path == PAIR_PATH:
+            return _accepted(self._control.pair_new_device())
+        if path == PAIR_STOP_PATH:
+            return _accepted(self._control.stop_pairing())
+        if path == PAIR_REPAIR_PATH:
+            return self._pair_device(request, self._control.repair_pairing)
+        if path == PAIR_FORGET_PATH:
+            return self._pair_device(request, self._control.forget_device)
         return _error(404, "not_found")
 
     def _turn_page(self, request: Request) -> Response:
@@ -134,6 +152,15 @@ class ControlRoutes:
         if mode is None:
             return _error(400, "mode_required")
         return _accepted(self._control.set_alert(mode))
+
+    def _pair_device(self, request: Request, action) -> Response:
+        try:
+            address = _address(request)
+        except ValueError as exc:
+            return _error(400, str(exc))
+        if address is None:
+            return _error(400, "address_required")
+        return _accepted(action(address))
 
     def _authorized(self, request: Request) -> bool:
         supplied = request.headers.get(TOKEN_HEADER)
@@ -209,6 +236,35 @@ def _alert_mode(request: Request) -> int | None:
     if text not in ALERT_MODES:
         raise ValueError("invalid_mode")
     return ALERT_MODES[text]
+
+
+def _address(request: Request) -> str | None:
+    """Read `{"address": "AA:BB…"}` from the body or `?address=` from the URL."""
+
+    raw: object = None
+    if request.body:
+        try:
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError("invalid_json") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("invalid_json")
+        raw = payload.get("address")
+    if raw is None:
+        values = request.query().get("address")
+        raw = values[0] if values else None
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("invalid_address")
+    address = raw.strip()
+    if (
+        not address
+        or len(address) > MAX_ADDRESS_CHARS
+        or any(ord(char) < 32 for char in address)
+    ):
+        raise ValueError("invalid_address")
+    return address
 
 
 def _is_loopback(host: str) -> bool:

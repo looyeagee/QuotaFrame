@@ -28,10 +28,28 @@ _DYNAMIC_KEYS = (
     "control_unavailable_exclusive",
     "control_unavailable_unsecured",
     "control_unavailable_missing_capability",
+    "control_unavailable_unknown_device",
+    "control_unavailable_unsupported",
+    "control_unavailable_manual",
     "alert_off",
     "alert_page",
     "alert_beep",
     "control_alert_unknown",
+    "control_pair_scanning",
+    "control_pair_added",
+    "control_pair_none_found",
+    "control_pair_failed",
+    "control_pair_busy",
+    "control_pair_unsupported",
+    "control_pair_stopped",
+    "control_pairing_error_failed",
+    "repair",
+    "forget",
+    "repair_body",
+    "forget_body",
+    "repair_macos_body",
+    "ble_cleanup_failed",
+    "devices_unreadable",
 )
 
 _TEMPLATE = """<!DOCTYPE html>
@@ -129,6 +147,15 @@ _TEMPLATE = """<!DOCTYPE html>
   </section>
 
   <section class="card">
+    <h2>{{control_pairing}}</h2>
+    <div class="actions">
+      <button class="primary" id="pair">{{control_pair_add}}</button>
+      <button id="pair-stop" hidden>{{control_pair_stop}}</button>
+    </div>
+    <p class="status" id="pairing-status" role="status"></p>
+  </section>
+
+  <section class="card">
     <h2>{{control_devices}}</h2>
     <div id="devices"><p class="empty">{{control_loading}}</p></div>
   </section>
@@ -153,6 +180,7 @@ const nodes = {
   devices: document.getElementById("devices"),
   usage: document.getElementById("usage"),
   nowplaying: document.getElementById("nowplaying"),
+  pairing: document.getElementById("pairing-status"),
 };
 const PROVIDER_NAMES = { deepseek: "DeepSeek", minimax: "MiniMax" };
 
@@ -247,6 +275,7 @@ function renderDevices(state) {
     } else if (pending) {
       card.append(element("div", "dim", {{control_pending}}));
     }
+    card.append(pairingActions(device));
     nodes.devices.append(card);
   }
   const anyToggle = devices.some((d) => (d.screen || {}).toggle?.available);
@@ -254,6 +283,42 @@ function renderDevices(state) {
   document.getElementById("toggle").disabled = !anyToggle;
   document.getElementById("previous").disabled = !anyPage;
   document.getElementById("next").disabled = !anyPage;
+}
+
+function availabilityTitle(availability) {
+  return availability.available === false && availability.reason
+    ? reasonText(availability.reason) : "";
+}
+
+function pairingActions(device) {
+  const pairing = device.pairing || {};
+  const actions = element("div", "row");
+  const repair = pairing.repair || {};
+  const repairButton = element("button", null, LABELS.repair);
+  repairButton.disabled = !repair.available;
+  repairButton.title = availabilityTitle(repair);
+  if (repair.mode === "manual") {
+    // Nothing in the Bridge can drop a macOS bond; the tray shows the same
+    // steps instead of pretending a request went out.
+    repairButton.addEventListener("click", () => say(LABELS.repair_macos_body));
+  } else {
+    repairButton.addEventListener("click", (event) =>
+      pairCommand(event.currentTarget, "/api/pair/repair", device, LABELS.repair_body));
+  }
+  actions.append(repairButton);
+  const forget = pairing.forget || {};
+  const forgetButton = element("button", null, LABELS.forget);
+  forgetButton.disabled = !forget.available;
+  forgetButton.title = availabilityTitle(forget);
+  forgetButton.addEventListener("click", (event) =>
+    pairCommand(event.currentTarget, "/api/pair/forget", device, LABELS.forget_body));
+  actions.append(forgetButton);
+  return actions;
+}
+
+async function pairCommand(button, path, device, confirmText) {
+  if (!window.confirm(confirmText)) return;
+  await command(button, path, { address: device.address });
 }
 
 function usageRow(label, window, suffix) {
@@ -345,10 +410,62 @@ function renderAlert(state) {
   alertStatus.className = "status";
 }
 
+const PAIRING_ERRORS = {
+  cleanup_failed: LABELS.ble_cleanup_failed,
+  busy: LABELS.control_unavailable_exclusive,
+};
+
+function pairingErrorText(error) {
+  return PAIRING_ERRORS[error] || LABELS.control_pairing_error_failed;
+}
+
+function adoptionResultText(result) {
+  if (result.stopped) return LABELS.control_pair_stopped;
+  if (result.error === "records") return LABELS.devices_unreadable;
+  if (result.error) return LABELS.control_pair_failed;
+  const names = result.adopted || [];
+  if (!names.length) return LABELS.control_pair_none_found;
+  return LABELS.control_pair_added + " " + names.join(" · ");
+}
+
+const pairButton = document.getElementById("pair");
+const pairStopButton = document.getElementById("pair-stop");
+
+function renderPairing(state) {
+  const pairing = state.pairing || {};
+  const adoption = pairing.adoption || {};
+  const running = Boolean(adoption.running);
+  // Scanning owns the card: only stopping it makes sense while it runs.
+  pairButton.hidden = running;
+  pairStopButton.hidden = !running;
+  pairButton.disabled = !pairing.supported || running;
+  let text = "";
+  let failed = false;
+  if (!pairing.supported) {
+    text = LABELS.control_pair_unsupported;
+  } else if (running) {
+    text = LABELS.control_pair_scanning;
+  } else if (adoption.last) {
+    text = adoptionResultText(adoption.last);
+    failed = Boolean(adoption.last.error);
+  }
+  // A queued repair or removal can still fail while it runs; the outcome
+  // arrives with the next poll instead of the command's reply.
+  const error = pairing.last_error;
+  if (error) {
+    text = (text ? text + "\\n" : "") + error.device + ": " + pairingErrorText(error.error);
+    failed = true;
+  }
+  nodes.pairing.textContent = text;
+  nodes.pairing.style.whiteSpace = "pre-line";
+  nodes.pairing.className = failed ? "status error" : "status";
+}
+
 function render(state) {
   renderMeta(state);
   renderDevices(state);
   renderAlert(state);
+  renderPairing(state);
   renderUsage(state);
   renderNowPlaying(state);
 }
@@ -406,6 +523,40 @@ alertApply.addEventListener("click", async (event) => {
   await command(event.currentTarget, "/api/alert", { mode });
 });
 
+pairButton.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await api("/api/pair", { method: "POST", body: "{}" });
+    if (!result.started) say(LABELS.control_pair_busy, result.reason !== "busy");
+  } catch (error) {
+    say(LABELS.control_send_failed + ": " + error.message, true);
+  } finally {
+    button.disabled = false;
+    await poll();
+    // Adoption scans for boards that may still be booting, so the first
+    // state after "started" can still change again before the scan ends.
+    setTimeout(poll, 900);
+  }
+});
+
+pairStopButton.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api("/api/pair/stop", { method: "POST", body: "{}" });
+  } catch (error) {
+    say(LABELS.control_send_failed + ": " + error.message, true);
+  } finally {
+    button.disabled = false;
+    await poll();
+    // Cancellation lands on the next loop iteration; sample again so the
+    // "scan stopped" result and the restored button are both visible.
+    setTimeout(poll, 250);
+    setTimeout(poll, 900);
+  }
+});
+
 async function loop() {
   if (!document.hidden) await poll();
   setTimeout(loop, document.hidden ? 15000 : 3000);
@@ -445,6 +596,9 @@ _STATIC_KEYS = (
     "alert_page",
     "alert_beep",
     "alert_apply",
+    "control_pairing",
+    "control_pair_add",
+    "control_pair_stop",
     "toggle_screen",
     "previous_page",
     "next_page",
