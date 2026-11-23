@@ -127,7 +127,7 @@ bool Board::sync(const LocalCalendarTime &t) {
     return true;
 }
 
-Input Board::key(uint64_t now) {
+PanelInput Board::read_input(uint64_t now) {
     struct Key {
         gpio_num_t pin;
         Input action;
@@ -151,16 +151,16 @@ Input Board::key(uint64_t now) {
                 k.held = false;
             } else if (!k.held) {
                 ESP_LOGI(kTag, "key gpio=%d", static_cast<int>(k.pin));
-                return k.action;
+                return {k.action};
             }
         }
         if (k.down && !k.held && now - k.start >= kHoldMs) {
             k.held = true;
             ESP_LOGI(kTag, "key gpio=%d hold", static_cast<int>(k.pin));
-            return Input::Hold;
+            return {Input::Hold};
         }
     }
-    return Input::None;
+    return {};
 }
 
 Settings Board::load() {

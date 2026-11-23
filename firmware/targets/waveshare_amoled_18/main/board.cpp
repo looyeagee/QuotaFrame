@@ -17,7 +17,7 @@ namespace {
 constexpr char kTag[] = "wsamoled18";
 constexpr uint32_t kDebounceMs = 30, kHoldMs = 800;
 // A swipe has to move this far sideways and cover twice its vertical travel, so a diagonal
-// flick or a scroll-like stroke does not turn the page.
+// flick or a drag along the list does not turn the page.
 constexpr int kSwipeMinPx = 60;
 constexpr int kSwipeStraightness = 2;
 constexpr uint64_t kSwipeMaxMs = 1200;
@@ -26,6 +26,9 @@ constexpr int kTapMaxPx = 24;
 constexpr uint64_t kTapMaxMs = 500;
 // A hold is reported once the finger has rested inside this radius for the hold interval.
 constexpr int kHoldRadiusPx = 40;
+// A stroke has to move this far before it is taken for a scroll or for a swipe: below it
+// the movement is the jitter of a finger that is about to tap or to hold.
+constexpr int kGestureLockPx = 8;
 // A stroke that stays pending this long (a lift hidden behind failed reads) is dropped.
 constexpr uint64_t kStrokeMaxMs = 5000;
 } // namespace
@@ -138,16 +141,16 @@ void Board::logical_delta(int &dx, int &dy) const {
     }
 }
 
-Input Board::poll_touch(uint64_t now) {
+PanelInput Board::poll_touch(uint64_t now) {
     if (!touch_)
-        return Input::None;
+        return {};
     // The FT3168 occasionally NACKs one poll (self-recovering). A failed read must not be
     // mistaken for a lift: judging the stroke on it would cut swipes short, so the stroke
     // stays pending until a successful read reports zero points.
     if (esp_lcd_touch_read_data(touch_) != ESP_OK) {
         if (gesture_.down && now - gesture_.start > kStrokeMaxMs)
             gesture_ = Gesture{};
-        return Input::None;
+        return {};
     }
     uint16_t x[5] = {}, y[5] = {};
     uint8_t count = 0;
@@ -163,59 +166,78 @@ Input Board::poll_touch(uint64_t now) {
                         .last_x = x[0],
                         .last_y = y[0],
                         .start = now};
-            return Input::None;
+            return {};
         }
         if (count >= 2)
             gesture_.multi = true;
+        // The distance the finger covered since the last poll. A failed read in between
+        // loses nothing: the next successful read measures from the last position that was
+        // really seen.
+        const int move_x = static_cast<int>(x[0]) - gesture_.last_x;
+        const int move_y = static_cast<int>(y[0]) - gesture_.last_y;
         gesture_.last_x = x[0];
         gesture_.last_y = y[0];
+        gesture_.pending_x += move_x;
+        gesture_.pending_y += move_y;
+        // The stroke is taken for a scroll or for a swipe once it has moved far enough to
+        // tell the two apart. The judgement happens in the logical space, so it follows the
+        // rotation: a drag along the list scrolls it in every orientation.
+        if (!gesture_.scrolling && !gesture_.paged) {
+            int total_x = static_cast<int>(x[0]) - gesture_.start_x;
+            int total_y = static_cast<int>(y[0]) - gesture_.start_y;
+            logical_delta(total_x, total_y);
+            if (std::abs(total_y) >= kGestureLockPx && std::abs(total_y) > std::abs(total_x))
+                gesture_.scrolling = true;
+            else if (std::abs(total_x) >= kGestureLockPx && std::abs(total_x) >= std::abs(total_y))
+                gesture_.paged = true;
+        }
+        if (gesture_.scrolling && !gesture_.multi) {
+            // The list moves with the finger: the distance covered so far is reported in
+            // logical pixels, and the panel moves the list by exactly that much. A second
+            // finger cancels the gesture, so the list stops where it stands.
+            int logical_x = gesture_.pending_x, logical_y = gesture_.pending_y;
+            logical_delta(logical_x, logical_y);
+            gesture_.pending_x = 0;
+            gesture_.pending_y = 0;
+            return {Input::None, -logical_y};
+        }
         const int dx = static_cast<int>(x[0]) - gesture_.start_x;
         const int dy = static_cast<int>(y[0]) - gesture_.start_y;
         if (!gesture_.hold_reported && !gesture_.multi && now - gesture_.start >= kHoldMs &&
             std::abs(dx) < kHoldRadiusPx && std::abs(dy) < kHoldRadiusPx) {
             gesture_.hold_reported = true;
             ESP_LOGI(kTag, "touch hold");
-            return Input::Hold;
+            return {Input::Hold};
         }
-        return Input::None;
+        return {Input::None, 0};
     }
     if (!gesture_.down)
-        return Input::None;
+        return {};
     // The finger lifted: judge the stroke once.
     const bool was_hold = gesture_.hold_reported, was_multi = gesture_.multi;
-    const int dx = static_cast<int>(gesture_.last_x) - gesture_.start_x;
-    const int dy = static_cast<int>(gesture_.last_y) - gesture_.start_y;
+    const bool was_scrolling = gesture_.scrolling;
+    // The stroke is judged in the logical space, so a swipe steps through the ring in the
+    // direction the reader expects in every orientation.
+    int lx = static_cast<int>(gesture_.last_x) - gesture_.start_x;
+    int ly = static_cast<int>(gesture_.last_y) - gesture_.start_y;
+    logical_delta(lx, ly);
     const uint64_t duration = now - gesture_.start;
     gesture_ = Gesture{};
-    if (was_hold || was_multi)
-        return Input::None;
-    if (duration <= kTapMaxMs && std::abs(dx) < kTapMaxPx && std::abs(dy) < kTapMaxPx) {
+    if (was_hold || was_multi || was_scrolling)
+        return {};
+    if (duration <= kTapMaxMs && std::abs(lx) < kTapMaxPx && std::abs(ly) < kTapMaxPx) {
         ESP_LOGI(kTag, "touch tap");
-        return Input::Home;
+        return {Input::Home};
     }
-    if (duration <= kSwipeMaxMs && std::abs(dx) >= kSwipeMinPx &&
-        std::abs(dx) >= kSwipeStraightness * std::abs(dy)) {
-        int lx = dx, ly = dy;
-        logical_delta(lx, ly);
+    if (duration <= kSwipeMaxMs && std::abs(lx) >= kSwipeMinPx &&
+        std::abs(lx) >= kSwipeStraightness * std::abs(ly)) {
         ESP_LOGI(kTag, "swipe dx=%d dy=%d rot=%u", lx, ly, rotation_);
-        return lx < 0 ? Input::Forward : Input::Back;
+        return {lx < 0 ? Input::Forward : Input::Back};
     }
-    // A vertical swipe scrolls the list of a page that is longer than the glass.
-    // It is judged in the logical space as well, so the gesture follows the
-    // content in every rotation.
-    if (duration <= kSwipeMaxMs && std::abs(dy) >= kSwipeMinPx &&
-        std::abs(dy) >= kSwipeStraightness * std::abs(dx)) {
-        int lx = dx, ly = dy;
-        logical_delta(lx, ly);
-        ESP_LOGI(kTag, "scroll dy=%d rot=%u", ly, rotation_);
-        // The finger moves up the list, so the rows that come later come into
-        // view.
-        return ly < 0 ? Input::ScrollUp : Input::ScrollDown;
-    }
-    return Input::None;
+    return {};
 }
 
-Input Board::poll_key(uint64_t now) {
+PanelInput Board::poll_key(uint64_t now) {
     const bool down = !gpio_get_level(kKeyBoot);
     if (down != boot_.raw) {
         boot_.raw = down;
@@ -228,23 +250,23 @@ Input Board::poll_key(uint64_t now) {
             boot_.held = false;
         } else if (!boot_.held) {
             ESP_LOGI(kTag, "boot key");
-            return Input::Home;
+            return {Input::Home};
         }
     }
     if (boot_.down && !boot_.held && now - boot_.start >= kHoldMs) {
         boot_.held = true;
         ESP_LOGI(kTag, "boot key hold");
-        return Input::Hold;
+        return {Input::Hold};
     }
-    return Input::None;
+    return {};
 }
 
-Input Board::key(uint64_t now) {
+PanelInput Board::read_input(uint64_t now) {
     // The touch surface is the primary input; the BOOT key stays readable while a finger
     // rests on the glass, so the key is only consulted when the touch reports nothing.
-    const Input touch_input = poll_touch(now);
-    if (touch_input != Input::None)
-        return touch_input;
+    const PanelInput touch = poll_touch(now);
+    if (touch.action != Input::None || touch.scroll_px != 0)
+        return touch;
     return poll_key(now);
 }
 

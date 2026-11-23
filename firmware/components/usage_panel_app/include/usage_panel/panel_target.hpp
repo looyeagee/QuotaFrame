@@ -41,7 +41,8 @@ class PanelTargetImpl : public PanelTarget {
     bool save(const Settings &settings) override { return board_.save(settings); }
     void poll(View &view) override { board_.poll(view); }
     bool sync(const LocalCalendarTime &time) override { return board_.sync(time); }
-    Input key(uint64_t now_ms) override { return board_.key(now_ms); }
+    PanelInput read_input(uint64_t now_ms) override { return board_.read_input(now_ms); }
+    SessionsGeometry sessions_geometry() const override { return screens_.sessions_geometry(); }
     void render(const View &view) override {
         screens_.render(view);
         panel_.show(canvas_);

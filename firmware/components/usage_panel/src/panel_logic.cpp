@@ -133,8 +133,7 @@ void apply_sessions(View &view, const SessionsUpdate &update) {
     view.sessions_valid = true;
     // A roster that grew shorter leaves the list higher up, so the page still
     // shows rows that exist.
-    const int last = view.sessions.live_count > 0 ? view.sessions.live_count - 1 : 0;
-    view.sessions_scroll = static_cast<uint8_t>(std::min<int>(view.sessions_scroll, last));
+    view.sessions_scroll_px = std::min(view.sessions_scroll_px, view.sessions_scroll_limit());
 }
 
 void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms) {
@@ -322,27 +321,28 @@ Page Navigator::previous(const View &v) {
     return Page::Home;
 }
 
-NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
+NavResult Navigator::input(const PanelInput &in, View &v, uint64_t now_ms) {
     NavResult r;
-    if (in == Input::None)
+    if (in.action == Input::None && in.scroll_px == 0)
         return r;
     last_step_ms_ = now_ms;
     r.redraw = true;
     if (v.alert >= 0 && v.page != Page::Settings) {
         // The alert covers the panel, so a key dismisses it instead of changing the page.
-        if (in != Input::Hold) {
+        // A drag is not a key: it moves nothing under an alert.
+        if (in.action != Input::None && in.action != Input::Hold) {
             dismissed_ = true;
             v.alert = -1;
         }
         return r;
     }
     if (v.page == Page::Settings) {
-        if (in == Input::Hold) {
+        if (in.action == Input::Hold) {
             v.page = return_page_;
-        } else if (in == Input::Home) {
+        } else if (in.action == Input::Home) {
             // The home action moves the focus to the next row this panel offers.
             v.focus = (v.focus + 1) % v.setting_rows;
-        } else if (in == Input::Forward || in == Input::Back) {
+        } else if (in.action == Input::Forward || in.action == Input::Back) {
             if (v.save_error) {
                 // Retries the rejected value; the footer shows RETRY in this state.
                 r.save = true;
@@ -361,7 +361,7 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
                     index = brightness_level_index(s.brightness);
                 else
                     index = *values[v.focus];
-                index = (index + (in == Input::Forward ? 1 : options - 1)) % options;
+                index = (index + (in.action == Input::Forward ? 1 : options - 1)) % options;
                 if (v.focus == 2)
                     s.seconds = index == 0 ? 1 : 0;
                 else if (v.focus == 4)
@@ -373,32 +373,30 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
         }
         return r;
     }
-    if (in == Input::Hold) {
+    if (in.action == Input::Hold) {
         return_page_ = v.page;
         v.page = Page::Settings;
         v.focus = 0;
-    } else if (in == Input::Forward)
+    } else if (in.action == Input::Forward)
         v.page = next(v);
-    else if (in == Input::Back)
+    else if (in.action == Input::Back)
         v.page = previous(v);
-    else if (in == Input::Home)
+    else if (in.action == Input::Home)
         v.page = Page::Home;
-    else if (in == Input::ScrollUp || in == Input::ScrollDown)
-        scroll_sessions(in, v);
+    // A drag scrolls the list of the page that has one; it never changes the page.
+    if (in.scroll_px != 0)
+        scroll_sessions(in.scroll_px, v);
     return r;
 }
 
-void Navigator::scroll_sessions(Input in, View &v) {
+void Navigator::scroll_sessions(int delta_px, View &v) {
     // The sessions page is the only page with a list that can be longer than
     // the glass, so a scroll anywhere else moves nothing.
     if (v.page != Page::Sessions || !v.sessions_valid)
         return;
-    // The list stops at its last row: the page shows the rows below it, and
+    // The list stops where the roster ends: the page shows the rows below it, and
     // the page itself draws the window that fits.
-    const int last = v.sessions.live_count > 0 ? v.sessions.live_count - 1 : 0;
-    const int step = in == Input::ScrollUp ? 1 : -1;
-    const int next = std::clamp(static_cast<int>(v.sessions_scroll) + step, 0, last);
-    v.sessions_scroll = static_cast<uint8_t>(next);
+    v.sessions_scroll_px = std::clamp(v.sessions_scroll_px + delta_px, 0, v.sessions_scroll_limit());
 }
 
 bool Navigator::update_alert(View &v) {

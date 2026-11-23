@@ -70,6 +70,9 @@ void PanelRuntime::run() {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(target_.begin() ? ESP_OK : ESP_FAIL);
     view_.settings = target_.load();
+    // The panel that draws the sessions list states how tall one row is and how many rows
+    // the glass holds, so the scroll of the list can be counted in pixels.
+    view_.sessions_geometry = target_.sessions_geometry();
     // A panel without a dimmer has no brightness row to show or to step through.
     view_.setting_rows =
         static_cast<uint8_t>(identity_.dimmable ? kSettingRows : kSettingRowsNoDimmer);
@@ -197,21 +200,25 @@ void PanelRuntime::run_loop() {
             target_.beep();
         redraw = redraw || previous_alert != view_.alert;
 
-        const Input input = target_.key(view_.now_ms);
-        if (input != Input::None) {
+        const PanelInput gesture = target_.read_input(view_.now_ms);
+        const bool pressed = gesture.action != Input::None;
+        if (pressed || gesture.scroll_px != 0) {
             redraw = true;
             if (snapshot.phase == OtaPhase::Confirming) {
-                // Any key confirms the update; holding a key denies it.
-                if (input == Input::Hold)
-                    ota_.deny();
-                else
-                    ota_.confirm(view_.now_ms);
+                // Any key confirms the update; holding a key denies it. A drag is not a
+                // key, so it neither confirms nor denies.
+                if (pressed) {
+                    if (gesture.action == Input::Hold)
+                        ota_.deny();
+                    else
+                        ota_.confirm(view_.now_ms);
+                }
             } else if (ota_.busy()) {
             } else if (view_.link.has_passkey) {
-                if (input != Input::Hold)
+                if (pressed && gesture.action != Input::Hold)
                     ble_.reset_pairing();
             } else {
-                const NavResult r = nav_.input(input, view_, view_.now_ms);
+                const NavResult r = nav_.input(gesture, view_, view_.now_ms);
                 if (r.save) {
                     view_.save_error = !target_.save(view_.settings);
                     // The Settings page may have changed the brightness; every other row
@@ -240,7 +247,10 @@ void PanelRuntime::run_loop() {
         }
         // BLE startup is asynchronous; verification retries until the service is ready.
         ble_.verify_boot();
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // A drag is read again straight away: the list has to follow the finger, and the
+        // frame that carries the movement waits for the next one. A finger that rests costs
+        // the panel nothing.
+        vTaskDelay(pdMS_TO_TICKS(gesture.scroll_px != 0 ? 2 : 10));
     }
 }
 

@@ -140,6 +140,66 @@ TEST_CASE("the sessions page joins the ring once a publication arrives", "[nav]"
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(Navigator::previous(v)));
 }
 
+TEST_CASE("the sessions list scrolls by the pixel the finger covered", "[nav]")
+{
+    Navigator nav;
+    View v = linked_view();
+    v.page = Page::Sessions;
+    // The panel publishes the geometry of its list: a row is 74 px high and the glass holds
+    // four of them.
+    v.sessions_geometry = {74, 4};
+    SessionsUpdate update;
+    update.live_count = 9;
+    apply_sessions(v, update);
+
+    // A drag moves the list by the distance it covered, not by a row.
+    nav.input({Input::None, 30}, v, 0);
+    TEST_ASSERT_EQUAL_INT(30, v.sessions_scroll_px);
+    nav.input({Input::None, -12}, v, 0);
+    TEST_ASSERT_EQUAL_INT(18, v.sessions_scroll_px);
+    // The list stops at the top and at the end of the roster: five rows hide below the four
+    // the glass holds.
+    nav.input({Input::None, -100}, v, 0);
+    TEST_ASSERT_EQUAL_INT(0, v.sessions_scroll_px);
+    nav.input({Input::None, 10000}, v, 0);
+    TEST_ASSERT_EQUAL_INT(5 * 74, v.sessions_scroll_px);
+    // A drag on another page moves nothing.
+    v.page = Page::Home;
+    nav.input({Input::None, 100}, v, 0);
+    TEST_ASSERT_EQUAL_INT(5 * 74, v.sessions_scroll_px);
+}
+
+TEST_CASE("a panel without a scrollable list cannot scroll", "[nav]")
+{
+    Navigator nav;
+    View v = linked_view();
+    v.page = Page::Sessions;
+    SessionsUpdate update;
+    update.live_count = 9;
+    apply_sessions(v, update);
+    // No geometry, no scrolling: the list of a panel that draws no scrollable list stands
+    // where it is.
+    nav.input({Input::None, 120}, v, 0);
+    TEST_ASSERT_EQUAL_INT(0, v.sessions_scroll_px);
+}
+
+TEST_CASE("a roster that grows shorter pulls the list back", "[nav]")
+{
+    Navigator nav;
+    View v = linked_view();
+    v.page = Page::Sessions;
+    v.sessions_geometry = {74, 4};
+    SessionsUpdate update;
+    update.live_count = 9;
+    apply_sessions(v, update);
+    nav.input({Input::None, 300}, v, 0);
+    TEST_ASSERT_EQUAL_INT(300, v.sessions_scroll_px);
+    // Four sessions are left: the glass holds them all, so the list stands at the top again.
+    update.live_count = 4;
+    apply_sessions(v, update);
+    TEST_ASSERT_EQUAL_INT(0, v.sessions_scroll_px);
+}
+
 TEST_CASE("the ring holds the same pages in portrait", "[nav]")
 {
     // Every page of the ring has a portrait layout, so the keys step through all of them
@@ -150,11 +210,11 @@ TEST_CASE("the ring holds the same pages in portrait", "[nav]")
     const Page ring[] = {Page::Home, Page::Deepseek, Page::Minimax, Page::Music, Page::Clock};
     for (int i = 0; i < 5; ++i) {
         TEST_ASSERT_EQUAL_UINT8(uint8_t(ring[i]), uint8_t(v.page));
-        nav.input(Input::Forward, v, 0);
+        nav.input({Input::Forward}, v, 0);
     }
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(v.page));
     for (int i = 0; i < 5; ++i) {
-        nav.input(Input::Back, v, 0);
+        nav.input({Input::Back}, v, 0);
         TEST_ASSERT_EQUAL_UINT8(uint8_t(ring[4 - i]), uint8_t(v.page));
     }
 }
@@ -163,13 +223,13 @@ TEST_CASE("the left key steps back, the right key forward and the chord goes hom
 {
     Navigator nav;
     View v = linked_view();
-    nav.input(Input::Back, v, 0);
+    nav.input({Input::Back}, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Clock), uint8_t(v.page));
-    nav.input(Input::Forward, v, 0);
-    nav.input(Input::Forward, v, 0);
+    nav.input({Input::Forward}, v, 0);
+    nav.input({Input::Forward}, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Deepseek), uint8_t(v.page));
     // The chord of both keys stands in for the middle button and returns to the home page.
-    nav.input(Input::Home, v, 0);
+    nav.input({Input::Home}, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(v.page));
 }
 
@@ -178,7 +238,7 @@ TEST_CASE("settings open on hold, cycle values and return to the previous page",
     Navigator nav;
     View v = linked_view();
     v.page = Page::Minimax;
-    nav.input(Input::Hold, v, 0);
+    nav.input({Input::Hold}, v, 0);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Settings), uint8_t(v.page));
     TEST_ASSERT_EQUAL_INT(0, v.focus);
     publish(v, Provider::Deepseek, 96);
@@ -187,25 +247,25 @@ TEST_CASE("settings open on hold, cycle values and return to the previous page",
     TEST_ASSERT_TRUE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
     // The right key steps the value of the focused row.
-    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input({Input::Forward}, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
     // The chord moves the focus to the next row.
-    nav.input(Input::Home, v, 0);
-    nav.input(Input::Home, v, 0);
+    nav.input({Input::Home}, v, 0);
+    nav.input({Input::Home}, v, 0);
     TEST_ASSERT_EQUAL_INT(2, v.focus);
-    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input({Input::Forward}, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(0, v.settings.seconds);
-    nav.input(Input::Home, v, 0);
+    nav.input({Input::Home}, v, 0);
     TEST_ASSERT_EQUAL_INT(3, v.focus);
-    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input({Input::Forward}, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Rotation::Portrait), v.settings.rotation);
-    nav.input(Input::Hold, v, 0);
+    nav.input({Input::Hold}, v, 0);
     // Every page has a portrait layout, so leaving Settings in portrait returns to the
     // page the settings were opened from.
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Minimax), uint8_t(v.page));
     // The alert still stands on the page behind the settings and a key dismisses it.
     TEST_ASSERT_EQUAL_INT(1, v.alert);
-    nav.input(Input::Forward, v, 0);
+    nav.input({Input::Forward}, v, 0);
     TEST_ASSERT_EQUAL_INT(-1, v.alert);
 }
 
@@ -214,13 +274,13 @@ TEST_CASE("a panel without a dimmer keeps the focus on the rows it draws", "[nav
     Navigator nav;
     View v = linked_view();
     v.setting_rows = static_cast<uint8_t>(kSettingRowsNoDimmer);
-    nav.input(Input::Hold, v, 0);
+    nav.input({Input::Hold}, v, 0);
     // The focus walks the rows this panel offers and wraps to the first one, so it never
     // lands on the brightness row the reflective panel does not draw.
     for (int i = 0; i < kSettingRowsNoDimmer - 1; ++i)
-        nav.input(Input::Home, v, 0);
+        nav.input({Input::Home}, v, 0);
     TEST_ASSERT_EQUAL_INT(kSettingRowsNoDimmer - 1, v.focus);
-    nav.input(Input::Home, v, 0);
+    nav.input({Input::Home}, v, 0);
     TEST_ASSERT_EQUAL_INT(0, v.focus);
 }
 
@@ -228,13 +288,13 @@ TEST_CASE("the left key steps a setting back through its options", "[nav]")
 {
     Navigator nav;
     View v = linked_view();
-    nav.input(Input::Hold, v, 0);
-    nav.input(Input::Forward, v, 0);
+    nav.input({Input::Hold}, v, 0);
+    nav.input({Input::Forward}, v, 0);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
-    TEST_ASSERT_TRUE(nav.input(Input::Back, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input({Input::Back}, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(0, v.settings.cycle);
     // The first option wraps around to the last one.
-    TEST_ASSERT_TRUE(nav.input(Input::Back, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input({Input::Back}, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(3, v.settings.cycle);
 }
 
@@ -242,11 +302,11 @@ TEST_CASE("settings retry a failed save without changing the value", "[nav]")
 {
     Navigator nav;
     View v = linked_view();
-    nav.input(Input::Hold, v, 0);
-    nav.input(Input::Forward, v, 0);
+    nav.input({Input::Hold}, v, 0);
+    nav.input({Input::Forward}, v, 0);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
     v.save_error = true;
-    TEST_ASSERT_TRUE(nav.input(Input::Forward, v, 0).save);
+    TEST_ASSERT_TRUE(nav.input({Input::Forward}, v, 0).save);
     TEST_ASSERT_EQUAL_UINT8(1, v.settings.cycle);
 }
 
@@ -266,7 +326,7 @@ TEST_CASE("alert raises once, dismisses and re-arms below the threshold", "[aler
     v.link.encrypted = true;
     TEST_ASSERT_FALSE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(1, v.alert);
-    nav.input(Input::Forward, v, 0);
+    nav.input({Input::Forward}, v, 0);
     TEST_ASSERT_FALSE(nav.update_alert(v));
     TEST_ASSERT_EQUAL_INT(-1, v.alert);
     // Dropping below level 2 re-arms the next raise.
@@ -286,7 +346,7 @@ TEST_CASE("a hold keeps the alert on screen", "[alert]")
     nav.update_alert(v);
     TEST_ASSERT_EQUAL_INT(1, v.alert);
     // The hold is the settings gesture, so it leaves the alert standing.
-    nav.input(Input::Hold, v, 0);
+    nav.input({Input::Hold}, v, 0);
     TEST_ASSERT_EQUAL_INT(1, v.alert);
     TEST_ASSERT_EQUAL_UINT8(uint8_t(Page::Home), uint8_t(v.page));
 }

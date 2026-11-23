@@ -127,19 +127,28 @@ bool Sh8601::show(const Canvas &canvas) {
     // A canvas that could not reserve its PSRAM buffer has nothing to send.
     if (frame == nullptr)
         return false;
-    if (memcmp(displayed_, frame, kFrameBytes) == 0)
-        return false;
     // A completion left over from an earlier frame must not be read as this strip's: the
     // semaphore is binary, and a stale token would let the next strip be queued while the
     // previous one is still on the wire, so the panel would latch command bytes as pixels.
     xSemaphoreTake(done_, 0);
-    // One strip at a time, each with its own address window: a whole frame in a single transfer
-    // is 322 KiB, a long DMA chain across PSRAM, and re-arming the window per strip keeps every
-    // transaction short enough to reason about.
+    bool sent = false;
+    // Strip by strip: one strip at a time, each with its own address window. A whole frame in
+    // a single transfer is 322 KiB, a long DMA chain across PSRAM, and a short window per strip
+    // keeps every transaction short enough to reason about.
+    //
+    // A strip whose pixels are the ones already on the glass is left out: a frame that
+    // changes nothing still costs a refresh of the whole glass, and a drag moves the list of
+    // a page but not the furniture around it. The pixels of a strip are copied into the
+    // remembered frame only once they have gone on the wire, so the memory always holds what
+    // the glass shows.
     for (int y = 0; y < kPanelHeight; y += kStripRows) {
         const int rows = std::min(kStripRows, kPanelHeight - y);
-        if (esp_lcd_panel_draw_bitmap(panel_, 0, y, kPanelWidth, y + rows,
-                                      frame + y * kPanelWidth) != ESP_OK) {
+        const size_t bytes = static_cast<size_t>(rows) * kPanelWidth * sizeof(uint16_t);
+        const uint16_t *strip = frame + y * kPanelWidth;
+        uint16_t *remembered = displayed_ + y * kPanelWidth;
+        if (memcmp(remembered, strip, bytes) == 0)
+            continue;
+        if (esp_lcd_panel_draw_bitmap(panel_, 0, y, kPanelWidth, y + rows, strip) != ESP_OK) {
             ESP_LOGW(kTag, "strip %d rejected", y);
             return false;
         }
@@ -147,8 +156,9 @@ bool Sh8601::show(const Canvas &canvas) {
             ESP_LOGW(kTag, "strip %d timed out", y);
             return false;
         }
+        memcpy(remembered, strip, bytes);
+        sent = true;
     }
-    memcpy(displayed_, frame, kFrameBytes);
-    return true;
+    return sent;
 }
 } // namespace usage_panel::amoled

@@ -33,6 +33,18 @@ struct LinkState {
     uint32_t passkey = 0;
 };
 
+/**
+ * The geometry of a panel's sessions list.
+ *
+ * The list is drawn as a window of the roster, so the panel that draws it knows how tall
+ * one row is and how many rows the glass holds. The scroll offset is counted in pixels of
+ * that row height, which is what lets the list move with the finger.
+ */
+struct SessionsGeometry {
+    int row_height = 0;   // Pixels of one row; 0 when the panel draws no scrollable list.
+    int visible_rows = 0; // Rows the glass holds at once.
+};
+
 enum class OtaStage : uint8_t { Idle, Confirming, Receiving, Verifying, Rebooting };
 struct OtaStatus {
     OtaStage stage = OtaStage::Idle;
@@ -59,10 +71,12 @@ struct View {
     // sessions never shows an empty page.
     bool sessions_valid = false;
     SessionsUpdate sessions;
-    // The first row of the sessions list the page shows. A roster that is
-    // longer than the glass is scrolled through it; a panel without a scroll
-    // input leaves the list at its top.
-    uint8_t sessions_scroll = 0;
+    // The geometry of the sessions list this panel draws. A panel that publishes no
+    // geometry has no scrollable list.
+    SessionsGeometry sessions_geometry;
+    // How far the sessions list has moved up, in pixels. The offset counts pixels, so
+    // the list follows the finger instead of jumping a row at a time.
+    int sessions_scroll_px = 0;
     uint64_t music_line_ms = 0; // When the line being sung began showing, for its scroll.
     // Milliseconds the source says the line had left when it appeared; 0 when it cannot say.
     // A scroll is shortened to fit inside it, never stretched to fill it. Only used when the
@@ -89,5 +103,14 @@ struct View {
     OtaStatus ota;
     uint64_t now_ms = 0;
     char device_name[24]{};
+
+    /**
+     * The distance the sessions list may scroll: the part of the roster the glass
+     * cannot show at once. A panel that draws no scrollable list cannot scroll.
+     */
+    int sessions_scroll_limit() const {
+        const int hidden = static_cast<int>(sessions.live_count) - sessions_geometry.visible_rows;
+        return hidden > 0 ? hidden * sessions_geometry.row_height : 0;
+    }
 };
 } // namespace usage_panel

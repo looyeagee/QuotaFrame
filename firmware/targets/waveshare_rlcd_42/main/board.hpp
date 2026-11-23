@@ -20,7 +20,7 @@ class Board {
      * Debounced KEY (GPIO18) and BOOT (GPIO0). A press of the left key is Back, the right key
      * Forward, both keys together Home, and a key held for 800 ms is Hold.
      */
-    Input key(uint64_t now_ms);
+    PanelInput read_input(uint64_t now_ms);
     bool save(const Settings &settings);
     Settings load();
 

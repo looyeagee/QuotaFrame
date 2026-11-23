@@ -14,8 +14,20 @@ namespace usage_panel::amoled {
  */
 class Screens {
   public:
+    /** The pitch of the session cards: the height of a card plus the gap below it. */
+    static constexpr int kSessionsPitch = 74;
+    /** The rows the glass holds above the page dots. */
+    static constexpr int kSessionsRowsMax = 4;
+
     explicit Screens(Canvas &canvas) : c_(canvas) {}
     void render(const View &view);
+    /**
+     * The geometry of the sessions list: the card pitch and the rows the glass holds.
+     *
+     * The runtime hands the numbers to the view, so the scroll of the list is counted in
+     * pixels and the list can move with the finger.
+     */
+    SessionsGeometry sessions_geometry() const { return {kSessionsPitch, kSessionsRowsMax}; }
 
   private:
     Canvas &c_;

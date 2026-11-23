@@ -156,12 +156,21 @@ bool week_present(const ProviderSnapshot &s, bool encrypted);
  * Back and Forward are the two keys that step through the page ring. Home is the middle
  * action: the chord of both keys on a board that has two, a key of its own on a board that
  * has three. Hold is any key held for 800 ms.
- *
- * ScrollUp and ScrollDown move a list that is longer than the glass: the finger moving
- * up brings the rows that come later into view, the finger moving down brings back the
- * rows that come earlier.
  */
-enum class Input : uint8_t { None, Back, Forward, Home, Hold, ScrollUp, ScrollDown };
+enum class Input : uint8_t { None, Back, Forward, Home, Hold };
+
+/**
+ * One input from the panel.
+ *
+ * `action` is the gesture the panel recognised; `scroll_px` is the distance a vertical
+ * drag covered since the last poll, in logical pixels. The two travel together: a drag
+ * scrolls the list of a page that is longer than the glass, and the list follows the
+ * finger pixel by pixel instead of stepping a row at a time.
+ */
+struct PanelInput {
+    Input action = Input::None;
+    int scroll_px = 0; // Pixels the list moves down; negative moves it up.
+};
 
 /** Effects of one navigation step that the application loop must carry out. */
 struct NavResult {
@@ -181,8 +190,8 @@ class Navigator {
     /** Previous ring page with the same skip; Home when outside the ring. */
     static Page previous(const View &view);
 
-    /** Applies one button input to `view`. `now_ms` restarts the auto-cycle timer. */
-    NavResult input(Input input, View &view, uint64_t now_ms);
+    /** Applies one input to `view`. `now_ms` restarts the auto-cycle timer. */
+    NavResult input(const PanelInput &input, View &view, uint64_t now_ms);
 
     /**
      * Updates `view.alert` from the MiniMax warning level, the only service with a
@@ -199,8 +208,9 @@ class Navigator {
     bool dismissed_ = false;
     bool announced_ = false;
     uint64_t last_step_ms_ = 0;
-    /** Moves the sessions list one row up or down, inside the roster. */
-    void scroll_sessions(Input input, View &view);
+    /** Moves the sessions list by `delta_px` pixels, inside the part of the roster the
+     *  glass cannot show. */
+    void scroll_sessions(int delta_px, View &view);
 };
 
 /** Auto-cycle interval in milliseconds for a Settings::cycle value; 0 disables cycling. */

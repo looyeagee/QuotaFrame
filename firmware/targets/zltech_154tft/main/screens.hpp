@@ -15,6 +15,11 @@ class Screens {
   public:
     explicit Screens(Canvas &canvas) : c_(canvas) {}
     void render(const View &view);
+    /**
+     * The geometry of the sessions list: an empty geometry, because this panel draws the
+     * first rows of the roster and has no way to scroll it.
+     */
+    SessionsGeometry sessions_geometry() const { return {}; }
 
   private:
     Canvas &c_;

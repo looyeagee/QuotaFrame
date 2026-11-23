@@ -33,8 +33,17 @@ class PanelTarget {
     virtual void poll(View &view) = 0;
     /** Anchors the clock at `time`; false when the value is not a usable date. */
     virtual bool sync(const LocalCalendarTime &time) = 0;
-    /** The debounced key action; Input::None when no key was pressed. */
-    virtual Input key(uint64_t now_ms) = 0;
+    /** The debounced key action and the distance a drag covered; Input::None when nothing
+     *  was pressed. */
+    virtual PanelInput read_input(uint64_t now_ms) = 0;
+    /**
+     * The geometry of the sessions list this panel draws.
+     *
+     * The panel that draws the list knows how tall one row is and how many rows the glass
+     * holds; the runtime hands the numbers to the view, so the scroll of the list can be
+     * counted in pixels. A panel that draws no scrollable list publishes an empty geometry.
+     */
+    virtual SessionsGeometry sessions_geometry() const { return {}; }
     /** Composes the frame for `view` and pushes it to the panel. */
     virtual void render(const View &view) = 0;
     /** Plays the alert sound. */

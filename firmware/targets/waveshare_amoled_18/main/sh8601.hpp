@@ -17,7 +17,9 @@ namespace usage_panel::amoled {
  *
  * The canvas is RGB565 already, so a frame is sent as the canvas holds it. The last submitted
  * frame is kept beside it: on an AMOLED a frame that changes nothing still costs a refresh of
- * the whole glass, and the panel is the most expensive thing on the board to light up.
+ * the whole glass, and the panel is the most expensive thing on the board to light up. The
+ * comparison is made strip by strip, so a frame that only moves a list leaves the furniture
+ * around it untouched.
  */
 class Sh8601 {
   public:

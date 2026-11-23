@@ -27,7 +27,7 @@ class Board {
      * The action is reported when the key is released. Holding a key for 800 ms reports the
      * hold action instead, which opens the settings page.
      */
-    Input key(uint64_t now_ms);
+    PanelInput read_input(uint64_t now_ms);
     bool save(const Settings &settings);
     Settings load();
 

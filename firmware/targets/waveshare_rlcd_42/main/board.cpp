@@ -127,7 +127,7 @@ void Board::poll(View &v) {
 
 bool Board::sync(const LocalCalendarTime &t) { return rtc_ready_ && rtc_.write(t); }
 
-Input Board::key(uint64_t now) {
+PanelInput Board::read_input(uint64_t now) {
     struct Key {
         gpio_num_t pin;
         bool raw = false, down = false, held = false, consumed = false;
@@ -154,20 +154,20 @@ Input Board::key(uint64_t now) {
                     k.consumed = true;
                     other.consumed = true;
                     ESP_LOGI(kTag, "chord");
-                    return Input::Home;
+                    return {Input::Home};
                 }
             } else if (!k.held && !k.consumed) {
                 ESP_LOGI(kTag, "key %s", i == 0 ? "left" : "right");
-                return i == 0 ? Input::Back : Input::Forward;
+                return {i == 0 ? Input::Back : Input::Forward};
             }
         }
         if (k.down && !k.held && !k.consumed && now - k.start >= kHoldMs) {
             k.held = true;
             ESP_LOGI(kTag, "hold %s", i == 0 ? "left" : "right");
-            return Input::Hold;
+            return {Input::Hold};
         }
     }
-    return Input::None;
+    return {};
 }
 
 Settings Board::load() {

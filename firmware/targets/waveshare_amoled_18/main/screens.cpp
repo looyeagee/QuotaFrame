@@ -46,9 +46,8 @@ constexpr int kSessionsScale = 2;
 // cell and reads as punctuation, while the pixel font keeps every digit the same weight.
 constexpr int kSessionsCountScale = 6;
 constexpr int kSessionsCountTop = 44;
-constexpr int kSessionsRowsTop = 120, kSessionsPitch = 74, kSessionsCardHeight = 60;
+constexpr int kSessionsRowsTop = 120, kSessionsCardHeight = 60;
 // The rows the glass holds above the page dots. A longer roster is scrolled through them.
-constexpr int kSessionsRowsMax = 4;
 constexpr int kSessionsBarWidth = 6;
 // Balance figure heights, largest first; the smallest one is the fallback.
 constexpr int kHomeBalanceHeights[] = {88, 80, 72, 64, 56, 48, 44, 40, 36, 32};
@@ -603,9 +602,16 @@ void Screens::sessions(const View &v) {
     // where it stands in the list.
     const int live = v.sessions.live_count;
     const int rows = std::min(live, kSessionsRowsMax);
-    const int first = std::min<int>(v.sessions_scroll, live - rows);
+    // The scroll is counted in pixels, so the list follows the finger: the offset says how
+    // far the roster has moved up, the row it starts at follows from it, and the rest of the
+    // window slides with it. The window is held inside the roster, so an offset a shorter
+    // roster left behind cannot draw rows that are not there.
+    const int last_row = std::max(0, live - rows);
+    const int scroll = std::clamp(v.sessions_scroll_px, 0, last_row * kSessionsPitch);
+    const int first = std::min(scroll / kSessionsPitch, last_row);
+    const int offset = scroll - first * kSessionsPitch;
     if (live > rows) {
-        char position[16];
+        char position[24];
         snprintf(position, sizeof(position), "%d-%d OF %d", first + 1, first + rows, live);
         c_.text_right(right, kSessionsCountTop + 6, position, 2, Ink::Muted);
     }
@@ -616,24 +622,31 @@ void Screens::sessions(const View &v) {
     const int room_bottom = c_.height() - kDotsFromBottom - 12;
     top += std::max(0, (room_bottom - kSessionsRowsTop - block) / 2);
     // The chips share one width, so the rows stay in a column whatever states they carry.
+    // The width is taken over the whole roster, so it does not change while the list moves.
     int chip_text = 0;
-    for (int i = first; i < first + rows; ++i)
+    for (int i = 0; i < live; ++i)
         chip_text = std::max(chip_text,
                              Canvas::text_width(session_state_word(v.sessions.live[i].state), 2));
     const int chip_w = chip_text + 2 * kChipPad;
     const int chip_h = kLine + 2 * kChipPad;
     const int name_height = CjkText::line_height(kSessionsScale);
-    for (int i = first; i < first + rows; ++i) {
+    // One card more than the window holds: the card that comes up from below fills the gap
+    // the scroll leaves at the bottom, and the list is clipped to the room, so the card that
+    // slides out of it disappears under the count.
+    const int last = std::min(first + rows, live - 1);
+    c_.clip(0, kSessionsRowsTop, c_.width(), room_bottom - kSessionsRowsTop);
+    for (int i = first; i <= last; ++i) {
+        const int card_top = top + (i - first) * kSessionsPitch - offset;
         const SessionState state = v.sessions.live[i].state;
         const Ink state_ink = session_state_ink(state);
-        c_.fill(kLeft, top, kSessionsBarWidth, kSessionsCardHeight, state_ink);
+        c_.fill(kLeft, card_top, kSessionsBarWidth, kSessionsCardHeight, state_ink);
         // The state is drawn twice on purpose: the bar is read at a glance, the word answers
         // the same question with the page in hand. Filled marks work in progress or a session
         // that waits for its reader, outlined marks one that is up, so the two do not read as
         // equal.
         const char *word = session_state_word(state);
         const int chip_x = right - chip_w;
-        const int chip_y = top + (kSessionsCardHeight - chip_h) / 2;
+        const int chip_y = card_top + (kSessionsCardHeight - chip_h) / 2;
         if (state == SessionState::Busy || state == SessionState::Waiting) {
             chip(chip_x + kChipPad, chip_y + kChipPad, word, state_ink);
         } else {
@@ -645,7 +658,7 @@ void Screens::sessions(const View &v) {
         const char *reason = waiting_reason_word(v.sessions.live[i].waiting_for);
         const int reason_w = reason[0] ? CjkText::width(reason, 1) : 0;
         const int reason_x = chip_x - 12 - reason_w;
-        const int name_top = top + (kSessionsCardHeight - name_height) / 2;
+        const int name_top = card_top + (kSessionsCardHeight - name_height) / 2;
         char fitted[kMaxSessionTextBytes + 4];
         CjkText::fit(fitted, sizeof(fitted), v.sessions.live[i].name, reason_x - 12 - name_x,
                      kSessionsScale);
@@ -653,12 +666,11 @@ void Screens::sessions(const View &v) {
         if (reason_w)
             CjkText::draw(c_, reason_x, name_top + name_height - CjkText::line_height(1), reason, 1,
                           Ink::Muted);
-        top += kSessionsPitch;
         // A hairline in the gap between cards, aligned with the names rather than the bars.
-        if (i + 1 < first + rows)
-            c_.fill(name_x, top - kSessionsPitch + kSessionsCardHeight + 4,
-                    right - name_x, 1, Ink::Muted);
+        if (i < last)
+            c_.fill(name_x, card_top + kSessionsCardHeight + 4, right - name_x, 1, Ink::Muted);
     }
+    c_.reset_clip();
 }
 
 void Screens::settings(const View &v) {
