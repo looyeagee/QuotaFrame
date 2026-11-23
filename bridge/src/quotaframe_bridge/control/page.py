@@ -153,7 +153,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <div class="setting">
       <div class="actions">
         <label for="brightness">{{control_brightness}}</label>
-        <input type="range" id="brightness" min="10" max="100" step="5"
+        <input type="range" id="brightness" min="0" max="100" step="5"
                aria-label="{{control_brightness}}">
         <span class="mono" id="brightness-value"></span>
       </div>

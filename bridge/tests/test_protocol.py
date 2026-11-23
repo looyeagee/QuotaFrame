@@ -229,6 +229,11 @@ class BrightnessCommandTests(unittest.TestCase):
             encode_brightness_set(47, 80),
             b'{"cmd":"brightness_set","percent":"80","seq":"47","v":"1"}\n',
         )
+        # Zero is a valid percent: it turns the panel off for the night.
+        self.assertEqual(
+            encode_brightness_set(48, 0),
+            b'{"cmd":"brightness_set","percent":"0","seq":"48","v":"1"}\n',
+        )
         for percent in (True, -1, 101, 2.0, "80"):
             with self.subTest(percent=percent), self.assertRaises(ValueError):
                 encode_brightness_set(47, percent)

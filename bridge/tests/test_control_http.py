@@ -842,6 +842,12 @@ class RouteTests(unittest.TestCase):
         self.assertIn("/api/pair/forget", body)
         self.assertIn("renderPairing", body)
 
+    def test_brightness_slider_reaches_off(self) -> None:
+        # The slider spans the whole range the protocol accepts, so a panel can be turned
+        # fully off from the control page and not only dimmed.
+        body = self.routes().handle(self.get("/")).body.decode("utf-8")
+        self.assertIn('id="brightness" min="0" max="100"', body)
+
     def test_wrong_method_is_reported_with_allow(self) -> None:
         response = self.routes().handle(self.get("/api/state", method="POST"))
         self.assertEqual(response.status, 405)
@@ -867,8 +873,11 @@ class RouteTests(unittest.TestCase):
         body = json.dumps({"percent": 80}).encode()
         accepted = routes.handle(self.get("/api/brightness", method="POST", body=body))
         from_query = routes.handle(self.get("/api/brightness?percent=40", method="POST"))
-        self.assertEqual((accepted.status, from_query.status), (202, 202))
-        self.assertEqual(session.brightness_writes, [80, 40])
+        # Zero turns the glass off and travels like any other percent.
+        off = routes.handle(self.get("/api/brightness", method="POST",
+                                     body=json.dumps({"percent": 0}).encode()))
+        self.assertEqual((accepted.status, from_query.status, off.status), (202, 202, 202))
+        self.assertEqual(session.brightness_writes, [80, 40, 0])
 
     def test_brightness_command_rejects_a_missing_or_invalid_percent(self) -> None:
         routes = self.routes()
