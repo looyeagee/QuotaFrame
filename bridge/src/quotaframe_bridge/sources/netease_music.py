@@ -4,7 +4,9 @@ The desktop client records every track it starts in its own local database.
 The newest row of ``historyTracks`` carries the song id, the title, the
 artists, the album, the duration and the millisecond timestamp the track
 started at, which is enough to name the song and to place the playhead
-without asking the application for anything.
+without asking the application for anything. Two layouts of that file exist:
+the current desktop client writes it under Application Support, and the Mac
+App Store build is sandboxed and writes the same filename under Containers.
 
 The database alone cannot answer two things the panel needs: it never records
 the pause state, and it never records a seek, so a computed playhead drifts
@@ -56,9 +58,15 @@ if TYPE_CHECKING:  # pragma: no cover - annotation only, never imported to run
 LOGGER = logging.getLogger(__name__)
 
 BUNDLE_ID = "com.netease.163music"
-DATABASE_RELATIVE = (
+# The 3.x desktop client (direct download, CEF) is not sandboxed and keeps the
+# file here. The Mac App Store build is, and writes the same filename under its
+# container. default_database() picks the file that exists; when both do, the
+# one written last belongs to the client that is actually playing.
+DATABASE_RELATIVES = (
+    Path("Library/Application Support/com.netease.163music/Documents/storage")
+    / "sqlite_storage.sqlite3",
     Path("Library/Containers/com.netease.163music/Data/Documents/storage")
-    / "sqlite_storage.sqlite3"
+    / "sqlite_storage.sqlite3",
 )
 LYRIC_ENDPOINT = "https://music.163.com/api/song/lyric"
 REQUEST_TIMEOUT_SECONDS = 10.0
@@ -169,10 +177,28 @@ class Track:
     started_at_ms: int
 
 
-def default_database() -> Path:
-    """Path of the client's local database for the current user."""
+def default_database(*, home: Path | None = None) -> Path:
+    """Path of the client's local database for the current user.
 
-    return Path.home() / DATABASE_RELATIVE
+    The current desktop client and the Mac App Store build keep the same
+    filename in different trees. The file that exists and was written last is
+    the one the running client owns. When neither is present the Application
+    Support path is returned so a missing-file error names the current layout.
+    """
+
+    root = home if home is not None else Path.home()
+    candidates = tuple(root / relative for relative in DATABASE_RELATIVES)
+    chosen: Path | None = None
+    chosen_mtime = float("-inf")
+    for path in candidates:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= chosen_mtime:
+            chosen = path
+            chosen_mtime = mtime
+    return chosen if chosen is not None else candidates[0]
 
 
 def default_cache_dir() -> Path:

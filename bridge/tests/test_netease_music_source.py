@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 import tempfile
 import time
@@ -40,6 +41,7 @@ from quotaframe_bridge.sources.netease_music import (
     NeteaseMusicError,
     NeteaseMusicSource,
     current_index,
+    default_database,
     display_text,
     line_end_ms,
     fetch_lyrics,
@@ -261,6 +263,53 @@ class TrackReadingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(NeteaseMusicError):
                 read_current_track(Path(directory) / "absent.sqlite3")
+
+
+class DatabaseLocationTest(unittest.TestCase):
+    """The desktop client and the Mac App Store build keep the file in different trees."""
+
+    DESKTOP = (
+        Path("Library/Application Support/com.netease.163music/Documents/storage")
+        / "sqlite_storage.sqlite3"
+    )
+    SANDBOX = (
+        Path("Library/Containers/com.netease.163music/Data/Documents/storage")
+        / "sqlite_storage.sqlite3"
+    )
+
+    def _touch(self, home: Path, relative: Path, *, mtime: float | None = None) -> Path:
+        path = home / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")
+        if mtime is not None:
+            os.utime(path, (mtime, mtime))
+        return path
+
+    def test_the_desktop_layout_is_used_when_it_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            path = self._touch(home, self.DESKTOP)
+            self.assertEqual(default_database(home=home), path)
+
+    def test_the_sandboxed_layout_is_used_when_it_is_the_only_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            path = self._touch(home, self.SANDBOX)
+            self.assertEqual(default_database(home=home), path)
+
+    def test_the_file_written_last_is_the_running_client(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            desktop = self._touch(home, self.DESKTOP, mtime=1)
+            sandbox = self._touch(home, self.SANDBOX, mtime=2)
+            self.assertEqual(default_database(home=home), sandbox)
+            os.utime(desktop, (3, 3))
+            self.assertEqual(default_database(home=home), desktop)
+
+    def test_a_missing_client_names_the_desktop_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            self.assertEqual(default_database(home=home), home / self.DESKTOP)
 
 
 class LyricFetchTest(unittest.TestCase):
