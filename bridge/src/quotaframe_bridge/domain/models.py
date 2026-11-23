@@ -135,6 +135,12 @@ class LiveSession:
             raise ValueError("only a waiting session states what it waits for")
 
 
+# Every running session of the machine travels in one publication. The bound is
+# the one of `MAX_LIVE_SESSIONS_ROSTER` in protocol/messages.py; the two must
+# stay equal.
+MAX_LIVE_SESSIONS = 24
+
+
 @dataclass(frozen=True, slots=True)
 class SessionsPublication:
     """Sanitized Claude Code session state for a panel's sessions page.
@@ -152,8 +158,10 @@ class SessionsPublication:
     recent: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if len(self.live) > 4:
-            raise ValueError("a publication carries at most four live sessions")
+        if len(self.live) > MAX_LIVE_SESSIONS:
+            raise ValueError(
+                f"a publication carries at most {MAX_LIVE_SESSIONS} live sessions"
+            )
         if len(self.recent) > 3:
             raise ValueError("a publication carries at most three recent sessions")
         for session in self.live:

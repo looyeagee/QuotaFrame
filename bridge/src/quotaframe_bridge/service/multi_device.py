@@ -21,8 +21,11 @@ from quotaframe_bridge.protocol.messages import (
     ALERT_SET_CAPABILITY,
     BRIGHTNESS_SET_CAPABILITY,
     MAX_INVERSE_CLOCK_SKEW_SECONDS,
+    MAX_LIVE_SESSIONS,
+    MAX_LIVE_SESSIONS_ROSTER,
     NOW_PLAYING_CAPABILITY,
     SESSIONS_CAPABILITY,
+    SESSIONS_ROSTER_CAPABILITY,
     SESSIONS_STATES_CAPABILITY,
     Sequence,
     encode_alert_set,
@@ -473,11 +476,18 @@ class DeviceSession:
                 sequence = self._sequence.next()
                 # A device that declares the extended states is told when a
                 # session waits for its user; one that does not gets the two
-                # states it knows.
+                # states it knows. A device that declares the roster capability
+                # keeps every running session instead of the first four.
+                limit = (
+                    MAX_LIVE_SESSIONS_ROSTER
+                    if SESSIONS_ROSTER_CAPABILITY in status.capabilities
+                    else MAX_LIVE_SESSIONS
+                )
                 payload = encode_sessions(
                     publication,
                     sequence,
                     extended=SESSIONS_STATES_CAPABILITY in status.capabilities,
+                    limit=limit,
                 )
                 await self.transport.send_command(payload, "sessions", sequence)
         except TransportReset:

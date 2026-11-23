@@ -178,7 +178,7 @@ Bridge 另有一路只读数据源，读本机 `~/.claude` 下 Claude Code 自�
 
 会话文件的 `status` 是 Claude Code 自己的状态机：`idle` 空提示符、`busy` 正在跑一轮、`waiting` 阻塞在用户身上、`shell` 这一轮结束但后台 shell 还在跑。`waiting` 时文件里另有 `waitingFor`，说明在等什么（提问、权限、沙箱、后台 worker、目标确认或其他对话框）。`sources/claude_sessions.py` 把这些词原样映射成 `SessionState` 与 `WaitingReason`，不认识的原因按 `dialog` 处理——它同样挡住了会话。
 
-`sources/claude_sessions.py` 把快照收成面板要显示的两样东西：运行中会话的（显示名，状态，等待原因）和最近会话的标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不进入线上帧。转换后的 `sessions.v1` 帧由 `DeviceSession.publish_sessions()` 每 10 秒推给声明了该能力的设备；声明 `sessions.v2` 的设备额外收到 `waiting/<原因>` 与 `shell`，只声明 `sessions.v1` 的设备拿到两态词表（`waiting` → `busy`，`shell` → `idle`）。没有该能力的设备不受影响。
+`sources/claude_sessions.py` 把快照收成面板要显示的两样东西：运行中会话的（显示名，状态，等待原因）和最近会话的标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不进入线上帧。转换后的 `sessions.v1` 帧由 `DeviceSession.publish_sessions()` 每 10 秒推给声明了该能力的设备；声明 `sessions.v2` 的设备额外收到 `waiting/<原因>` 与 `shell`，只声明 `sessions.v1` 的设备拿到两态词表（`waiting` → `busy`，`shell` → `idle`）；声明 `sessions.v3` 的设备拿到整份名单（`MAX_LIVE_SESSIONS_ROSTER` 行），只声明 `sessions.v1` 的设备最多拿到 `MAX_LIVE_SESSIONS` 行。名单按最近更新在前排列，`encode_sessions()` 在帧放不进 4096 字节时从末尾开始丢会话。没有该能力的设备不受影响。
 
 `control/cc_sessions.py` 同时支撑本地控制页的 `/sessions` 页面与 `/api/cc/sessions` 接口，两者读的是同一份数据。
 

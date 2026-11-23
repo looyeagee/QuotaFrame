@@ -16,9 +16,13 @@ from quotaframe_bridge.domain.models import (
     WaitingReason,
 )
 from quotaframe_bridge.protocol.messages import (
+    MAX_LIVE_SESSIONS,
+    MAX_LIVE_SESSIONS_ROSTER,
     SESSIONS_CAPABILITY,
+    SESSIONS_ROSTER_CAPABILITY,
     SESSIONS_STATES_CAPABILITY,
     DeviceStatus,
+    encode_sessions,
 )
 from quotaframe_bridge.service.devices import DeviceSession
 from quotaframe_bridge.service.multi_device import MultiDeviceBridgeService
@@ -29,6 +33,16 @@ PUBLICATION = SessionsPublication(
         LiveSession("修复列表滚动的问题", SessionState.IDLE),
     ),
 )
+
+
+def _roster(count: int) -> SessionsPublication:
+    """A publication with `count` running sessions."""
+
+    return SessionsPublication(
+        live=tuple(
+            LiveSession(f"会话 {index}", SessionState.BUSY) for index in range(count)
+        )
+    )
 
 
 class _StubUsageSource:
@@ -108,6 +122,7 @@ class ServicePublishTest(unittest.IsolatedAsyncioTestCase):
     def test_the_capability_token_is_stable(self) -> None:
         self.assertEqual(SESSIONS_CAPABILITY, "sessions.v1")
         self.assertEqual(SESSIONS_STATES_CAPABILITY, "sessions.v2")
+        self.assertEqual(SESSIONS_ROSTER_CAPABILITY, "sessions.v3")
 
     async def _run(
         self,
@@ -233,6 +248,52 @@ class ServicePublishTest(unittest.IsolatedAsyncioTestCase):
         frames = self._frames(transport)
         self.assertTrue(frames)
         self.assertEqual(frames[0]["states"], "busy\nidle")
+
+    async def test_a_device_with_the_roster_receives_every_session(self) -> None:
+        source = _StubSessionsSource(_roster(MAX_LIVE_SESSIONS_ROSTER))
+        transport = await self._run(
+            frozenset({"usage.v1", SESSIONS_CAPABILITY, SESSIONS_ROSTER_CAPABILITY}), source
+        )
+
+        frames = self._frames(transport)
+        self.assertTrue(frames)
+        self.assertEqual(len(frames[0]["live"].split("\n")), MAX_LIVE_SESSIONS_ROSTER)
+        self.assertEqual(
+            len(frames[0]["states"].split("\n")), MAX_LIVE_SESSIONS_ROSTER
+        )
+
+    async def test_a_device_without_the_roster_keeps_four_sessions(self) -> None:
+        source = _StubSessionsSource(_roster(MAX_LIVE_SESSIONS_ROSTER))
+        transport = await self._run(
+            frozenset({"usage.v1", SESSIONS_CAPABILITY}), source
+        )
+
+        frames = self._frames(transport)
+        self.assertTrue(frames)
+        self.assertEqual(len(frames[0]["live"].split("\n")), MAX_LIVE_SESSIONS)
+
+    def test_a_frame_that_does_not_fit_drops_its_oldest_sessions(self) -> None:
+        # Names of quotes need escaping in the JSON, so a full roster does not
+        # fit the frame the link carries.
+        publication = SessionsPublication(
+            live=tuple(
+                LiveSession(f'"{index:02d}' + '"' * 94, SessionState.BUSY)
+                for index in range(MAX_LIVE_SESSIONS_ROSTER)
+            )
+        )
+        frame = encode_sessions(
+            publication, 1, extended=True, limit=MAX_LIVE_SESSIONS_ROSTER
+        )
+        self.assertLessEqual(len(frame), 4096)
+        payload = json.loads(frame.decode("utf-8"))
+        names = payload["live"].split("\n")
+        states = payload["states"].split("\n")
+        self.assertEqual(len(names), len(states))
+        self.assertLess(len(names), MAX_LIVE_SESSIONS_ROSTER)
+        # The roster is ordered from the session touched last to the one touched
+        # least, so the ones that leave the frame are the ones that moved least.
+        self.assertTrue(names[0].startswith('"00'))
+        self.assertTrue(names[-1].startswith(f'"{len(names) - 1:02d}'))
 
     async def test_the_roster_goes_out_again_on_a_new_link(self) -> None:
         transport = _RecordingTransport(frozenset({"usage.v1", SESSIONS_CAPABILITY}))

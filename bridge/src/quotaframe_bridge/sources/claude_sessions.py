@@ -21,9 +21,6 @@ from quotaframe_bridge.domain.models import (
     WaitingReason,
 )
 
-# The publication bounds are the protocol's; the adapter cuts before encoding.
-from quotaframe_bridge.protocol.messages import MAX_LIVE_SESSIONS
-
 try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
@@ -108,7 +105,9 @@ class ClaudeSessionsSource:
             for entry in live
             if entry["alive"]
         ]
-        return SessionsPublication(live=tuple(sessions[:MAX_LIVE_SESSIONS]))
+        # Every running session is published: how many of them a panel keeps is
+        # the panel's own business, and it is decided when the frame is encoded.
+        return SessionsPublication(live=tuple(sessions))
 
     async def wait_for_change(self, timeout: float) -> None:
         """Return once the running sessions may have changed, or after `timeout`.

@@ -108,6 +108,19 @@ class ContractFixtureTests(unittest.TestCase):
         self.assertEqual(len(states), len(payload["live"].split("\n")))
         self.assertTrue(any(state not in SESSIONS_STATES for state in states))
 
+    def test_the_roster_fixture_carries_more_sessions_than_the_four_of_v1(self) -> None:
+        messages = LineDecoder(1024).feed((EXAMPLES / "sessions-roster.jsonl").read_bytes())
+        self.assertEqual(len(messages), 1)
+        payload = messages[0]
+        self.assertEqual(payload["cmd"], "sessions")
+        self.assertLessEqual(set(payload), SESSIONS_ALLOWED_KEYS)
+        live = payload["live"].split("\n")
+        states = payload["states"].split("\n")
+        self.assertEqual(len(live), len(states))
+        self.assertGreater(len(live), 4)
+        for state in states:
+            self.assertIn(state, SESSIONS_STATES)
+
 
 if __name__ == "__main__":
     unittest.main()

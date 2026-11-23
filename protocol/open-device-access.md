@@ -88,6 +88,7 @@ Folder Push total/size、manifest.size、status.protocol、ACK.n保留各自JSON
 | nowplaying.v1 | 显示正在播放的歌曲与歌词窗口；可选 |
 | sessions.v1 | 显示本机Claude Code会话与最近会话标题；可选 |
 | sessions.v2 | 理解扩展会话状态：等待用户的会话、已结束但有后台shell在跑的会话，以及等待原因；可选 |
+| sessions.v3 | 名单可超过4行：设备保留收到的全部运行中会话，并画出它能画的那几行；可选 |
 | ota.folder.v1 | 应用OTA；必须有firmware_project、target、fw、ota |
 
 不要求第三方使用Buddy，但必须满足同一线上契约。
@@ -170,9 +171,9 @@ Bridge不要求page等于overview/deepseek/minimax；可选page只展示，不�
 
 Bridge只在设备声明该能力时发送，且发送节奏由歌曲进度决定；内容不是幂等快照，断线后不补发历史。设备收到非法字段、超出范围的 `current`、与 `lines` 数目不符的 `line_times` 或未知 `state` 时整条拒绝并返回 `invalid_request`，没有更新时不改变已显示的歌曲。
 
-## 7. Claude Code 会话（sessions.v1 / sessions.v2）
+## 7. Claude Code 会话（sessions.v1 / sessions.v2 / sessions.v3）
 
-设备声明 `sessions.v1` 后可接收本机 Claude Code 的会话状态；声明 `sessions.v2` 后，`states` 还携带等待用户的会话及其等待原因：
+设备声明 `sessions.v1` 后可接收本机 Claude Code 的会话状态；声明 `sessions.v2` 后，`states` 还携带等待用户的会话及其等待原因；声明 `sessions.v3` 后，设备拿到整份名单，而不只是最前面的几行：
 
 ```json
 {"cmd":"sessions","v":"1","seq":"46","live":"Claude Code Desktop 会话状态页面\n修复列表滚动的问题","states":"busy\nidle","recent":"给面板加一个秒表页\n整理 bridge 日志"}
@@ -182,7 +183,7 @@ Bridge只在设备声明该能力时发送，且发送节奏由歌曲进度决�
 
 | 参数 | 规则 |
 | --- | --- |
-| live | 可选字符串，运行中会话的显示名，行间以 `\n` 分隔，最多4行；单行≤96字节；行序为最近更新在前 |
+| live | 可选字符串，运行中会话的显示名，行间以 `\n` 分隔；只声明 sessions.v1 的设备最多4行，声明 sessions.v3 的设备最多24行；单行≤96字节；行序为最近更新在前 |
 | states | 与 `live` 一一对应的状态；行数必须与 `live` 相同，且必须同时出现。见下表 |
 | recent | 可选字符串，最近结束的会话标题，行间以 `\n` 分隔，最多3行；单行≤96字节。面板不绘制它，保留为兼容旧 Bridge |
 
@@ -198,9 +199,11 @@ Bridge只在设备声明该能力时发送，且发送节奏由歌曲进度决�
 
 `busy` 与 `waiting` 都表示这一轮还没结束；`shell` 表示没有在跑的一轮，但有后台命令。只有 `waiting` 才是"在等用户"，读屏的人应该先看它。
 
-行序是从最近更新到最久未动：Bridge 按 Claude Code 的 `updatedAt` 降序排列，字段缺失时退回 `startedAt`，两者都相同再按会话 ID 排，因此同一份名单每次排出的顺序一致。面板按收到的顺序绘制，超过 4 行时被截掉的是最久没动的会话。
+行序是从最近更新到最久未动：Bridge 按 Claude Code 的 `updatedAt` 降序排列，字段缺失时退回 `startedAt`，两者都相同再按会话 ID 排，因此同一份名单每次排出的顺序一致。名单比设备保留的行数长时，被截掉的是末尾那些最久没动的会话。
 
 只声明 `sessions.v1` 的设备拿不到扩展词：Bridge 对这类设备把 `waiting` 发成 `busy`（这一轮没结束），把 `shell` 发成 `idle`（没有在跑的生成）。第三方 Bridge 同样可以不发扩展词，面板照常显示。
+
+只声明 `sessions.v1` 的设备最多拿到 4 行，声明 `sessions.v3` 的设备拿到整份名单（最多 24 行）。名单比面板能画的行数长时，面板画出它能画的那几行：能滑动的面板用触摸上下滑动翻看整份名单，其余面板显示最上面几行，两者的计数都按整份名单算。
 
 Bridge只发送显示文字：会话名、状态、等待原因，以及最近会话的标题（面板忽略）。会话ID、工作目录、git分支、时间戳和对话内容都不进入线上帧。设备按文本长度自行排版。
 

@@ -34,6 +34,10 @@ SESSIONS_CAPABILITY = "sessions.v1"
 # a session that waits for its user, the background shell of one that ended,
 # and the reason a waiting session waits.
 SESSIONS_STATES_CAPABILITY = "sessions.v2"
+# Capability a device declares when its sessions roster holds more rows than the
+# four of sessions.v1: such a panel keeps every running session it is sent and
+# shows as many of them as its glass fits.
+SESSIONS_ROSTER_CAPABILITY = "sessions.v3"
 # Capability a device declares when the alert mode can be set over the link.
 ALERT_SET_CAPABILITY = "alert.set.v1"
 # Capability a device declares when the display brightness can be set over the link.
@@ -47,11 +51,15 @@ ALERT_MODES = (ALERT_OFF, ALERT_PAGE, ALERT_BEEP)
 MAX_TITLE_BYTES = 192
 MAX_LINES = 8
 MAX_LINE_BYTES = 192
-# Sessions page bounds; four live rows and three recent titles fit the panel
-# and keep the frame far below the 4096 byte limit.
+# Sessions page bounds. A panel that declares sessions.v1 keeps four live rows;
+# one that declares sessions.v3 keeps the whole roster. The roster bound is the
+# one of `MAX_LIVE_SESSIONS` in domain/models.py; the two must stay equal.
 MAX_LIVE_SESSIONS = 4
+MAX_LIVE_SESSIONS_ROSTER = 24
 MAX_RECENT_SESSIONS = 3
 MAX_SESSION_TEXT_BYTES = 96
+# The frame limit every command has to stay inside.
+MAX_FRAME_BYTES = 4096
 
 
 
@@ -349,7 +357,11 @@ def _session_state_token(session: LiveSession, *, extended: bool) -> str:
 
 
 def encode_sessions(
-    publication: SessionsPublication, seq: int, *, extended: bool = False
+    publication: SessionsPublication,
+    seq: int,
+    *,
+    extended: bool = False,
+    limit: int = MAX_LIVE_SESSIONS,
 ) -> bytes:
     """Encode one sessions publication for a panel's sessions page.
 
@@ -362,39 +374,52 @@ def encode_sessions(
     `extended` sends the states a device declaring `sessions.v2` understands:
     a session that waits for its user, the background shell of one that ended,
     and the reason a waiting session waits.
+
+    `limit` is how many live sessions the panel keeps: four for a panel that
+    declares `sessions.v1`, the whole roster for one that declares
+    `sessions.v3`. A frame that would not fit the 4096 byte limit loses its
+    oldest sessions until it does, so the panel keeps the ones that were
+    touched last.
     """
 
     sequence = _u32(seq, "seq")
-    live = publication.live[:MAX_LIVE_SESSIONS]
+    live = publication.live[: max(0, limit)]
     recent = publication.recent[:MAX_RECENT_SESSIONS]
-    payload: dict[str, object] = {
-        "cmd": "sessions",
-        "v": "1",
-        "seq": _u32_text(sequence, "seq"),
-    }
-    if live:
-        payload["live"] = "\n".join(
-            _truncate_utf8(_single_line(session.name), MAX_SESSION_TEXT_BYTES)
-            for session in live
-        )
-        payload["states"] = "\n".join(
-            _session_state_token(session, extended=extended) for session in live
-        )
-    if recent:
-        payload["recent"] = "\n".join(
-            _truncate_utf8(_single_line(title), MAX_SESSION_TEXT_BYTES)
-            for title in recent
-        )
-    return (
-        json.dumps(
-            payload,
-            ensure_ascii=False,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        + "\n"
-    ).encode("utf-8")
+    names = [
+        _truncate_utf8(_single_line(session.name), MAX_SESSION_TEXT_BYTES)
+        for session in live
+    ]
+    states = [_session_state_token(session, extended=extended) for session in live]
+    titles = [
+        _truncate_utf8(_single_line(title), MAX_SESSION_TEXT_BYTES) for title in recent
+    ]
+    while True:
+        payload: dict[str, object] = {
+            "cmd": "sessions",
+            "v": "1",
+            "seq": _u32_text(sequence, "seq"),
+        }
+        if names:
+            payload["live"] = "\n".join(names)
+            payload["states"] = "\n".join(states)
+        if titles:
+            payload["recent"] = "\n".join(titles)
+        frame = (
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("utf-8")
+        if len(frame) <= MAX_FRAME_BYTES or not names:
+            return frame
+        # The roster is ordered from the session touched last to the one touched
+        # least, so the oldest one leaves the frame first.
+        names.pop()
+        states.pop()
 
 
 def encode_status_query() -> bytes:

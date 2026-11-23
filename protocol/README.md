@@ -166,9 +166,9 @@ ACK 表示已入应用事件队列；不表示屏幕已完成刷新。未启用�
 
 Bridge 只在 macOS 上取数：网易云音乐桌面端把每次起播写进自己的本地数据库（`historyTracks`，只读打开），Bridge 由最新一行得到歌曲、歌手、时长与起播时刻；CoreAudio 的进程输出状态决定这次是播放还是暂停；歌词来自客户端自己使用的公开歌词接口，按歌曲缓存，换歌时才取一次。没有任何账号凭据离开电脑，面板上也只出现歌曲名、歌手、进度和歌词。
 
-## Claude Code 会话（sessions.v1 / sessions.v2）
+## Claude Code 会话（sessions.v1 / sessions.v2 / sessions.v3）
 
-设备在 `caps` 中声明 `sessions.v1` 后，Bridge 可发送本机 Claude Code 的会话状态；再声明 `sessions.v2` 后，`states` 还会带来等待用户的会话和它等的原因：
+设备在 `caps` 中声明 `sessions.v1` 后，Bridge 可发送本机 Claude Code 的会话状态；再声明 `sessions.v2` 后，`states` 还会带来等待用户的会话和它等的原因；声明 `sessions.v3` 的设备拿到整份名单，最多 24 行：
 
 ```json
 {"cmd":"sessions","v":"1","seq":"46","live":"Claude Code Desktop 会话状态页面\n修复列表滚动的问题","states":"busy\nidle","recent":"给面板加一个秒表页"}
@@ -179,6 +179,8 @@ Bridge 只在 macOS 上取数：网易云音乐桌面端把每次起播写进自
 
 只有 `waiting` 是在等用户，所以它最值得看：`busy` 和 `waiting` 都表示这一轮没结束，面板据此把等待排在前面。只声明 `sessions.v1` 的设备拿到的是两态词表：Bridge 把 `waiting` 发成 `busy`、把 `shell` 发成 `idle`，旧固件因此不会拒绝整帧。
 
+名单有多长由设备自己说：只声明 `sessions.v1` 的设备最多拿到 4 行，声明 `sessions.v3` 的设备拿到整份名单（最多 24 行）。两边的名单都按最近更新在前排列，放不下的会话留在末尾，被截掉的是最久没动的那些。名单比面板能画的行数长时，面板画出它能画的那几行：能滑动的面板（AMOLED 1.8）用触摸上下滑动翻看整份名单，其余面板显示最上面几行，计数仍是整份名单的条数。
+
 Bridge 只发送显示文字：会话名、状态、等待原因与会话标题。会话 ID、工作目录、git 分支、时间戳和对话内容都不离开电脑。
 
-成功 ACK 为 `{"ack":"sessions","n":46,"ok":true}`；非法字段、行数不符的 `states`、未知状态词或未知原因返回 `invalid_request`，未声明该能力返回 `unsupported`，OTA 接收期间返回 `ota_busy`。该命令是快照而不是事件，Bridge 不重放历史；会话状态一变，Bridge 就下发新的一帧，内容与上一帧相同的帧不会重复发送。字段与隐私边界见[接入契约](open-device-access.md#7-claude-code-会话sessionsv1--sessionsv2)。
+成功 ACK 为 `{"ack":"sessions","n":46,"ok":true}`；非法字段、行数不符的 `states`、未知状态词或未知原因返回 `invalid_request`，未声明该能力返回 `unsupported`，OTA 接收期间返回 `ota_busy`。该命令是快照而不是事件，Bridge 不重放历史；会话状态一变，Bridge 就下发新的一帧，内容与上一帧相同的帧不会重复发送。字段与隐私边界见[接入契约](open-device-access.md#7-claude-code-会话sessionsv1--sessionsv2--sessionsv3)。
