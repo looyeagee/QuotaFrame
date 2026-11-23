@@ -24,9 +24,14 @@ constexpr int kSettingRows = 5;
 /** Rows of a panel without a dimmer: every row above, without the trailing brightness one. */
 constexpr int kSettingRowsNoDimmer = kSettingRows - 1;
 
-/** Brightness steps the Settings page cycles through; the Bridge may set any percent. */
-constexpr uint8_t kBrightnessLevels[] = {20, 40, 60, 80, 100};
-constexpr int kBrightnessLevelCount = 5;
+/**
+ * Brightness steps the Settings page cycles through; the Bridge may set any percent.
+ *
+ * Zero is a step like any other: the Bridge can turn the glass off, and the page has to be
+ * able to show that value and to leave it again.
+ */
+constexpr uint8_t kBrightnessLevels[] = {0, 20, 40, 60, 80, 100};
+constexpr int kBrightnessLevelCount = 6;
 
 struct LinkState {
     bool connected = false, encrypted = false, has_passkey = false;

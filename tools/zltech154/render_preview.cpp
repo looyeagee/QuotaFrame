@@ -212,5 +212,13 @@ int main(int argc, char **argv) {
     v.page = Page::Settings;
     v.focus = 0;
     render(v, "10_settings");
+
+    // The Bridge can turn the glass off; the brightness row shows that step, not the nearest
+    // lit one. Six boxes have to fit the same row as before in 240 px.
+    v = design_view();
+    v.page = Page::Settings;
+    v.focus = 4;
+    v.settings.brightness = 0;
+    render(v, "11_settings_off");
     return 0;
 }

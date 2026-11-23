@@ -559,14 +559,16 @@ void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
         const char *label;
-        const char *options[5];
+        const char *options[6];
     };
     static const Row rows[kSettingRows] = {
         {"AUTO CYCLE", {"OFF", "30S", "1M", "5M"}},
         {"ALERT 95%", {"OFF", "PAGE", "+BEEP"}},
         {"SECONDS", {"ON", "OFF"}},
         {"ROTATION", {"0°", "90°", "180°"}},
-        {"BRIGHTNESS", {"20%", "40%", "60%", "80%", "100%"}},
+        // Six boxes in the 240 px row leave 21 px each, which fits "100" but not "100%": the
+        // row label carries the unit, and OFF is the zero step the Bridge can also set.
+        {"BRIGHTNESS", {"OFF", "20", "40", "60", "80", "100"}},
     };
     const auto &s = v.settings;
     const int right = c_.width() - kLeft;

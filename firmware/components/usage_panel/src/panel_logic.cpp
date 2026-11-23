@@ -98,7 +98,8 @@ int setting_options(int row) {
 }
 
 int brightness_level_index(uint8_t percent) {
-    // The Bridge may hold any percent; the Settings page edits the nearest step.
+    // The Bridge may hold any percent; the Settings page edits the nearest step. A tie stays
+    // on the darker step, so the row never claims more light than the glass has.
     int best = 0;
     for (int i = 1; i < kBrightnessLevelCount; ++i) {
         const int here = std::abs(static_cast<int>(kBrightnessLevels[i]) - percent);

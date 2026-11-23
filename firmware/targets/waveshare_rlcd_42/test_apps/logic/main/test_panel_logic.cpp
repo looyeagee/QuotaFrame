@@ -284,6 +284,31 @@ TEST_CASE("a panel without a dimmer keeps the focus on the rows it draws", "[nav
     TEST_ASSERT_EQUAL_INT(0, v.focus);
 }
 
+TEST_CASE("the brightness row reaches the off step the Bridge can set", "[nav]")
+{
+    Navigator nav;
+    View v = linked_view();
+    nav.input({Input::Hold}, v, 0);
+    for (int i = 0; i < kSettingRows - 1; ++i)
+        nav.input({Input::Home}, v, 0);
+    TEST_ASSERT_EQUAL_INT(kSettingRows - 1, v.focus);
+    // A percent the Bridge wrote between two steps shows the nearer one; zero shows off
+    // instead of the dimmest lit step, so the row never claims more light than the glass has.
+    // A tie rounds to the darker step, which is why 10 reads as off rather than 20 %.
+    TEST_ASSERT_EQUAL_INT(0, brightness_level_index(0));
+    TEST_ASSERT_EQUAL_INT(0, brightness_level_index(10));
+    TEST_ASSERT_EQUAL_INT(1, brightness_level_index(11));
+    TEST_ASSERT_EQUAL_INT(3, brightness_level_index(60));
+    TEST_ASSERT_EQUAL_INT(kBrightnessLevelCount - 1, brightness_level_index(100));
+    v.settings.brightness = 0;
+    TEST_ASSERT_TRUE(nav.input({Input::Forward}, v, 0).save);
+    TEST_ASSERT_EQUAL_UINT8(20, v.settings.brightness);
+    // The first step wraps around to the last one.
+    v.settings.brightness = 0;
+    TEST_ASSERT_TRUE(nav.input({Input::Back}, v, 0).save);
+    TEST_ASSERT_EQUAL_UINT8(100, v.settings.brightness);
+}
+
 TEST_CASE("the left key steps a setting back through its options", "[nav]")
 {
     Navigator nav;

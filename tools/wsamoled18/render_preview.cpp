@@ -161,6 +161,14 @@ int main(int argc, char **argv) {
     v.focus = 0;
     render(v, "06_settings");
 
+    // The Bridge can turn the glass off; the brightness row shows that step, not the dimmest
+    // lit one, so the row and the glass agree.
+    v = design_view();
+    v.page = Page::Settings;
+    v.focus = 4;
+    v.settings.brightness = 0;
+    render(v, "06_settings_off");
+
     // Landscape: rotation turns the finished image, so the layout must fit 448 x 368 too.
     v = design_view();
     v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);

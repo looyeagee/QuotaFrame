@@ -805,14 +805,16 @@ void Screens::settings(const View &v) {
     header(v, "SETTINGS");
     struct Row {
         const char *label;
-        const char *options[5];
+        const char *options[6];
     };
     static const Row rows[kSettingRows] = {
         {"AUTO CYCLE", {"OFF", "30S", "1M", "5M"}},
         {"ALERT 95%", {"OFF", "PAGE", "+BEEP"}},
         {"SECONDS", {"ON", "OFF"}},
         {"ROTATION", {"LAND", "PORT", "FLIP"}},
-        {"BRIGHTNESS", {"20%", "40%", "60%", "80%", "100%"}},
+        // Not drawn: the reflective panel has no dimmer. The row keeps the same six steps as
+        // the dimmable targets so the ladder has one shape across the repository.
+        {"BRIGHTNESS", {"OFF", "20%", "40%", "60%", "80%", "100%"}},
     };
     const auto &s = v.settings;
     const int right = c_.width() - kLeft;
