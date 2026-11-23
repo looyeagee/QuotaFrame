@@ -90,6 +90,26 @@ TEST_CASE("BLE status declares the now-playing capability", "[ble_identity]")
     TEST_ASSERT_NULL(strstr(status, "nowplaying.v1"));
 }
 
+TEST_CASE("BLE status declares the sessions capabilities", "[ble_identity]")
+{
+    char status[1024]{};
+    OtaSnapshot ota{};
+    TEST_ASSERT_TRUE(make_status_json(
+        "Waveshare AMOLED 1.8", true, "overview", "0.5.0", "waveshare_amoled_18",
+        ota, true, status, sizeof(status), true, true, true, true, false, true, 80, true));
+    TEST_ASSERT_NOT_NULL(strstr(status, "\"sessions.v1\""));
+    TEST_ASSERT_NOT_NULL(strstr(status, "\"sessions.v2\""));
+    // The roster capability tells the Bridge that this panel keeps every
+    // running session and shows as many of them as its glass fits.
+    TEST_ASSERT_NOT_NULL(strstr(status, "\"sessions.v3\""));
+
+    // A device that does not render the sessions page must not advertise them.
+    TEST_ASSERT_TRUE(make_status_json(
+        "Waveshare AMOLED 1.8", true, "overview", "0.5.0", "waveshare_amoled_18",
+        ota, true, status, sizeof(status), true, true, true, true, false, true, 80, false));
+    TEST_ASSERT_NULL(strstr(status, "sessions."));
+}
+
 TEST_CASE("BLE status reports the persisted alert mode", "[ble_identity]")
 {
     char status[1024]{};

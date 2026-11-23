@@ -301,12 +301,12 @@ bool BleService::take_now_playing(NowPlayingUpdate& out) {
 esp_desktop_buddy_command_extension_result_t BleService::handle_sessions(
     const esp_desktop_buddy_command_view_t* request)
 {
-    const auto parsed = parse_sessions_command(request);
-    const uint32_t sequence = parsed.update.sequence;
+    const auto parsed = parse_sessions_command(request, sessions_parsed_);
+    const uint32_t sequence = sessions_parsed_.sequence;
     if (!parsed.valid) return ack(false, sequence, "invalid_request");
     if (!enable_sessions_) return ack(false, sequence, "unsupported");
     if (ota_commands_.busy()) return ack(false, sequence, "ota_busy");
-    if (!sessions_.publish(parsed.update)) return ack(false, sequence, "queue_full");
+    if (!sessions_.publish(sessions_parsed_)) return ack(false, sequence, "queue_full");
     return ack(true, sequence);
 }
 

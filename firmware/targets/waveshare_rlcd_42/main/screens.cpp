@@ -55,6 +55,9 @@ constexpr int kSummaryLyricRows = 2;
 // Sessions page: the live count and a chip per running session beside its name. Portrait gets
 // the roomier pitch of the taller glass.
 constexpr int kSessionsRowGap = 10;
+// The rows the glass holds below the summary: seven in landscape, nine in the taller
+// portrait. A longer roster keeps the rows that were touched last.
+constexpr int kSessionsRowsLandscape = 7, kSessionsRowsPortrait = 9;
 
 // Segment heights the balance figure tries, largest first; the smallest one is the
 // fallback when none of them fits.
@@ -765,13 +768,17 @@ void Screens::sessions(const View &v) {
     // A session that is working or waiting is an inverted chip like the status chips; one
     // that is up keeps the same geometry as plain text, so the names line up across states.
     // The chips share one width, so the rows stay in a column.
+    // The glass holds a fixed number of rows; a longer roster keeps the rows that were
+    // touched last, which are the ones the reader is waiting for.
+    const int rows = std::min<int>(v.sessions.live_count,
+                                    portrait ? kSessionsRowsPortrait : kSessionsRowsLandscape);
     int chip_text = 0;
-    for (int i = 0; i < v.sessions.live_count; ++i)
+    for (int i = 0; i < rows; ++i)
         chip_text = std::max(
             chip_text, Canvas::text_width(session_state_word(v.sessions.live[i].state), 2));
     const int chip_w = chip_text + 2 * kChipPad;
     const int name_x = kLeft + chip_w + kSessionsRowGap;
-    for (int i = 0; i < v.sessions.live_count; ++i) {
+    for (int i = 0; i < rows; ++i) {
         const int top = row_top + pitch * i;
         const SessionState state = v.sessions.live[i].state;
         const char *word = session_state_word(state);

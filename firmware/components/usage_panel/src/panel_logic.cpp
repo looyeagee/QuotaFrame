@@ -131,6 +131,10 @@ int text_columns(int width) { return (width + kLyricScrollColumn - 1) / kLyricSc
 void apply_sessions(View &view, const SessionsUpdate &update) {
     view.sessions = update;
     view.sessions_valid = true;
+    // A roster that grew shorter leaves the list higher up, so the page still
+    // shows rows that exist.
+    const int last = view.sessions.live_count > 0 ? view.sessions.live_count - 1 : 0;
+    view.sessions_scroll = static_cast<uint8_t>(std::min<int>(view.sessions_scroll, last));
 }
 
 void apply_now_playing(View &view, const NowPlayingUpdate &update, uint64_t now_ms) {
@@ -379,7 +383,22 @@ NavResult Navigator::input(Input in, View &v, uint64_t now_ms) {
         v.page = previous(v);
     else if (in == Input::Home)
         v.page = Page::Home;
+    else if (in == Input::ScrollUp || in == Input::ScrollDown)
+        scroll_sessions(in, v);
     return r;
+}
+
+void Navigator::scroll_sessions(Input in, View &v) {
+    // The sessions page is the only page with a list that can be longer than
+    // the glass, so a scroll anywhere else moves nothing.
+    if (v.page != Page::Sessions || !v.sessions_valid)
+        return;
+    // The list stops at its last row: the page shows the rows below it, and
+    // the page itself draws the window that fits.
+    const int last = v.sessions.live_count > 0 ? v.sessions.live_count - 1 : 0;
+    const int step = in == Input::ScrollUp ? 1 : -1;
+    const int next = std::clamp(static_cast<int>(v.sessions_scroll) + step, 0, last);
+    v.sessions_scroll = static_cast<uint8_t>(next);
 }
 
 bool Navigator::update_alert(View &v) {

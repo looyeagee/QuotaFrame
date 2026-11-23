@@ -10,14 +10,15 @@ namespace {
 /**
  * Copies one newline-separated string into the live-session roster.
  *
- * Every entry is copied in whole UTF-8 characters; a list longer than the
- * roster stops there, which is what the Bridge already bounded.
+ * Every entry is copied in whole UTF-8 characters; only the first `wanted`
+ * entries are taken, which is what a panel does with a roster longer than it
+ * keeps.
  * @return the number of entries copied.
  */
-size_t copy_live_list(SessionLive (&entries)[kMaxLiveSessions], const char* text) {
+size_t copy_live_list(SessionLive (&entries)[kMaxLiveSessions], const char* text, size_t wanted) {
     size_t count = 0;
     const char* cursor = text;
-    while (*cursor && count < kMaxLiveSessions) {
+    while (*cursor && count < wanted) {
         const char* end = strchr(cursor, '\n');
         const size_t length = end ? static_cast<size_t>(end - cursor) : strlen(cursor);
         char line[kMaxSessionTextBytes + 1];
@@ -45,6 +46,20 @@ size_t copy_recent_list(SessionRecent (&entries)[kMaxRecentSessions], const char
         memcpy(line, cursor, copied);
         line[copied] = '\0';
         copy_utf8_truncated(entries[count].title, sizeof(entries[count].title), line);
+        ++count;
+        if (!end)
+            break;
+        cursor = end + 1;
+    }
+    return count;
+}
+
+/** Number of entries in a newline-separated string. */
+size_t count_entries(const char* text) {
+    size_t count = 0;
+    const char* cursor = text;
+    while (*cursor) {
+        const char* end = strchr(cursor, '\n');
         ++count;
         if (!end)
             break;
@@ -112,11 +127,12 @@ bool read_state(SessionLive& entry, const char* word, size_t length) {
 }  // namespace
 
 SessionsParseResult parse_sessions_command(
-    const esp_desktop_buddy_command_view_t* request)
+    const esp_desktop_buddy_command_view_t* request, SessionsUpdate& out)
 {
     SessionsParseResult result{};
+    out = SessionsUpdate{};
     uint32_t version = 0;
-    if (get_decimal_u32(request, "seq", result.update.sequence) != FieldResult::Valid ||
+    if (get_decimal_u32(request, "seq", out.sequence) != FieldResult::Valid ||
         get_decimal_u32(request, "v", version) != FieldResult::Valid || version != 1)
         return result;
 
@@ -135,31 +151,38 @@ SessionsParseResult parse_sessions_command(
         return result;
 
     if (has_live && has_states) {
-        const size_t names = copy_live_list(result.update.live, live);
-        // The state list is matched entry by entry: a shorter or longer one,
-        // or a word that names no state, does not describe this roster.
+        // The lists address each other line by line, so they have to be as long
+        // as each other.
+        const size_t entries = count_entries(live);
+        if (entries != count_entries(states))
+            return result;
+        // A roster longer than the panel keeps is cut at its tail. The Bridge
+        // orders the sessions from the one touched last to the one touched
+        // least, so the ones that leave the roster are the ones that moved
+        // least.
+        const size_t kept = entries < kMaxLiveSessions ? entries : kMaxLiveSessions;
+        const size_t names = copy_live_list(out.live, live, kept);
+        // The state list is matched entry by entry: a word that names no state
+        // does not describe this roster.
         size_t counted = 0;
         const char* cursor = states;
-        while (*cursor) {
+        while (counted < kept) {
             const char* end = strchr(cursor, '\n');
             const size_t length = end ? static_cast<size_t>(end - cursor) : strlen(cursor);
-            if (counted >= names)
-                return result;
-            if (!read_state(result.update.live[counted], cursor, length))
+            if (!read_state(out.live[counted], cursor, length))
                 return result;
             ++counted;
             if (!end)
                 break;
             cursor = end + 1;
         }
-        if (counted != names)
+        if (counted != kept || names != kept)
             return result;
-        result.update.live_count = static_cast<uint8_t>(names);
+        out.live_count = static_cast<uint8_t>(kept);
     }
 
     if (has_recent)
-        result.update.recent_count =
-            static_cast<uint8_t>(copy_recent_list(result.update.recent, recent));
+        out.recent_count = static_cast<uint8_t>(copy_recent_list(out.recent, recent));
 
     result.valid = true;
     return result;

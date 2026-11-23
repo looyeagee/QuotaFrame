@@ -101,6 +101,9 @@ bool make_status_json(
             // background shell of one that ended, and the reason a waiting
             // session waits.
             cJSON_AddItemToArray(caps, cJSON_CreateString("sessions.v2"));
+            // The whole roster: this panel keeps every running session it is
+            // sent and shows as many of them as its glass fits.
+            cJSON_AddItemToArray(caps, cJSON_CreateString("sessions.v3"));
         }
     }
     cJSON_AddStringToObject(root, "firmware_project", "quotaframe");

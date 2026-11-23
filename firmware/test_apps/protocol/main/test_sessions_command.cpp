@@ -16,21 +16,32 @@ struct Capture {
     SessionsUpdate update{};
 };
 
+/**
+ * The capture a frame is parsed into.
+ *
+ * A roster of sessions is larger than the stack of the test task, so the
+ * capture lives in static storage and is reset before every case.
+ */
+Capture& fresh_capture() {
+    static Capture capture{};
+    capture = Capture{};
+    return capture;
+}
+
 esp_desktop_buddy_command_extension_result_t handle_sessions(
     void* context,
     esp_desktop_buddy_t*,
     const esp_desktop_buddy_command_view_t* request)
 {
     auto* capture = static_cast<Capture*>(context);
-    const auto parsed = parse_sessions_command(request);
+    const auto parsed = parse_sessions_command(request, capture->update);
     if (parsed.valid) {
         capture->accepted++;
-        capture->update = parsed.update;
     }
     esp_desktop_buddy_command_extension_result_t result{};
     result.mode = ESP_DESKTOP_BUDDY_COMMAND_EXTENSION_ACK;
     result.reply.ok = parsed.valid;
-    result.reply.n = parsed.update.sequence;
+    result.reply.n = capture->update.sequence;
     result.reply.error = parsed.valid ? nullptr : "invalid_request";
     return result;
 }
@@ -70,7 +81,7 @@ void feed_line(const char* line, Capture& capture, char* reply, size_t reply_siz
 
 TEST_CASE("a sessions command carries the live roster, its states and the recent titles", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(kSessions, capture, reply, sizeof(reply));
 
@@ -90,7 +101,7 @@ TEST_CASE("a sessions command carries the live roster, its states and the recent
 
 TEST_CASE("states that do not address the roster are rejected", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(kSessionsInvalid, capture, reply, sizeof(reply));
 
@@ -101,7 +112,7 @@ TEST_CASE("states that do not address the roster are rejected", "[protocol]")
 
 TEST_CASE("a roster without its states is rejected", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"47\",\"live\":\"只有一个名字\"}\n",
@@ -113,7 +124,7 @@ TEST_CASE("a roster without its states is rejected", "[protocol]")
 
 TEST_CASE("an unknown session state is rejected", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"48\",\"live\":\"a\",\"states\":\"stopped\"}\n",
@@ -125,7 +136,7 @@ TEST_CASE("an unknown session state is rejected", "[protocol]")
 
 TEST_CASE("a command without any roster is accepted and leaves the page empty", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"49\"}\n",
@@ -138,7 +149,7 @@ TEST_CASE("a command without any roster is accepted and leaves the page empty", 
 
 TEST_CASE("a version other than one is rejected", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"2\",\"seq\":\"50\",\"live\":\"a\",\"states\":\"busy\"}\n",
@@ -150,7 +161,7 @@ TEST_CASE("a version other than one is rejected", "[protocol]")
 
 TEST_CASE("long session names are truncated on a character boundary", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     // Forty four three-byte characters: the copy must stop at thirty-two.
     feed_line(
@@ -165,22 +176,64 @@ TEST_CASE("long session names are truncated on a character boundary", "[protocol
     TEST_ASSERT_EQUAL_UINT32(0, length % 3);
 }
 
+TEST_CASE("the roster fixture carries every running session", "[protocol]")
+{
+    Capture &capture = fresh_capture();
+    char reply[512]{};
+    feed_line(kSessionsRoster, capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
+    TEST_ASSERT_EQUAL_UINT8(6, capture.update.live_count);
+    TEST_ASSERT_EQUAL_STRING("重构会话页", capture.update.live[0].name);
+    TEST_ASSERT_EQUAL(SessionState::Busy, capture.update.live[0].state);
+    TEST_ASSERT_EQUAL_STRING("修 BLE 重连", capture.update.live[1].name);
+    TEST_ASSERT_EQUAL(SessionState::Waiting, capture.update.live[1].state);
+    TEST_ASSERT_EQUAL(WaitingReason::Ask, capture.update.live[1].waiting_for);
+    TEST_ASSERT_EQUAL_STRING("固件发布", capture.update.live[5].name);
+    TEST_ASSERT_EQUAL(SessionState::Idle, capture.update.live[5].state);
+}
+
 TEST_CASE("more live sessions than the panel keeps are dropped", "[protocol]")
 {
-    Capture capture{};
-    char reply[256]{};
-    feed_line(
-        "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"52\",\"live\":\"a\\nb\\nc\\nd\\ne\\nf\","
-        "\"states\":\"busy\\nbusy\\nbusy\\nbusy\\nbusy\\nbusy\"}\n",
-        capture, reply, sizeof(reply));
+    Capture &capture = fresh_capture();
+    char reply[1024]{};
+    // Two sessions more than the roster holds. The frame is accepted and the
+    // roster keeps the sessions that came first.
+    std::string live, states;
+    for (uint32_t i = 0; i < kMaxLiveSessions + 2; ++i) {
+        if (i) {
+            live += "\\n";
+            states += "\\n";
+        }
+        live += "s";
+        states += "busy";
+    }
+    const std::string frame = "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"52\",\"live\":\"" + live +
+                              "\",\"states\":\"" + states + "\"}\n";
+    feed_line(frame.c_str(), capture, reply, sizeof(reply));
 
     TEST_ASSERT_EQUAL_UINT32(1, capture.accepted);
     TEST_ASSERT_EQUAL_UINT8(kMaxLiveSessions, capture.update.live_count);
+    TEST_ASSERT_EQUAL_STRING("s", capture.update.live[0].name);
+    TEST_ASSERT_EQUAL(SessionState::Busy, capture.update.live[0].state);
+}
+
+TEST_CASE("a roster whose states do not answer every name is rejected", "[protocol]")
+{
+    Capture &capture = fresh_capture();
+    char reply[256]{};
+    feed_line(
+        "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"57\",\"live\":\"a\\nb\\nc\","
+        "\"states\":\"busy\\nbusy\"}\n",
+        capture, reply, sizeof(reply));
+
+    TEST_ASSERT_EQUAL_UINT32(0, capture.accepted);
+    TEST_ASSERT_NOT_NULL(strstr(reply, "\"error\":\"invalid_request\""));
 }
 
 TEST_CASE("the extended states fixture carries a waiting session and its reason", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(kSessionsV2, capture, reply, sizeof(reply));
 
@@ -197,7 +250,7 @@ TEST_CASE("the extended states fixture carries a waiting session and its reason"
 
 TEST_CASE("an extended state with a reason the protocol does not name is rejected", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[200]{};
     feed_line(kSessionsInvalidV2, capture, reply, sizeof(reply));
 
@@ -208,7 +261,7 @@ TEST_CASE("an extended state with a reason the protocol does not name is rejecte
 
 TEST_CASE("a background shell is a state of its own", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[256]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"53\",\"live\":\"a\","
@@ -222,7 +275,7 @@ TEST_CASE("a background shell is a state of its own", "[protocol]")
 
 TEST_CASE("a waiting session without a reason reads as a dialog", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[256]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"54\",\"live\":\"a\",\"states\":\"waiting\"}\n",
@@ -237,7 +290,7 @@ TEST_CASE("every reason of the protocol is read", "[protocol]")
 {
     const char *reasons[] = {"ask", "permission", "sandbox", "worker", "goal", "dialog"};
     for (uint32_t i = 0; i < sizeof(reasons) / sizeof(reasons[0]); ++i) {
-        Capture capture{};
+        Capture &capture = fresh_capture();
         char reply[256]{};
         std::string frame = "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"55\",\"live\":\"a\",";
         frame += "\"states\":\"waiting/";
@@ -253,7 +306,7 @@ TEST_CASE("every reason of the protocol is read", "[protocol]")
 
 TEST_CASE("a reason the protocol does not name is rejected", "[protocol]")
 {
-    Capture capture{};
+    Capture &capture = fresh_capture();
     char reply[256]{};
     feed_line(
         "{\"cmd\":\"sessions\",\"v\":\"1\",\"seq\":\"56\",\"live\":\"a\","

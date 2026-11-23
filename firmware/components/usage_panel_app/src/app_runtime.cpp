@@ -126,9 +126,8 @@ void PanelRuntime::run_loop() {
         // The sessions publication is the same kind of snapshot: the newest
         // roster replaces the previous one, and the first one is what puts the
         // page into the ring.
-        SessionsUpdate sessions;
-        if (ble_.take_sessions(sessions)) {
-            apply_sessions(view_, sessions);
+        if (ble_.take_sessions(pending_sessions_)) {
+            apply_sessions(view_, pending_sessions_);
             redraw = true;
         }
 

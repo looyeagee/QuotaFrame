@@ -12,9 +12,10 @@ namespace usage_panel::amoled {
  * gauge and the clock.
  *
  * Page navigation on this board comes from the touch surface: a horizontal swipe steps
- * through the page ring, a tap returns home and a stationary hold opens the settings. The
- * BOOT key mirrors the tap and the hold for those moments when the glass is out of reach.
- * The swipe direction follows the rotation setting, so "next page" stays leftwards on the
+ * through the page ring, a tap returns home and a stationary hold opens the settings. A
+ * vertical swipe scrolls the list of a page that is longer than the glass. The BOOT key
+ * mirrors the tap and the hold for those moments when the glass is out of reach. The
+ * gesture directions follow the rotation setting, so "next page" stays leftwards on the
  * glass in every orientation.
  */
 class Board {
@@ -29,9 +30,10 @@ class Board {
      * The debounced input of the touch surface and the BOOT key.
      *
      * A horizontal swipe of at least 60 px that outruns its vertical travel steps to the
-     * next (leftwards) or previous (rightwards) page in the current orientation. A short
-     * tap without travel is the home action, a hold of 800 ms is the hold action, and a
-     * second touch point cancels the gesture instead of guessing.
+     * next (leftwards) or previous (rightwards) page in the current orientation. A vertical
+     * swipe of the same size scrolls the list of the page that shows one. A short tap
+     * without travel is the home action, a hold of 800 ms is the hold action, and a second
+     * touch point cancels the gesture instead of guessing.
      */
     Input key(uint64_t now_ms);
     bool save(const Settings &settings);

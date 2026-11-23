@@ -200,6 +200,18 @@ Input Board::poll_touch(uint64_t now) {
         ESP_LOGI(kTag, "swipe dx=%d dy=%d rot=%u", lx, ly, rotation_);
         return lx < 0 ? Input::Forward : Input::Back;
     }
+    // A vertical swipe scrolls the list of a page that is longer than the glass.
+    // It is judged in the logical space as well, so the gesture follows the
+    // content in every rotation.
+    if (duration <= kSwipeMaxMs && std::abs(dy) >= kSwipeMinPx &&
+        std::abs(dy) >= kSwipeStraightness * std::abs(dx)) {
+        int lx = dx, ly = dy;
+        logical_delta(lx, ly);
+        ESP_LOGI(kTag, "scroll dy=%d rot=%u", ly, rotation_);
+        // The finger moves up the list, so the rows that come later come into
+        // view.
+        return ly < 0 ? Input::ScrollUp : Input::ScrollDown;
+    }
     return Input::None;
 }
 

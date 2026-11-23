@@ -88,6 +88,9 @@ class PanelRuntime {
     OtaSession ota_;
     Navigator nav_;
     View view_;
+    // The publication the link handed over, kept out of the stack of the loop:
+    // a roster of sessions is larger than that stack can spare.
+    SessionsUpdate pending_sessions_{};
     std::atomic<Page> location_{Page::Home};
 
     static const char *page_name(void *context);

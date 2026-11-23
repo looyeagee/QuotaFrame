@@ -47,7 +47,9 @@ class Screens {
     /**
      * Sessions page: the live count in the state colour, then one card per running
      * session with its state bar, its name and its state word. Sessions that have
-     * ended are not drawn; the page is about what is running now.
+     * ended are not drawn; the page is about what is running now. A roster longer
+     * than the glass is shown as a window of it, which the touch surface scrolls
+     * through.
      */
     void sessions(const View &v);
     /** Draws the line being sung inside `width` starting at `x`. */

@@ -59,6 +59,10 @@ struct View {
     // sessions never shows an empty page.
     bool sessions_valid = false;
     SessionsUpdate sessions;
+    // The first row of the sessions list the page shows. A roster that is
+    // longer than the glass is scrolled through it; a panel without a scroll
+    // input leaves the list at its top.
+    uint8_t sessions_scroll = 0;
     uint64_t music_line_ms = 0; // When the line being sung began showing, for its scroll.
     // Milliseconds the source says the line had left when it appeared; 0 when it cannot say.
     // A scroll is shortened to fit inside it, never stretched to fill it. Only used when the

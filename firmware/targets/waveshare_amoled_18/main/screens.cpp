@@ -47,6 +47,8 @@ constexpr int kSessionsScale = 2;
 constexpr int kSessionsCountScale = 6;
 constexpr int kSessionsCountTop = 44;
 constexpr int kSessionsRowsTop = 120, kSessionsPitch = 74, kSessionsCardHeight = 60;
+// The rows the glass holds above the page dots. A longer roster is scrolled through them.
+constexpr int kSessionsRowsMax = 4;
 constexpr int kSessionsBarWidth = 6;
 // Balance figure heights, largest first; the smallest one is the fallback.
 constexpr int kHomeBalanceHeights[] = {88, 80, 72, 64, 56, 48, 44, 40, 36, 32};
@@ -596,22 +598,32 @@ void Screens::sessions(const View &v) {
     }
 
     int top = kSessionsRowsTop;
-    // The cards sit in the middle of the room under the count, so one running session reads as
-    // a card on the page instead of as a line stranded at the top edge; four still start at the
-    // top, because the block is then as tall as the room.
+    // The page shows a window of the roster: as many rows as the glass holds. A roster that
+    // does not fit is scrolled through them with the touch surface, and the window says
+    // where it stands in the list.
     const int live = v.sessions.live_count;
-    const int block = live * kSessionsPitch - (kSessionsPitch - kSessionsCardHeight);
+    const int rows = std::min(live, kSessionsRowsMax);
+    const int first = std::min<int>(v.sessions_scroll, live - rows);
+    if (live > rows) {
+        char position[16];
+        snprintf(position, sizeof(position), "%d-%d OF %d", first + 1, first + rows, live);
+        c_.text_right(right, kSessionsCountTop + 6, position, 2, Ink::Muted);
+    }
+    // The cards sit in the middle of the room under the count, so one running session reads as
+    // a card on the page instead of as a line stranded at the top edge; a full window still
+    // starts at the top, because the block is then as tall as the room.
+    const int block = rows * kSessionsPitch - (kSessionsPitch - kSessionsCardHeight);
     const int room_bottom = c_.height() - kDotsFromBottom - 12;
     top += std::max(0, (room_bottom - kSessionsRowsTop - block) / 2);
     // The chips share one width, so the rows stay in a column whatever states they carry.
     int chip_text = 0;
-    for (int i = 0; i < live; ++i)
+    for (int i = first; i < first + rows; ++i)
         chip_text = std::max(chip_text,
                              Canvas::text_width(session_state_word(v.sessions.live[i].state), 2));
     const int chip_w = chip_text + 2 * kChipPad;
     const int chip_h = kLine + 2 * kChipPad;
     const int name_height = CjkText::line_height(kSessionsScale);
-    for (int i = 0; i < live; ++i) {
+    for (int i = first; i < first + rows; ++i) {
         const SessionState state = v.sessions.live[i].state;
         const Ink state_ink = session_state_ink(state);
         c_.fill(kLeft, top, kSessionsBarWidth, kSessionsCardHeight, state_ink);
@@ -643,7 +655,7 @@ void Screens::sessions(const View &v) {
                           Ink::Muted);
         top += kSessionsPitch;
         // A hairline in the gap between cards, aligned with the names rather than the bars.
-        if (i + 1 < v.sessions.live_count)
+        if (i + 1 < first + rows)
             c_.fill(name_x, top - kSessionsPitch + kSessionsCardHeight + 4,
                     right - name_x, 1, Ink::Muted);
     }

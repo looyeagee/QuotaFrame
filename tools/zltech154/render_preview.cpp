@@ -179,6 +179,19 @@ int main(int argc, char **argv) {
                        {"整理发布文档", SessionState::Idle, WaitingReason::None}});
     render(v, "05_sessions_states");
 
+    // A roster longer than the glass: the page keeps the rows it has room for, and the
+    // count still names every running session.
+    v = design_view();
+    v.page = Page::Sessions;
+    apply_sessions(v, {{"重构会话页", SessionState::Busy, WaitingReason::None},
+                       {"修 BLE 重连", SessionState::Waiting, WaitingReason::Ask},
+                       {"QuotaFrame bridge", SessionState::Busy, WaitingReason::None},
+                       {"整理发布文档", SessionState::Idle, WaitingReason::None},
+                       {"面板滚动", SessionState::Busy, WaitingReason::None},
+                       {"整理 bridge 日志", SessionState::Idle, WaitingReason::None},
+                       {"会话页改版", SessionState::Busy, WaitingReason::None}});
+    render(v, "05_sessions_many");
+
     v = design_view();
     v.page = Page::Minimax;
     render(v, "06_minimax");

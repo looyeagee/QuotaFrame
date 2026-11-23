@@ -194,6 +194,9 @@ private:
     void* brightness_context_ = nullptr;
     NowPlayingMailbox now_playing_{};
     SessionsMailbox sessions_{};
+    // The buffer the sessions frame is parsed into. The roster is too large for
+    // the stack of the task that receives the frame, so it lives here.
+    SessionsUpdate sessions_parsed_{};
     OtaSession* ota_ = nullptr;
     OtaCommandRouter ota_commands_{};
     OtaFolderPushSink ota_folder_sink_{};

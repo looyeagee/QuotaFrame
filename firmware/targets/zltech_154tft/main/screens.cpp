@@ -18,11 +18,14 @@ constexpr int kSmallLine = kLine / 2;
 // of the letters.
 constexpr int kChipPad = 4, kChipPadSmall = 3;
 // Sessions page: the count leads, one row per running session follows, the same composition
-// the AMOLED target draws, fitted to a 220 x 190 column. The roster carries at most four live
-// sessions, so every row gets room and no row is ever cut.
+// the AMOLED target draws, fitted to a 220 x 190 column. Four rows fit above the footer, so
+// every row gets room and no row is ever cut.
 constexpr int kSessionsCountTop = 34, kSessionsCountScale = 4;
 constexpr int kSessionsDetailTop = 56;
 constexpr int kSessionsRowsTop = 82, kSessionsPitch = 32, kSessionsCardHeight = 26;
+// The rows the glass holds above the footer. A longer roster keeps the rows that were
+// touched last, which are the ones the reader is waiting for.
+constexpr int kSessionsRowsMax = 4;
 constexpr int kSessionsBarWidth = 4, kSessionsGap = 10;
 constexpr int kSessionsNameScale = 1, kSessionsChipScale = 1;
 // Gap between the state chip, which is right-aligned, and the name column.
@@ -499,7 +502,9 @@ void Screens::sessions(const View &v) {
     // One card per running session: a colour bar for the state, the name, and the state word
     // in a chip. The block is centred in the room under the count, so a single session reads
     // as a card on the page instead of a line stranded at the top edge.
-    const int live = v.sessions.live_count;
+    // The glass holds a fixed number of rows; a longer roster keeps the rows that were
+    // touched last, which are the ones the reader is waiting for.
+    const int live = std::min<int>(v.sessions.live_count, kSessionsRowsMax);
     const int block = live * kSessionsPitch - (kSessionsPitch - kSessionsCardHeight);
     const int room_bottom = c_.height() - 38;
     int top = kSessionsRowsTop + std::max(0, (room_bottom - kSessionsRowsTop - block) / 2);

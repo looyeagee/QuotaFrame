@@ -156,8 +156,12 @@ bool week_present(const ProviderSnapshot &s, bool encrypted);
  * Back and Forward are the two keys that step through the page ring. Home is the middle
  * action: the chord of both keys on a board that has two, a key of its own on a board that
  * has three. Hold is any key held for 800 ms.
+ *
+ * ScrollUp and ScrollDown move a list that is longer than the glass: the finger moving
+ * up brings the rows that come later into view, the finger moving down brings back the
+ * rows that come earlier.
  */
-enum class Input : uint8_t { None, Back, Forward, Home, Hold };
+enum class Input : uint8_t { None, Back, Forward, Home, Hold, ScrollUp, ScrollDown };
 
 /** Effects of one navigation step that the application loop must carry out. */
 struct NavResult {
@@ -195,6 +199,8 @@ class Navigator {
     bool dismissed_ = false;
     bool announced_ = false;
     uint64_t last_step_ms_ = 0;
+    /** Moves the sessions list one row up or down, inside the roster. */
+    void scroll_sessions(Input input, View &view);
 };
 
 /** Auto-cycle interval in milliseconds for a Settings::cycle value; 0 disables cycling. */

@@ -143,6 +143,29 @@ int main(int argc, char **argv) {
     render(v, "06b_sessions_portrait");
     v.settings.rotation = static_cast<uint8_t>(Rotation::Landscape);
 
+    // A roster longer than the glass: the page keeps the rows it has room for, and the
+    // summary still counts every running session.
+    v = design_view();
+    v.page = Page::Sessions;
+    v.sessions = {};
+    v.sessions_valid = true;
+    const char *const kNames[] = {"重构会话页", "修 BLE 重连", "QuotaFrame bridge",
+                                  "整理发布文档", "面板滚动", "整理 bridge 日志",
+                                  "会话页改版", "ota 验证", "固件发布"};
+    for (size_t i = 0; i < sizeof(kNames) / sizeof(kNames[0]); ++i) {
+        snprintf(v.sessions.live[i].name, sizeof(v.sessions.live[i].name), "%s", kNames[i]);
+        v.sessions.live[i].state = i % 3 == 0 ? SessionState::Busy : SessionState::Idle;
+    }
+    v.sessions.live[1].state = SessionState::Waiting;
+    v.sessions.live[1].waiting_for = WaitingReason::Ask;
+    v.sessions.live_count = 9;
+    render(v, "06c_sessions_many");
+
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Portrait);
+    v.page = Page::Sessions;
+    render(v, "06d_sessions_many_portrait");
+    v.settings.rotation = static_cast<uint8_t>(Rotation::Landscape);
+
     v.page = Page::Settings;
     v.focus = 1;
     v.settings.cycle = 1;

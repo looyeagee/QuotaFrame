@@ -4,8 +4,14 @@
 
 namespace usage_panel {
 
-/** Number of live sessions one publication carries. */
-constexpr uint8_t kMaxLiveSessions = 4;
+/**
+ * Number of live sessions one publication carries.
+ *
+ * The roster is the whole list of running sessions and not a sample of it: the
+ * Bridge sends as many as the machine runs, and a panel keeps the ones it can
+ * show. The bound keeps the publication inside the frame the link carries.
+ */
+constexpr uint8_t kMaxLiveSessions = 24;
 /** Number of recent titles one publication carries. */
 constexpr uint8_t kMaxRecentSessions = 3;
 /**

@@ -164,9 +164,11 @@ waiting for its reader carries an inverted chip (BUSY or WAIT), one that is up a
 one whose background shell still runs a plain SHELL. A waiting session also names what it waits
 for at the far end of its row (ASK, PERM, SANDBOX, WORKER, GOAL, DIALOG), and the summary line
 counts the sessions that wait first, because those are the ones spending the reader's time. The
-page holds four running sessions, the same bound the Bridge applies. Sessions that have ended are
-not drawn. Only the display names, the state and the reason travel: session ids, working
-directories, git branches and the conversations themselves stay on the computer.
+Bridge sends every running session, up to twenty-four of them, and the panel draws the rows it
+has room for: seven in landscape and nine in portrait. The summary line counts the whole roster,
+so a session that is not on the glass is still counted. Sessions that have ended are not drawn.
+Only the display names, the state and the reason travel: session ids, working directories, git
+branches and the conversations themselves stay on the computer.
 
 The page is only in the ring once a publication has arrived, so a panel whose Bridge sends no
 sessions never shows an empty page. A panel that received a publication but has no live session
